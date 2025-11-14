@@ -32,6 +32,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -44,7 +45,6 @@ type ManagedETCDReconciler struct {
 
 func (r *ManagedETCDReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("managedetcd", req.NamespacedName)
-	log.Info("Reconciling ManagedETCD")
 
 	etcdObj := &mcpv1alpha1.ManagedETCD{}
 	if err := r.Get(ctx, req.NamespacedName, etcdObj); err != nil {
@@ -53,6 +53,27 @@ func (r *ManagedETCDReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		return ctrl.Result{}, err
 	}
+
+	if !etcdObj.ObjectMeta.DeletionTimestamp.IsZero() {
+		log.Info("ManagedETCD is being deleted")
+		controllerutil.RemoveFinalizer(etcdObj, ManagedControlPlaneFinalizer)
+		if err := r.Update(ctx, etcdObj); err != nil {
+			return ctrl.Result{}, err
+		}
+		log.Info("ManagedETCD is deleted")
+		return ctrl.Result{}, nil
+	}
+
+	if !controllerutil.ContainsFinalizer(etcdObj, ManagedControlPlaneFinalizer) {
+		log.Info("Adding finalizer to ManagedETCD")
+		controllerutil.AddFinalizer(etcdObj, ManagedControlPlaneFinalizer)
+		if err := r.Update(ctx, etcdObj); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
+
+	log.Info("Reconciling ManagedETCD")
 
 	resources := etcd.Resources(etcdObj)
 
