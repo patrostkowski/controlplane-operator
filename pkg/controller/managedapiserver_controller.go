@@ -22,9 +22,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/go-logr/logr"
-	mcpv1alpha1 "github.com/patrostkowski/operator-template/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/operator-template/pkg/controlplane/apiserver"
-	"github.com/patrostkowski/operator-template/pkg/controlplane/utils"
+	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/apiserver"
+	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

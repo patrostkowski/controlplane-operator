@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package controllermanager
+package scheduler
 
 import (
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
@@ -24,9 +24,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Resources returns ConfigMap + Deployment for kube-controller-manager.
-func Resources(cm *mcpv1alpha1.ManagedControllerManager) []client.Object {
-	ns := cm.Namespace
+// Resources returns ConfigMap + Deployment for kube-scheduler.
+func Resources(ms *mcpv1alpha1.ManagedScheduler) []client.Object {
+	ns := ms.Namespace
 
 	return []client.Object{
 		buildConfigMap(ns),
@@ -35,26 +35,27 @@ func Resources(cm *mcpv1alpha1.ManagedControllerManager) []client.Object {
 }
 
 func buildConfigMap(namespace string) *corev1.ConfigMap {
-	kcfg := buildControllerManagerKubeconfig(namespace)
+	kcfg := buildSchedulerKubeconfig(namespace)
 
 	// marshal kubeconfig to YAML
 	kubeconfigData, err := clientcmd.Write(*kcfg)
 	if err != nil {
-		panic(err) // should never happen
+		// should never happen with in-memory cfg
+		panic(err)
 	}
 
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "controller-kubeconfig",
+			Name:      "scheduler-kubeconfig",
 			Namespace: namespace,
 		},
 		Data: map[string]string{
-			"controller-manager.conf": string(kubeconfigData),
+			"scheduler.conf": string(kubeconfigData),
 		},
 	}
 }
 
-func buildControllerManagerKubeconfig(namespace string) *clientcmdapi.Config {
+func buildSchedulerKubeconfig(namespace string) *clientcmdapi.Config {
 	serverURL := "https://kube-apiserver." + namespace + ".svc:443"
 
 	cfg := clientcmdapi.NewConfig()
@@ -66,15 +67,15 @@ func buildControllerManagerKubeconfig(namespace string) *clientcmdapi.Config {
 	}
 
 	// --- User ---
-	cfg.AuthInfos["cm"] = &clientcmdapi.AuthInfo{
-		ClientCertificate: "/var/run/k8s/cm/tls.crt",
-		ClientKey:         "/var/run/k8s/cm/tls.key",
+	cfg.AuthInfos["scheduler"] = &clientcmdapi.AuthInfo{
+		ClientCertificate: "/var/run/k8s/scheduler/tls.crt",
+		ClientKey:         "/var/run/k8s/scheduler/tls.key",
 	}
 
 	// --- Context ---
 	cfg.Contexts["local"] = &clientcmdapi.Context{
 		Cluster:  "local",
-		AuthInfo: "cm",
+		AuthInfo: "scheduler",
 	}
 
 	cfg.CurrentContext = "local"
@@ -84,13 +85,13 @@ func buildControllerManagerKubeconfig(namespace string) *clientcmdapi.Config {
 
 func buildDeployment(namespace string) *appsv1.Deployment {
 	labels := map[string]string{
-		"app": "kcm",
+		"app": "ks",
 	}
 	replicas := int32(1)
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "kube-controller-manager",
+			Name:      "kube-scheduler",
 			Namespace: namespace,
 			Labels:    labels,
 		},
@@ -106,28 +107,18 @@ func buildDeployment(namespace string) *appsv1.Deployment {
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:            "kcm",
-							Image:           "registry.k8s.io/kube-controller-manager:v1.31.3",
+							Name:            "ks",
+							Image:           "registry.k8s.io/kube-scheduler:v1.31.3",
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							Command: []string{
-								"kube-controller-manager",
+								"kube-scheduler",
 							},
 							Args: []string{
 								"--bind-address=0.0.0.0",
-								"--cluster-name=managed",
-								"--kubeconfig=/etc/kubernetes/controller-manager.conf",
-								"--authentication-kubeconfig=/etc/kubernetes/controller-manager.conf",
-								"--authorization-kubeconfig=/etc/kubernetes/controller-manager.conf",
+								"--kubeconfig=/etc/kubernetes/scheduler.conf",
+								"--authentication-kubeconfig=/etc/kubernetes/scheduler.conf",
+								"--authorization-kubeconfig=/etc/kubernetes/scheduler.conf",
 								"--leader-elect=true",
-								"--use-service-account-credentials=true",
-								"--controllers=*,bootstrapsigner,tokencleaner",
-								"--allocate-node-cidrs=false",
-
-								"--service-account-private-key-file=/var/run/k8s/sa/tls.key",
-								"--cluster-signing-cert-file=/var/run/k8s/ca/tls.crt",
-								"--cluster-signing-key-file=/var/run/k8s/ca/tls.key",
-								"--client-ca-file=/var/run/k8s/ca/tls.crt",
-								"--root-ca-file=/var/run/k8s/ca/tls.crt",
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
@@ -136,13 +127,8 @@ func buildDeployment(namespace string) *appsv1.Deployment {
 									ReadOnly:  true,
 								},
 								{
-									Name:      "cmcert",
-									MountPath: "/var/run/k8s/cm",
-									ReadOnly:  true,
-								},
-								{
-									Name:      "sa-signer",
-									MountPath: "/var/run/k8s/sa",
+									Name:      "schcert",
+									MountPath: "/var/run/k8s/scheduler",
 									ReadOnly:  true,
 								},
 								{
@@ -159,30 +145,22 @@ func buildDeployment(namespace string) *appsv1.Deployment {
 							VolumeSource: corev1.VolumeSource{
 								ConfigMap: &corev1.ConfigMapVolumeSource{
 									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "controller-kubeconfig",
+										Name: "scheduler-kubeconfig",
 									},
 									Items: []corev1.KeyToPath{
 										{
-											Key:  "controller-manager.conf",
-											Path: "controller-manager.conf",
+											Key:  "scheduler.conf",
+											Path: "scheduler.conf",
 										},
 									},
 								},
 							},
 						},
 						{
-							Name: "cmcert",
+							Name: "schcert",
 							VolumeSource: corev1.VolumeSource{
 								Secret: &corev1.SecretVolumeSource{
-									SecretName: "cm-client",
-								},
-							},
-						},
-						{
-							Name: "sa-signer",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "sa-signer",
+									SecretName: "scheduler-client",
 								},
 							},
 						},

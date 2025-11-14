@@ -1,4 +1,4 @@
-module github.com/patrostkowski/operator-template
+module github.com/patrostkowski/controlplane-operator
 
 go 1.25.1
 

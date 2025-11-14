@@ -19,9 +19,9 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	mcpv1alpha1 "github.com/patrostkowski/operator-template/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/operator-template/pkg/controlplane/etcd"
-	"github.com/patrostkowski/operator-template/pkg/controlplane/utils"
+	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/etcd"
+	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
