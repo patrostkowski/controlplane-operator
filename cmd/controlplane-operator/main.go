@@ -18,7 +18,7 @@ import (
 	"flag"
 	"os"
 
-	objectv1alpha1 "github.com/patrostkowski/operator-template/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	mcpv1alpha1 "github.com/patrostkowski/operator-template/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/operator-template/pkg/controller"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -39,12 +39,27 @@ func main() {
 	}
 
 	// register your API
-	if err := objectv1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
+	if err := mcpv1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
 		panic(err)
 	}
 
-	// register controller
-	if err := controller.SetupVMController(mgr); err != nil {
+	// register controllers
+	if err := controller.SetupManagedControlPlaneController(mgr); err != nil {
+		panic(err)
+	}
+	if err := controller.SetupManagedPKIReconciler(mgr); err != nil {
+		panic(err)
+	}
+	if err := controller.SetupManagedETCDReconciler(mgr); err != nil {
+		panic(err)
+	}
+	if err := controller.SetupManagedAPIServerReconciler(mgr); err != nil {
+		panic(err)
+	}
+	if err := controller.SetupManagedControllerManagerReconciler(mgr); err != nil {
+		panic(err)
+	}
+	if err := controller.SetupManagedSchedulerReconciler(mgr); err != nil {
 		panic(err)
 	}
 

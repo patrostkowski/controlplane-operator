@@ -17,37 +17,28 @@ package controller
 import (
 	"context"
 
-	objectv1alpha1 "github.com/patrostkowski/operator-template/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	mcpv1alpha1 "github.com/patrostkowski/operator-template/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type VMReconciler struct {
+type ManagedControlPlaneReconciler struct {
 	client.Client
 }
 
-func (r *VMReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
-	object := &objectv1alpha1.Object{}
-	if err := r.Get(ctx, req.NamespacedName, object); err != nil {
-		// object deleted or not found
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
-
-	logger.Info("reconciling", "name", object.Name)
-
-	// update status if needed
-	// _ = r.Status().Update(ctx, vm)
-
+func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	return ctrl.Result{}, nil
 }
 
-func SetupVMController(mgr ctrl.Manager) error {
+func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&objectv1alpha1.Object{}).
+		For(&mcpv1alpha1.ManagedControlPlane{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
-		Complete(&VMReconciler{Client: mgr.GetClient()})
+		Owns(&mcpv1alpha1.ManagedPKI{}).
+		Owns(&mcpv1alpha1.ManagedETCD{}).
+		Owns(&mcpv1alpha1.ManagedAPIServer{}).
+		Owns(&mcpv1alpha1.ManagedControlPlane{}).
+		Owns(&mcpv1alpha1.ManagedScheduler{}).
+		Complete(&ManagedControlPlaneReconciler{Client: mgr.GetClient()})
 }

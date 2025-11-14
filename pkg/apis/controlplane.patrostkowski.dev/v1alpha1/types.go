@@ -18,24 +18,210 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type ObjectSpec struct {
+// ManagedControlPlaneSpec defines the desired state of ManagedControlPlane.
+type ManagedControlPlaneSpec struct {
+	// Version is the desired Kubernetes control plane version, e.g. "v1.34.0".
+	Version string `json:"version"`
 }
 
-type ObjectStatus struct {
+// ManagedControlPlaneStatus defines the observed state of ManagedControlPlane.
+type ManagedControlPlaneStatus struct {
+	// Conditions represents the latest available observations of the control plane's state.
+	// e.g. APIServerAvailable, EtcdHealthy, ControllersHealthy, Ready, etc.
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:path=managedcontrolplanes,scope=Namespaced,shortName=mcp
+
+// ManagedControlPlane is the root CR that “owns” the other managed components.
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type Object struct {
+type ManagedControlPlane struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ObjectSpec   `json:"spec,omitempty"`
-	Status ObjectStatus `json:"status,omitempty"`
+	Spec   ManagedControlPlaneSpec   `json:"spec,omitempty"`
+	Status ManagedControlPlaneStatus `json:"status,omitempty"`
 }
 
+// +kubebuilder:object:root=true
+
+// ManagedControlPlaneList contains a list of ManagedControlPlane.
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type ObjectList struct {
+type ManagedControlPlaneList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Object `json:"items"`
+	Items           []ManagedControlPlane `json:"items"`
+}
+
+// ManagedPKISpec defines the desired state of ManagedPKI.
+type ManagedPKISpec struct {
+	// ControlPlaneRef can be used to explicitly link to a ManagedControlPlane
+	ControlPlaneName string `json:"controlPlaneName,omitempty"`
+}
+
+// ManagedPKIStatus defines the observed state of ManagedPKI.
+type ManagedPKIStatus struct {
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:path=managedpkis,scope=Namespaced,shortName=mpki
+
+// ManagedPKI manages the PKI resources (Certificate CRs, Secrets, etc.) for a control plane.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type ManagedPKI struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   ManagedPKISpec   `json:"spec,omitempty"`
+	Status ManagedPKIStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+
+// ManagedPKIList contains a list of ManagedPKI.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type ManagedPKIList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []ManagedPKI `json:"items"`
+}
+
+// ManagedETCDSpec defines the desired state of ManagedETCD.
+type ManagedETCDSpec struct {
+	ControlPlaneName string `json:"controlPlaneName,omitempty"`
+}
+
+// ManagedETCDStatus defines the observed state of ManagedETCD.
+type ManagedETCDStatus struct {
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:path=managedetcds,scope=Namespaced,shortName=metcd
+
+// ManagedETCD manages the etcd StatefulSet and associated configuration.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type ManagedETCD struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   ManagedETCDSpec   `json:"spec,omitempty"`
+	Status ManagedETCDStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+
+// ManagedETCDList contains a list of ManagedETCD.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type ManagedETCDList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []ManagedETCD `json:"items"`
+}
+
+// ManagedAPIServerSpec defines the desired state of ManagedAPIServer.
+type ManagedAPIServerSpec struct {
+	ControlPlaneName string `json:"controlPlaneName,omitempty"`
+}
+
+// ManagedAPIServerStatus defines the observed state of ManagedAPIServer.
+type ManagedAPIServerStatus struct {
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:path=managedapiservers,scope=Namespaced,shortName=mapisrv
+
+// ManagedAPIServer manages the kube-apiserver Deployment/Service and related config.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type ManagedAPIServer struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   ManagedAPIServerSpec   `json:"spec,omitempty"`
+	Status ManagedAPIServerStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+
+// ManagedAPIServerList contains a list of ManagedAPIServer.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type ManagedAPIServerList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []ManagedAPIServer `json:"items"`
+}
+
+// ManagedControllerManagerSpec defines the desired state of ManagedControllerManager.
+type ManagedControllerManagerSpec struct {
+	ControlPlaneName string `json:"controlPlaneName,omitempty"`
+}
+
+// ManagedControllerManagerStatus defines the observed state of ManagedControllerManager.
+type ManagedControllerManagerStatus struct {
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:path=managedcontrollermanagers,scope=Namespaced,shortName=mcm
+
+// ManagedControllerManager manages the kube-controller-manager Deployment.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type ManagedControllerManager struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   ManagedControllerManagerSpec   `json:"spec,omitempty"`
+	Status ManagedControllerManagerStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+
+// ManagedControllerManagerList contains a list of ManagedControllerManager.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type ManagedControllerManagerList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []ManagedControllerManager `json:"items"`
+}
+
+// ManagedSchedulerSpec defines the desired state of ManagedScheduler.
+type ManagedSchedulerSpec struct {
+	ControlPlaneName string `json:"controlPlaneName,omitempty"`
+}
+
+// ManagedSchedulerStatus defines the observed state of ManagedScheduler.
+type ManagedSchedulerStatus struct {
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:path=managedschedulers,scope=Namespaced,shortName=msched
+
+// ManagedScheduler manages the kube-scheduler Deployment.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type ManagedScheduler struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   ManagedSchedulerSpec   `json:"spec,omitempty"`
+	Status ManagedSchedulerStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+
+// ManagedSchedulerList contains a list of ManagedScheduler.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type ManagedSchedulerList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []ManagedScheduler `json:"items"`
 }
