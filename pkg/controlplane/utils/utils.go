@@ -23,7 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-func EnsureOwned(
+func EnsureCreatedAndOwned(
 	ctx context.Context,
 	c client.Client,
 	scheme *runtime.Scheme,

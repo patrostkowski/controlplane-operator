@@ -16,6 +16,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	certmanagermeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
@@ -31,6 +32,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 type ManagedPKIReconciler struct {
@@ -55,95 +57,130 @@ func (r *ManagedPKIReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	resources := pki.Resources(pkiObj)
 
-	allReady := true
+	if err := r.ensureResources(ctx, pkiObj, resources, log); err != nil {
+		return ctrl.Result{}, err
+	}
 
-	for _, res := range resources {
-		desired := res
+	allReady, err := r.checkResourcesReady(ctx, resources, log)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
-		log.Info("reconciling PKI resource", "name", res.GetName(), "namespace", res.GetNamespace())
+	if err := r.updatePKIReadyCondition(ctx, pkiObj, allReady); err != nil {
+		return ctrl.Result{}, err
+	}
 
-		err := utils.EnsureOwned(ctx, r.Client, r.Scheme, pkiObj, res, log, func(obj client.Object) error {
+	if !allReady {
+		log.Info("requeueing reconcile for PKI controller")
+		return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	log.Info("Finished reconciling ManagedPKI")
+
+	return reconcile.Result{}, nil
+}
+
+func (r *ManagedPKIReconciler) ensureResources(
+	ctx context.Context,
+	pkiObj *mcpv1alpha1.ManagedPKI,
+	resources []client.Object,
+	log logr.Logger,
+) error {
+
+	for _, desired := range resources {
+		log.Info("Ensuring PKI resource", "name", desired.GetName(), "namespace", desired.GetNamespace())
+
+		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, pkiObj, desired, log, func(obj client.Object) error {
 			switch o := obj.(type) {
 			case *certmanagerv1.Issuer:
-				d := desired.(*certmanagerv1.Issuer)
-				o.Spec = d.Spec
+				o.Spec = desired.(*certmanagerv1.Issuer).Spec
 			case *certmanagerv1.Certificate:
-				d := desired.(*certmanagerv1.Certificate)
-				o.Spec = d.Spec
+				o.Spec = desired.(*certmanagerv1.Certificate).Spec
 			}
 			return nil
 		})
 		if err != nil {
-			log.Error(err, "failed to reconcile PKI resource", "name", res.GetName(), "namespace", res.GetNamespace())
-			return ctrl.Result{}, err
+			log.Error(err, "failed to ensure PKI resource", "name", desired.GetName())
+			return err
 		}
+	}
 
-		// Now fetch a fresh object from the API to inspect status
+	return nil
+}
+
+func (r *ManagedPKIReconciler) checkResourcesReady(
+	ctx context.Context,
+	resources []client.Object,
+	log logr.Logger,
+) (bool, error) {
+
+	allReady := true
+
+	for _, desired := range resources {
+		key := client.ObjectKey{Namespace: desired.GetNamespace(), Name: desired.GetName()}
+
 		switch desired.(type) {
+
 		case *certmanagerv1.Issuer:
 			iss := &certmanagerv1.Issuer{}
-			if err := r.Get(ctx, client.ObjectKey{
-				Namespace: res.GetNamespace(),
-				Name:      res.GetName(),
-			}, iss); err != nil {
+			if err := r.Get(ctx, key, iss); err != nil {
+				log.Error(err, "failed to get Issuer", "name", key.Name)
 				allReady = false
-				log.Error(err, "failed to get Issuer for readiness", "name", res.GetName())
 				continue
 			}
-			log.Info("Issuer status", "name", iss.Name, "conditions", iss.Status.Conditions)
 			if !isIssuerReady(iss) {
+				log.Info("Issuer not ready", "name", iss.Name)
 				allReady = false
 			}
 
 		case *certmanagerv1.Certificate:
 			cert := &certmanagerv1.Certificate{}
-			if err := r.Get(ctx, client.ObjectKey{
-				Namespace: res.GetNamespace(),
-				Name:      res.GetName(),
-			}, cert); err != nil {
+			if err := r.Get(ctx, key, cert); err != nil {
+				log.Error(err, "failed to get Certificate", "name", key.Name)
 				allReady = false
-				log.Error(err, "failed to get Certificate for readiness", "name", res.GetName())
 				continue
 			}
-			log.Info("Certificate status", "name", cert.Name, "conditions", cert.Status.Conditions)
 			if !isCertificateReady(cert) {
+				log.Info("Certificate not ready", "name", cert.Name)
 				allReady = false
 			}
 		}
 	}
 
-	var condStatus metav1.ConditionStatus
-	var reason, msg string
+	return allReady, nil
+}
+
+func (r *ManagedPKIReconciler) updatePKIReadyCondition(
+	ctx context.Context,
+	pkiObj *mcpv1alpha1.ManagedPKI,
+	allReady bool,
+) error {
+
+	var cond metav1.Condition
 
 	if allReady {
-		log.Info("All PKI resources Ready")
-		condStatus = metav1.ConditionTrue
-		reason = "AllResourcesReady"
-		msg = "All PKI resources are Ready"
+		cond = metav1.Condition{
+			Type:               "Ready",
+			Status:             metav1.ConditionTrue,
+			Reason:             "AllResourcesReady",
+			Message:            "All PKI resources are Ready",
+			ObservedGeneration: pkiObj.Generation,
+		}
 	} else {
-		log.Info("PKI resources not yet Ready")
-		condStatus = metav1.ConditionFalse
-		reason = "WaitingForResources"
-		msg = "Waiting for PKI resources to become Ready"
-	}
-
-	cond := metav1.Condition{
-		Type:               "Ready",
-		Status:             condStatus,
-		Reason:             reason,
-		Message:            msg,
-		ObservedGeneration: pkiObj.Generation,
-	}
-
-	changed := apimeta.SetStatusCondition(&pkiObj.Status.Conditions, cond)
-	if changed {
-		if err := r.Status().Update(ctx, pkiObj); err != nil {
-			return ctrl.Result{}, err
+		cond = metav1.Condition{
+			Type:               "Ready",
+			Status:             metav1.ConditionFalse,
+			Reason:             "WaitingForResources",
+			Message:            "Waiting for PKI resources to become Ready",
+			ObservedGeneration: pkiObj.Generation,
 		}
 	}
 
-	log.Info("Finished reconciling managedpki")
-	return ctrl.Result{}, nil
+	if apimeta.SetStatusCondition(&pkiObj.Status.Conditions, cond) {
+		return r.Status().Update(ctx, pkiObj)
+	}
+
+	return nil
 }
 
 func isIssuerReady(iss *certmanagerv1.Issuer) bool {
