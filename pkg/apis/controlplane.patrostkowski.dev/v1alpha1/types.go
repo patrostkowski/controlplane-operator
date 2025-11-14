@@ -66,11 +66,13 @@ type ManagedPKIStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
+// ManagedPKI manages the PKI resources (Certificate CRs, Secrets, etc.) for a control plane.
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=managedpkis,scope=Namespaced,shortName=mpki
-
-// ManagedPKI manages the PKI resources (Certificate CRs, Secrets, etc.) for a control plane.
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].message`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type ManagedPKI struct {
 	metav1.TypeMeta   `json:",inline"`
