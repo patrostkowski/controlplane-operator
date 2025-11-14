@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mcp
+---
+apiVersion: controlplane.patrostkowski.dev/v1alpha1
+kind: ManagedControlPlane
+metadata:
+  name: example-mcp
+  namespace: mcp
+spec:
+  version: "v1.33.0"

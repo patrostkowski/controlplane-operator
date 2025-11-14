@@ -17,18 +17,77 @@ package controller
 import (
 	"context"
 
+	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/operator-template/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 type ManagedControlPlaneReconciler struct {
 	client.Client
+	Log      logr.Logger
+	Recorder record.EventRecorder
+	Scheme   *runtime.Scheme
 }
 
 func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("managedcontrolplane", req.NamespacedName)
+
+	mcp := &mcpv1alpha1.ManagedControlPlane{}
+	if err := r.Get(ctx, req.NamespacedName, mcp); err != nil {
+		if apierrors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, err
+	}
+
+	log.Info("Reconciling ManagedControlPlane", "version", mcp.Spec.Version)
+
+	baseName := mcp.Name
+	pkiName := baseName + "-pki"
+	// etcdName := baseName + "-etcd"
+	// apiName := baseName + "-apiserver"
+	// cmName := baseName + "-controller-manager"
+	// schedName := baseName + "-scheduler"
+
+	pki := &mcpv1alpha1.ManagedPKI{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pkiName,
+			Namespace: mcp.Namespace,
+		},
+	}
+	if err := r.createOrUpdateOwned(ctx, mcp, pki, func() error {
+		pki.Spec.ControlPlaneName = mcp.Name
+		return nil
+	}); err != nil {
+		log.Error(err, "failed to reconcile ManagedPKI")
+		return ctrl.Result{}, err
+	}
+
+	log.Info("Finished reconciling ManagedControlPlane")
+
 	return ctrl.Result{}, nil
+}
+
+func (r *ManagedControlPlaneReconciler) createOrUpdateOwned(
+	ctx context.Context,
+	owner *mcpv1alpha1.ManagedControlPlane,
+	obj client.Object,
+	mutate func() error,
+) error {
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
+		if err := controllerutil.SetControllerReference(owner, obj, r.Scheme); err != nil {
+			return err
+		}
+		return mutate()
+	})
+	return err
 }
 
 func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
@@ -40,5 +99,10 @@ func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
 		Owns(&mcpv1alpha1.ManagedAPIServer{}).
 		Owns(&mcpv1alpha1.ManagedControlPlane{}).
 		Owns(&mcpv1alpha1.ManagedScheduler{}).
-		Complete(&ManagedControlPlaneReconciler{Client: mgr.GetClient()})
+		Complete(&ManagedControlPlaneReconciler{
+			Client:   mgr.GetClient(),
+			Log:      ctrl.Log.WithName("controller").WithName("ManagedControlPlane"),
+			Recorder: mgr.GetEventRecorderFor("managedcontrolplane"),
+			Scheme:   mgr.GetScheme(),
+		})
 }
