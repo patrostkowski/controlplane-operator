@@ -1,0 +1,81 @@
+# HEADLESS service for per-pod DNS: etcd-0.etcd.managed-k8s.svc
+apiVersion: v1
+kind: Service
+metadata:
+  name: etcd
+  namespace: managed-k8s
+spec:
+  clusterIP: None            # << headless!
+  selector: { app: etcd }
+  ports:
+    - name: client
+      port: 2379
+      targetPort: 2379
+    - name: peer
+      port: 2380
+      targetPort: 2380
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: etcd
+  namespace: managed-k8s
+spec:
+  serviceName: etcd
+  replicas: 1
+  selector:
+    matchLabels: { app: etcd }
+  template:
+    metadata:
+      labels: { app: etcd }
+    spec:
+      containers:
+      - name: etcd
+        image: registry.k8s.io/etcd:3.5.12-0
+        command: ["etcd"]
+        args:
+          - --name=etcd-0
+          - --data-dir=/var/lib/etcd
+          - --advertise-client-urls=https://etcd-0.etcd.managed-k8s.svc:2379
+          - --listen-client-urls=https://0.0.0.0:2379
+          - --initial-advertise-peer-urls=https://etcd-0.etcd.managed-k8s.svc:2380
+          - --listen-peer-urls=https://0.0.0.0:2380
+          - --initial-cluster=etcd-0=https://etcd-0.etcd.managed-k8s.svc:2380
+          - --initial-cluster-state=new
+          - --client-cert-auth=true
+          - --peer-client-cert-auth=true
+          - --trusted-ca-file=/var/run/etcd/ca/ca.crt          # << etcd-ca
+          - --cert-file=/etc/etcd/server/tls.crt               # server cert
+          - --key-file=/etc/etcd/server/tls.key
+          - --peer-trusted-ca-file=/var/run/etcd/ca/ca.crt     # << etcd-ca
+          - --peer-cert-file=/etc/etcd/peer/tls.crt            # peer cert
+          - --peer-key-file=/etc/etcd/peer/tls.key
+        ports:
+          - { containerPort: 2379, name: client }
+          - { containerPort: 2380, name: peer }
+        livenessProbe:
+          exec:
+            command: ["sh","-c","ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/var/run/etcd/ca/ca.crt --cert=/etc/etcd/server/tls.crt --key=/etc/etcd/server/tls.key endpoint health"]
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket: { port: 2379 }
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+          - { name: data,       mountPath: /var/lib/etcd }
+          - { name: etcd-ca,    mountPath: /var/run/etcd/ca, readOnly: true }      # << etcd-ca
+          - { name: server-tls, mountPath: /etc/etcd/server, readOnly: true }      # etcd-server-tls
+          - { name: peer-tls,   mountPath: /etc/etcd/peer,   readOnly: true }      # etcd-peer-tls
+      volumes:
+        - name: etcd-ca
+          secret: { secretName: etcd-ca }                 # << use etcd-ca, NOT managed-ca
+        - name: server-tls
+          secret: { secretName: etcd-server-tls }
+        - name: peer-tls
+          secret: { secretName: etcd-peer-tls }
+  volumeClaimTemplates:
+  - metadata: { name: data }
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources: { requests: { storage: 1Gi } }

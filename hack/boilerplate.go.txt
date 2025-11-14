@@ -1,0 +1,2 @@
+// Copyright 2025 Your Name
+// SPDX-License-Identifier: Apache-2.0

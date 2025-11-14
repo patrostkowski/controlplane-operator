@@ -1,0 +1,43 @@
+# Copyright 2025 controlplane.patrostkowski.dev
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+version: '3'
+
+tasks:
+  docs:
+    desc: "Serve controlplane MkDocs from ./docs/"
+    cmds:
+      - docker run --rm -it -p 8000:8000 -v $(pwd)/docs:/docs squidfunk/mkdocs-material serve -f /docs/mkdocs.yml -a 0.0.0.0:8000
+
+  codegen:
+    desc: "Run all code generation scripts (client + CRDs) inside hack/"
+    cmds:
+      - bash hack/update-codegen.sh
+      - bash hack/update-crds.sh
+  
+  install:
+    desc: "Install controlplane CRDs into current kube context"
+    cmds:
+      - kubectl apply -f config/crd/
+
+  uninstall-crds:
+    desc: "Remove controlplane CRDs from cluster"
+    cmds:
+      - kubectl delete -f config/crd/ || true
+
+  run:
+    desc: "Run the controlplane operator locally (for development)"
+    dir: cmd/controlplane-operator
+    cmds:
+      - go run main.go

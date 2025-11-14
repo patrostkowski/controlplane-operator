@@ -1,0 +1,5 @@
+# 01-namespace-and-pki.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: managed-k8s

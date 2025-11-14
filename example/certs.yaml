@@ -1,0 +1,360 @@
+# already created in your cluster (shown here for completeness):
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned
+  namespace: managed-k8s
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: managed-ca
+  namespace: managed-k8s
+spec:
+  isCA: true
+  commonName: managed-ca
+  secretName: managed-ca
+  issuerRef:
+    name: selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: ca-issuer
+  namespace: managed-k8s
+spec:
+  ca:
+    secretName: managed-ca
+---
+# =========================
+# ETCD CA + issuer
+# =========================
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: etcd-selfsigned
+  namespace: managed-k8s
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: etcd-ca
+  namespace: managed-k8s
+spec:
+  isCA: true
+  commonName: etcd-ca
+  secretName: etcd-ca
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: etcd-selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: etcd-ca-issuer
+  namespace: managed-k8s
+spec:
+  ca:
+    secretName: etcd-ca
+---
+# =========================
+# FRONT-PROXY CA + issuer
+# =========================
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: front-proxy-selfsigned
+  namespace: managed-k8s
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: front-proxy-ca
+  namespace: managed-k8s
+spec:
+  isCA: true
+  commonName: kubernetes-front-proxy-ca
+  secretName: front-proxy-ca
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: front-proxy-selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: front-proxy-ca-issuer
+  namespace: managed-k8s
+spec:
+  ca:
+    secretName: front-proxy-ca
+---
+# =========================
+# SERVICE ACCOUNT SIGNER (uses your ca-issuer)
+# tls.key -> sa.key (private), tls.crt -> sa.pub (public)
+# =========================
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: sa-signer
+  namespace: managed-k8s
+spec:
+  secretName: sa-signer
+  duration: 87600h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: ca-issuer
+    kind: Issuer
+  commonName: sa-signer
+  usages:
+    - digital signature
+    - key encipherment
+---
+# =========================
+# KUBERNETES LEAF CERTS (signed by ca-issuer)
+# =========================
+# kube-apiserver serving cert
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: apiserver-tls
+  namespace: managed-k8s
+spec:
+  secretName: apiserver-tls
+  duration: 87600h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: ca-issuer
+    kind: Issuer
+  commonName: kube-apiserver
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+  dnsNames:
+    - kube-apiserver.managed-k8s.svc
+    - kube-apiserver.managed-k8s.svc.cluster.local
+    - kubernetes
+    - kubernetes.default
+    - kubernetes.default.svc
+    - kubernetes.default.svc.cluster.local
+    - localhost
+  ipAddresses:
+    - 127.0.0.1
+    # add any fixed advertise/load-balancer IPs here if you will use them
+    # - 10.0.0.10
+---
+# kube-apiserver -> kubelet client cert (O=system:masters by default)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: apiserver-kubelet-client
+  namespace: managed-k8s
+spec:
+  secretName: apiserver-kubelet-client
+  duration: 87600h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: ca-issuer
+    kind: Issuer
+  commonName: kube-apiserver-kubelet-client
+  subject:
+    organizations:
+      - system:masters
+  usages:
+    - digital signature
+    - key encipherment
+    - client auth
+---
+# =========================
+# ETCD LEAF CERTS (signed by etcd-ca-issuer)
+# =========================
+# etcd server (single-node example)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: etcd-server
+  namespace: managed-k8s
+spec:
+  secretName: etcd-server-tls
+  duration: 87600h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: etcd-ca-issuer
+    kind: Issuer
+  commonName: etcd-0.etcd.managed-k8s.svc
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+    - client auth
+  dnsNames:
+    - etcd-0.etcd.managed-k8s.svc
+    - etcd.managed-k8s.svc
+    - localhost
+  ipAddresses:
+    - 127.0.0.1
+---
+# etcd peer (single-node example)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: etcd-peer
+  namespace: managed-k8s
+spec:
+  secretName: etcd-peer-tls
+  duration: 87600h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: etcd-ca-issuer
+    kind: Issuer
+  commonName: etcd-0.etcd.managed-k8s.svc
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+    - client auth
+  dnsNames:
+    - etcd-0.etcd.managed-k8s.svc
+    - localhost
+  ipAddresses:
+    - 127.0.0.1
+---
+# etcd healthcheck client
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: etcd-healthcheck-client
+  namespace: managed-k8s
+spec:
+  secretName: etcd-healthcheck-client
+  duration: 87600h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: etcd-ca-issuer
+    kind: Issuer
+  commonName: kube-etcd-healthcheck-client
+  usages:
+    - digital signature
+    - key encipherment
+    - client auth
+---
+# apiserver -> etcd client
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: apiserver-etcd-client
+  namespace: managed-k8s
+spec:
+  secretName: apiserver-etcd-client
+  duration: 87600h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: etcd-ca-issuer
+    kind: Issuer
+  commonName: kube-apiserver-etcd-client
+  usages:
+    - digital signature
+    - key encipherment
+    - client auth
+---
+# =========================
+# FRONT-PROXY client (optional; only if you use aggregation)
+# =========================
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: front-proxy-client
+  namespace: managed-k8s
+spec:
+  secretName: front-proxy-client
+  duration: 87600h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: front-proxy-ca-issuer
+    kind: Issuer
+  commonName: front-proxy-client
+  usages:
+    - digital signature
+    - key encipherment
+    - client auth
+
+---
+# 04-controller-client-certs.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: cm-client
+  namespace: managed-k8s
+spec:
+  secretName: cm-client
+  duration: 87600h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: ca-issuer
+    kind: Issuer
+  commonName: system:kube-controller-manager
+  usages:
+    - digital signature
+    - key encipherment
+    - client auth
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: scheduler-client
+  namespace: managed-k8s
+spec:
+  secretName: scheduler-client
+  duration: 87600h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: ca-issuer
+    kind: Issuer
+  commonName: system:kube-scheduler
+  usages:
+    - digital signature
+    - key encipherment
+    - client auth

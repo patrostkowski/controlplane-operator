@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: apiserver-smoke
+  namespace: managed-k8s
+spec:
+  restartPolicy: Never
+  containers:
+  - name: curl
+    image: curlimages/curl:8.10.1
+    command: ["sleep", "infinity"]
+    volumeMounts:
+    - name: ca
+      mountPath: /ca
+      readOnly: true
+  volumes:
+  - name: ca
+    secret:
+      secretName: managed-ca   # your CA for apiserver
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: admin-client
+  namespace: managed-k8s
+spec:
+  secretName: admin-client
+  duration: 87600h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: ca-issuer
+    kind: Issuer
+  commonName: kubernetes-admin
+  subject:
+    organizations:
+      - system:masters
+  usages:
+    - digital signature
+    - key encipherment
+    - client auth
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: admin-kubeconfig
+  namespace: managed-k8s
+data:
+  config: |
+    apiVersion: v1
+    kind: Config
+    clusters:
+    - name: managed
+      cluster:
+        server: https://kube-apiserver.managed-k8s.svc:443
+        certificate-authority: /var/run/k8s/ca/ca.crt
+    contexts:
+    - name: managed
+      context:
+        cluster: managed
+        user: admin
+    current-context: managed
+    users:
+    - name: admin
+      user:
+        client-certificate: /var/run/k8s/admin/tls.crt
+        client-key: /var/run/k8s/admin/tls.key
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: admin-kubectl
+  namespace: managed-k8s
+spec:
+  restartPolicy: Never
+  containers:
+  - name: kubectl
+    image: bitnami/kubectl:latest
+    command: ["sleep", "infinity"]
+    volumeMounts:
+      - name: admin-kubeconfig
+        mountPath: /etc/kube
+        readOnly: true
+      - name: admin-client
+        mountPath: /var/run/k8s/admin
+        readOnly: true
+      - name: ca
+        mountPath: /var/run/k8s/ca
+        readOnly: true
+  volumes:
+    - name: admin-kubeconfig
+      configMap:
+        name: admin-kubeconfig
+        items:
+        - key: config
+          path: config
+    - name: admin-client
+      secret:
+        secretName: admin-client
+    - name: ca
+      secret:
+        secretName: managed-ca
