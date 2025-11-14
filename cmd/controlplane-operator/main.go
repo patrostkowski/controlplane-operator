@@ -18,6 +18,7 @@ import (
 	"flag"
 	"os"
 
+	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	mcpv1alpha1 "github.com/patrostkowski/operator-template/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/operator-template/pkg/controller"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -40,6 +41,9 @@ func main() {
 
 	// register your API
 	if err := mcpv1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
+		panic(err)
+	}
+	if err := certmanagerv1.AddToScheme(mgr.GetScheme()); err != nil {
 		panic(err)
 	}
 
