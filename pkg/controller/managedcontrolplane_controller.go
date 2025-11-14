@@ -19,11 +19,10 @@ import (
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -33,10 +32,7 @@ import (
 const ManagedControlPlaneFinalizer = "controlplane.patrostkowski.dev/finalizer"
 
 type ManagedControlPlaneReconciler struct {
-	client.Client
-	Log      logr.Logger
-	Recorder record.EventRecorder
-	Scheme   *runtime.Scheme
+	controlplane.BaseReconciler
 }
 
 func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -470,23 +466,6 @@ func (r *ManagedControlPlaneReconciler) setMCPReadyCondition(
 	return nil
 }
 
-func (r *ManagedControlPlaneReconciler) childExists(
-	ctx context.Context,
-	namespace, name string,
-	obj client.Object,
-) bool {
-	key := client.ObjectKey{Namespace: namespace, Name: name}
-	err := r.Get(ctx, key, obj)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return false
-		}
-		// On transient errors, be conservative and say "exists" so we requeue
-		return true
-	}
-	return true
-}
-
 func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&mcpv1alpha1.ManagedControlPlane{}).
@@ -497,9 +476,11 @@ func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
 		Owns(&mcpv1alpha1.ManagedControllerManager{}).
 		Owns(&mcpv1alpha1.ManagedScheduler{}).
 		Complete(&ManagedControlPlaneReconciler{
-			Client:   mgr.GetClient(),
-			Log:      ctrl.Log.WithName("controller").WithName("ManagedControlPlane"),
-			Recorder: mgr.GetEventRecorderFor("managedcontrolplane"),
-			Scheme:   mgr.GetScheme(),
+			BaseReconciler: controlplane.BaseReconciler{
+				Client:   mgr.GetClient(),
+				Log:      ctrl.Log.WithName("controller").WithName("ManagedControlPlane"),
+				Recorder: mgr.GetEventRecorderFor("managedcontrolplane"),
+				Scheme:   mgr.GetScheme(),
+			},
 		})
 }

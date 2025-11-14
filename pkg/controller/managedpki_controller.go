@@ -22,13 +22,12 @@ import (
 	certmanagermeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/pki"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -36,10 +35,7 @@ import (
 )
 
 type ManagedPKIReconciler struct {
-	client.Client
-	Log      logr.Logger
-	Recorder record.EventRecorder
-	Scheme   *runtime.Scheme
+	controlplane.BaseReconciler
 }
 
 func (r *ManagedPKIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -210,9 +206,11 @@ func SetupManagedPKIReconciler(mgr ctrl.Manager) error {
 		Owns(&certmanagerv1.Certificate{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		Complete(&ManagedPKIReconciler{
-			Client:   mgr.GetClient(),
-			Log:      ctrl.Log.WithName("controller").WithName("ManagedPKI"),
-			Recorder: mgr.GetEventRecorderFor("managedpki"),
-			Scheme:   mgr.GetScheme(),
+			BaseReconciler: controlplane.BaseReconciler{
+				Client:   mgr.GetClient(),
+				Log:      ctrl.Log.WithName("controller").WithName("ManagedPKI"),
+				Recorder: mgr.GetEventRecorderFor("managedpki"),
+				Scheme:   mgr.GetScheme(),
+			},
 		})
 }

@@ -23,13 +23,11 @@ import (
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/apiserver"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -37,10 +35,7 @@ import (
 )
 
 type ManagedAPIServerReconciler struct {
-	client.Client
-	Log      logr.Logger
-	Recorder record.EventRecorder
-	Scheme   *runtime.Scheme
+	controlplane.BaseReconciler
 }
 
 func (r *ManagedAPIServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -161,30 +156,29 @@ func (r *ManagedAPIServerReconciler) updateAPIServerReadyCondition(
 	apiObj *mcpv1alpha1.ManagedAPIServer,
 	allReady bool,
 ) error {
-	var cond metav1.Condition
-
 	if allReady {
-		cond = metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionTrue,
-			Reason:             "DeploymentReady",
-			Message:            "kube-apiserver Deployment is Ready",
-			ObservedGeneration: apiObj.Generation,
-		}
-	} else {
-		cond = metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionFalse,
-			Reason:             "WaitingForDeployment",
-			Message:            "Waiting for kube-apiserver Deployment to become Ready",
-			ObservedGeneration: apiObj.Generation,
-		}
+		return utils.UpdateCondition(
+			ctx,
+			r.Status(),
+			apiObj,
+			&apiObj.Status.Conditions,
+			"Ready",
+			metav1.ConditionTrue,
+			"DeploymentReady",
+			"kube-apiserver Deployment is Ready",
+		)
 	}
 
-	if apimeta.SetStatusCondition(&apiObj.Status.Conditions, cond) {
-		return r.Status().Update(ctx, apiObj)
-	}
-	return nil
+	return utils.UpdateCondition(
+		ctx,
+		r.Status(),
+		apiObj,
+		&apiObj.Status.Conditions,
+		"Ready",
+		metav1.ConditionFalse,
+		"WaitingForDeployment",
+		"Waiting for kube-apiserver Deployment to become Ready",
+	)
 }
 
 func isDeploymentReady(dep *appsv1.Deployment) bool {
@@ -208,9 +202,11 @@ func SetupManagedAPIServerReconciler(mgr ctrl.Manager) error {
 		Owns(&appsv1.Deployment{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		Complete(&ManagedAPIServerReconciler{
-			Client:   mgr.GetClient(),
-			Log:      ctrl.Log.WithName("controller").WithName("ManagedAPIServer"),
-			Recorder: mgr.GetEventRecorderFor("managedapiserver"),
-			Scheme:   mgr.GetScheme(),
+			BaseReconciler: controlplane.BaseReconciler{
+				Client:   mgr.GetClient(),
+				Log:      ctrl.Log.WithName("controller").WithName("ManagedAPIServer"),
+				Recorder: mgr.GetEventRecorderFor("managedapiserver"),
+				Scheme:   mgr.GetScheme(),
+			},
 		})
 }
