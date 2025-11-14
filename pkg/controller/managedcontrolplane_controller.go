@@ -41,35 +41,35 @@ type ManagedControlPlaneReconciler struct {
 func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("managedcontrolplane", req.NamespacedName)
 
-	mcp := &mcpv1alpha1.ManagedControlPlane{}
-	if err := r.Get(ctx, req.NamespacedName, mcp); err != nil {
+	mcpObj := &mcpv1alpha1.ManagedControlPlane{}
+	if err := r.Get(ctx, req.NamespacedName, mcpObj); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
-	if !mcp.ObjectMeta.DeletionTimestamp.IsZero() {
+	if !mcpObj.ObjectMeta.DeletionTimestamp.IsZero() {
 		log.Info("ManagedControlPlane is being deleted")
-		controllerutil.RemoveFinalizer(mcp, ManagedControlPlaneFinalizer)
-		if err := r.Update(ctx, mcp); err != nil {
+		controllerutil.RemoveFinalizer(mcpObj, ManagedControlPlaneFinalizer)
+		if err := r.Update(ctx, mcpObj); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
 	}
 
-	if !controllerutil.ContainsFinalizer(mcp, ManagedControlPlaneFinalizer) {
+	if !controllerutil.ContainsFinalizer(mcpObj, ManagedControlPlaneFinalizer) {
 		log.Info("Adding finalizer to ManagedControlPlane")
-		controllerutil.AddFinalizer(mcp, ManagedControlPlaneFinalizer)
-		if err := r.Update(ctx, mcp); err != nil {
+		controllerutil.AddFinalizer(mcpObj, ManagedControlPlaneFinalizer)
+		if err := r.Update(ctx, mcpObj); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
 	}
 
-	log.Info("Reconciling ManagedControlPlane", "version", mcp.Spec.Version)
+	log.Info("Reconciling ManagedControlPlane", "version", mcpObj.Spec.Version)
 
-	baseName := mcp.Name
+	baseName := mcpObj.Name
 	pkiName := baseName + "-pki"
 	etcdName := baseName + "-etcd"
 	apiName := baseName + "-apiserver"
@@ -79,11 +79,11 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	pki := &mcpv1alpha1.ManagedPKI{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pkiName,
-			Namespace: mcp.Namespace,
+			Namespace: mcpObj.Namespace,
 		},
 	}
-	if err := r.createOrUpdateOwned(ctx, mcp, pki, func() error {
-		pki.Spec.ControlPlaneName = mcp.Name
+	if err := r.createOrUpdateOwned(ctx, mcpObj, pki, func() error {
+		pki.Spec.ControlPlaneName = mcpObj.Name
 		return nil
 	}); err != nil {
 		log.Error(err, "failed to reconcile ManagedPKI")
@@ -93,11 +93,11 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	etcd := &mcpv1alpha1.ManagedETCD{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      etcdName,
-			Namespace: mcp.Namespace,
+			Namespace: mcpObj.Namespace,
 		},
 	}
-	if err := r.createOrUpdateOwned(ctx, mcp, etcd, func() error {
-		etcd.Spec.ControlPlaneName = mcp.Name
+	if err := r.createOrUpdateOwned(ctx, mcpObj, etcd, func() error {
+		etcd.Spec.ControlPlaneName = mcpObj.Name
 		return nil
 	}); err != nil {
 		log.Error(err, "failed to reconcile ManagedETCD")
@@ -107,11 +107,11 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	api := &mcpv1alpha1.ManagedAPIServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      apiName,
-			Namespace: mcp.Namespace,
+			Namespace: mcpObj.Namespace,
 		},
 	}
-	if err := r.createOrUpdateOwned(ctx, mcp, api, func() error {
-		api.Spec.ControlPlaneName = mcp.Name
+	if err := r.createOrUpdateOwned(ctx, mcpObj, api, func() error {
+		api.Spec.ControlPlaneName = mcpObj.Name
 		return nil
 	}); err != nil {
 		log.Error(err, "failed to reconcile ManagedAPIServer")
@@ -121,11 +121,11 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	cm := &mcpv1alpha1.ManagedControllerManager{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cmName,
-			Namespace: mcp.Namespace,
+			Namespace: mcpObj.Namespace,
 		},
 	}
-	if err := r.createOrUpdateOwned(ctx, mcp, cm, func() error {
-		cm.Spec.ControlPlaneName = mcp.Name
+	if err := r.createOrUpdateOwned(ctx, mcpObj, cm, func() error {
+		cm.Spec.ControlPlaneName = mcpObj.Name
 		return nil
 	}); err != nil {
 		log.Error(err, "failed to reconcile ManagedAPIServer")
@@ -135,11 +135,11 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	sched := &mcpv1alpha1.ManagedControllerManager{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      schedName,
-			Namespace: mcp.Namespace,
+			Namespace: mcpObj.Namespace,
 		},
 	}
-	if err := r.createOrUpdateOwned(ctx, mcp, sched, func() error {
-		sched.Spec.ControlPlaneName = mcp.Name
+	if err := r.createOrUpdateOwned(ctx, mcpObj, sched, func() error {
+		sched.Spec.ControlPlaneName = mcpObj.Name
 		return nil
 	}); err != nil {
 		log.Error(err, "failed to reconcile ManagedAPIServer")
@@ -173,7 +173,7 @@ func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
 		Owns(&mcpv1alpha1.ManagedPKI{}).
 		Owns(&mcpv1alpha1.ManagedETCD{}).
 		Owns(&mcpv1alpha1.ManagedAPIServer{}).
-		Owns(&mcpv1alpha1.ManagedControlPlane{}).
+		Owns(&mcpv1alpha1.ManagedControllerManager{}).
 		Owns(&mcpv1alpha1.ManagedScheduler{}).
 		Complete(&ManagedControlPlaneReconciler{
 			Client:   mgr.GetClient(),

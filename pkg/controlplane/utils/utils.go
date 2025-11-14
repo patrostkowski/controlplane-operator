@@ -30,12 +30,13 @@ func EnsureOwned(
 	owner client.Object,
 	obj client.Object,
 	log logr.Logger,
+	mutate func(obj client.Object) error,
 ) error {
 	_, err := controllerutil.CreateOrUpdate(ctx, c, obj, func() error {
 		if err := controllerutil.SetControllerReference(owner, obj, scheme); err != nil {
 			return err
 		}
-		return nil // object content already set by caller
+		return mutate(obj)
 	})
 	return err
 }
