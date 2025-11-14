@@ -17,7 +17,7 @@ package controller
 import (
 	"context"
 
-	objectv1alpha1 "github.com/patrostkowski/operator-template/pkg/apis/example.com/v1alpha1"
+	objectv1alpha1 "github.com/patrostkowski/operator-template/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"

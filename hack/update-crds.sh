@@ -20,7 +20,7 @@ set -o pipefail
 
 # TODO: make scripts runnable via Docker, without installing deps locally
 
-GROUP_NAME="example.com"
+GROUP_NAME="controlplane.patrostkowski.dev"
 
 ${GOPATH}/bin/controller-gen crd \
   paths=./pkg/apis/${GROUP_NAME}/... \
