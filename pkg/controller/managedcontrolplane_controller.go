@@ -128,11 +128,11 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		cm.Spec.ControlPlaneName = mcpObj.Name
 		return nil
 	}); err != nil {
-		log.Error(err, "failed to reconcile ManagedAPIServer")
+		log.Error(err, "failed to reconcile ManagedControllerManager")
 		return ctrl.Result{}, err
 	}
 
-	sched := &mcpv1alpha1.ManagedControllerManager{
+	sched := &mcpv1alpha1.ManagedScheduler{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      schedName,
 			Namespace: mcpObj.Namespace,
@@ -142,7 +142,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		sched.Spec.ControlPlaneName = mcpObj.Name
 		return nil
 	}); err != nil {
-		log.Error(err, "failed to reconcile ManagedAPIServer")
+		log.Error(err, "failed to reconcile ManagedScheduler")
 		return ctrl.Result{}, err
 	}
 

@@ -174,12 +174,14 @@ type ManagedControllerManagerStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
+// ManagedControllerManager manages the kube-controller-manager Deployment.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=managedcontrollermanagers,scope=Namespaced,shortName=mcm
-
-// ManagedControllerManager manages the kube-controller-manager Deployment.
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].message`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type ManagedControllerManager struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
