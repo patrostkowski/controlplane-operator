@@ -45,18 +45,38 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	mcpObj := &mcpv1alpha1.ManagedControlPlane{}
 	if err := r.Get(ctx, req.NamespacedName, mcpObj); err != nil {
 		if apierrors.IsNotFound(err) {
+			// MCP already gone
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
 	if !mcpObj.ObjectMeta.DeletionTimestamp.IsZero() {
-		log.Info("ManagedControlPlane is being deleted")
+		// If finalizer not present, nothing to do
+		if !controllerutil.ContainsFinalizer(mcpObj, ManagedControlPlaneFinalizer) {
+			return ctrl.Result{}, nil
+		}
+
+		log.Info("ManagedControlPlane is being deleted, deleting child resources")
+
+		// Actively delete child CRs
+		stillExists, err := r.deleteChildren(ctx, mcpObj, log)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		if stillExists {
+			// Some children are still terminating; requeue and wait
+			return ctrl.Result{Requeue: true}, nil
+		}
+
+		// All child CRs are gone → safe to drop finalizer
+		log.Info("All child resources deleted, removing finalizer")
+
 		controllerutil.RemoveFinalizer(mcpObj, ManagedControlPlaneFinalizer)
 		if err := r.Update(ctx, mcpObj); err != nil {
 			return ctrl.Result{}, err
 		}
-		log.Info("ManagedControlPlane is deleted")
 		return ctrl.Result{}, nil
 	}
 
@@ -66,37 +86,32 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		if err := r.Update(ctx, mcpObj); err != nil {
 			return ctrl.Result{}, err
 		}
+		// Finalizer updated → requeue so we don't continue in same reconcile
 		return ctrl.Result{}, nil
 	}
 
 	log.Info("Reconciling ManagedControlPlane", "version", mcpObj.Spec.Version)
 
-	// PHASE 1: PKI
 	if res, err := r.reconcilePKI(ctx, mcpObj, log); !res.IsZero() || err != nil {
 		return res, err
 	}
 
-	// PHASE 2: ETCD (requires PKI Ready)
 	if res, err := r.reconcileETCD(ctx, mcpObj, log); !res.IsZero() || err != nil {
 		return res, err
 	}
 
-	// PHASE 3: API server (requires ETCD Ready)
 	if res, err := r.reconcileAPIServer(ctx, mcpObj, log); !res.IsZero() || err != nil {
 		return res, err
 	}
 
-	// PHASE 4: ControllerManager (requires APIServer Ready)
 	if res, err := r.reconcileControllerManager(ctx, mcpObj, log); !res.IsZero() || err != nil {
 		return res, err
 	}
 
-	// PHASE 5: Scheduler (requires ControllerManager Ready)
 	if res, err := r.reconcileScheduler(ctx, mcpObj, log); !res.IsZero() || err != nil {
 		return res, err
 	}
 
-	// All components ready → mark MCP Ready=True
 	if err := r.setMCPReadyCondition(
 		ctx,
 		mcpObj,
@@ -110,6 +125,86 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	log.Info("Finished reconciling ManagedControlPlane")
 	return ctrl.Result{}, nil
 }
+
+func (r *ManagedControlPlaneReconciler) deleteChildren(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+	log logr.Logger,
+) (bool, error) {
+	baseName := mcp.Name
+	ns := mcp.Namespace
+
+	children := []client.Object{
+		&mcpv1alpha1.ManagedPKI{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      baseName + "-pki",
+				Namespace: ns,
+			},
+		},
+		&mcpv1alpha1.ManagedETCD{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      baseName + "-etcd",
+				Namespace: ns,
+			},
+		},
+		&mcpv1alpha1.ManagedAPIServer{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      baseName + "-apiserver",
+				Namespace: ns,
+			},
+		},
+		&mcpv1alpha1.ManagedControllerManager{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      baseName + "-controller-manager",
+				Namespace: ns,
+			},
+		},
+		&mcpv1alpha1.ManagedScheduler{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      baseName + "-scheduler",
+				Namespace: ns,
+			},
+		},
+	}
+
+	stillExists := false
+
+	for _, child := range children {
+		// Try to Get to see if it exists / is terminating
+		err := r.Get(ctx, client.ObjectKeyFromObject(child), child)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				// Already gone
+				continue
+			}
+			// Transient error – be conservative, say "still exists" so we requeue
+			log.Error(err, "error getting child during deletion", "name", child.GetName())
+			stillExists = true
+			continue
+		}
+
+		// If it's not being deleted yet, issue a Delete
+		if child.GetDeletionTimestamp().IsZero() {
+			log.Info("Deleting child resource", "name", child.GetName(), "kind", child.GetObjectKind().GroupVersionKind().Kind)
+			if err := r.Delete(ctx, child); err != nil {
+				if !apierrors.IsNotFound(err) {
+					log.Error(err, "failed to delete child resource", "name", child.GetName())
+					stillExists = true
+					continue
+				}
+				// NotFound after delete is fine
+				continue
+			}
+		}
+
+		// Either in deletion or just deleted; consider it "still exists" until
+		// next reconcile when Get will 404.
+		stillExists = true
+	}
+
+	return stillExists, nil
+}
+
 func (r *ManagedControlPlaneReconciler) reconcilePKI(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
@@ -373,6 +468,23 @@ func (r *ManagedControlPlaneReconciler) setMCPReadyCondition(
 		return r.Status().Update(ctx, mcp)
 	}
 	return nil
+}
+
+func (r *ManagedControlPlaneReconciler) childExists(
+	ctx context.Context,
+	namespace, name string,
+	obj client.Object,
+) bool {
+	key := client.ObjectKey{Namespace: namespace, Name: name}
+	err := r.Get(ctx, key, obj)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false
+		}
+		// On transient errors, be conservative and say "exists" so we requeue
+		return true
+	}
+	return true
 }
 
 func SetupManagedControlPlaneController(mgr ctrl.Manager) error {

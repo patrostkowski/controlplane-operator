@@ -33,7 +33,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -53,25 +52,6 @@ func (r *ManagedControllerManagerReconciler) Reconcile(ctx context.Context, req 
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
-	}
-
-	if !cmObj.ObjectMeta.DeletionTimestamp.IsZero() {
-		log.Info("ManagedControllerManager is being deleted")
-		controllerutil.RemoveFinalizer(cmObj, ManagedControlPlaneFinalizer)
-		if err := r.Update(ctx, cmObj); err != nil {
-			return ctrl.Result{}, err
-		}
-		log.Info("ManagedControllerManager is deleted")
-		return ctrl.Result{}, nil
-	}
-
-	if !controllerutil.ContainsFinalizer(cmObj, ManagedControlPlaneFinalizer) {
-		log.Info("Adding finalizer to ManagedControllerManager")
-		controllerutil.AddFinalizer(cmObj, ManagedControlPlaneFinalizer)
-		if err := r.Update(ctx, cmObj); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
 	}
 
 	log.Info("Reconciling ManagedControllerManager")

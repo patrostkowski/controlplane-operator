@@ -33,7 +33,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -53,25 +52,6 @@ func (r *ManagedAPIServerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
-	}
-
-	if !apiObj.ObjectMeta.DeletionTimestamp.IsZero() {
-		log.Info("ManagedAPIServer is being deleted")
-		controllerutil.RemoveFinalizer(apiObj, ManagedControlPlaneFinalizer)
-		if err := r.Update(ctx, apiObj); err != nil {
-			return ctrl.Result{}, err
-		}
-		log.Info("ManagedAPIServer is deleted")
-		return ctrl.Result{}, nil
-	}
-
-	if !controllerutil.ContainsFinalizer(apiObj, ManagedControlPlaneFinalizer) {
-		log.Info("Adding finalizer to ManagedAPIServer")
-		controllerutil.AddFinalizer(apiObj, ManagedControlPlaneFinalizer)
-		if err := r.Update(ctx, apiObj); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
 	}
 
 	log.Info("Reconciling ManagedAPIServer")

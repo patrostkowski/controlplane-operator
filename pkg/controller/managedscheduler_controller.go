@@ -24,7 +24,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -44,25 +43,6 @@ func (r *ManagedSchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
-	}
-
-	if !schedObj.ObjectMeta.DeletionTimestamp.IsZero() {
-		log.Info("ManagedScheduler is being deleted")
-		controllerutil.RemoveFinalizer(schedObj, ManagedControlPlaneFinalizer)
-		if err := r.Update(ctx, schedObj); err != nil {
-			return ctrl.Result{}, err
-		}
-		log.Info("ManagedScheduler is deleted")
-		return ctrl.Result{}, nil
-	}
-
-	if !controllerutil.ContainsFinalizer(schedObj, ManagedControlPlaneFinalizer) {
-		log.Info("Adding finalizer to ManagedScheduler")
-		controllerutil.AddFinalizer(schedObj, ManagedControlPlaneFinalizer)
-		if err := r.Update(ctx, schedObj); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
 	}
 
 	log.Info("Reconciling ManagedScheduler")
