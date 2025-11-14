@@ -20,6 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -115,6 +116,24 @@ func buildStatefulSet(namespace, name string) *appsv1.StatefulSet {
 							Ports: []corev1.ContainerPort{
 								{Name: "client", ContainerPort: 2379},
 								{Name: "peer", ContainerPort: 2380},
+							},
+							LivenessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									TCPSocket: &corev1.TCPSocketAction{
+										Port: intstr.FromInt(2379),
+									},
+								},
+								InitialDelaySeconds: 10,
+								PeriodSeconds:       10,
+							},
+							ReadinessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									TCPSocket: &corev1.TCPSocketAction{
+										Port: intstr.FromInt(2379),
+									},
+								},
+								InitialDelaySeconds: 5,
+								PeriodSeconds:       5,
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{

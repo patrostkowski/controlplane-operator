@@ -19,6 +19,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -113,7 +114,8 @@ func buildDeployment(namespace string) *appsv1.Deployment {
 								"kube-controller-manager",
 							},
 							Args: []string{
-								"--bind-address=0.0.0.0",
+								// match kind-style bind address
+								"--bind-address=127.0.0.1",
 								"--cluster-name=managed",
 								"--kubeconfig=/etc/kubernetes/controller-manager.conf",
 								"--authentication-kubeconfig=/etc/kubernetes/controller-manager.conf",
@@ -121,6 +123,8 @@ func buildDeployment(namespace string) *appsv1.Deployment {
 								"--leader-elect=true",
 								"--use-service-account-credentials=true",
 								"--controllers=*,bootstrapsigner,tokencleaner",
+
+								// you had this as false; keep it as-is unless you want pod CIDR management
 								"--allocate-node-cidrs=false",
 
 								"--service-account-private-key-file=/var/run/k8s/sa/tls.key",
@@ -128,6 +132,62 @@ func buildDeployment(namespace string) *appsv1.Deployment {
 								"--cluster-signing-key-file=/var/run/k8s/ca/tls.key",
 								"--client-ca-file=/var/run/k8s/ca/tls.crt",
 								"--root-ca-file=/var/run/k8s/ca/tls.crt",
+
+								// optional but often nice to mirror apiserver:
+								// "--service-cluster-ip-range=10.200.0.0/16",
+							},
+							Ports: []corev1.ContainerPort{
+								{
+									Name:          "https",
+									ContainerPort: 10257,
+								},
+							},
+							// kind uses /healthz over HTTPS on port 10257
+							StartupProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Scheme: corev1.URISchemeHTTPS,
+										Host:   "127.0.0.1",
+										Port:   intstr.FromInt(10257),
+										Path:   "/healthz",
+									},
+								},
+								InitialDelaySeconds: 10,
+								PeriodSeconds:       10,
+								TimeoutSeconds:      15,
+								FailureThreshold:    24,
+								SuccessThreshold:    1,
+							},
+							LivenessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Scheme: corev1.URISchemeHTTPS,
+										Host:   "127.0.0.1",
+										Port:   intstr.FromInt(10257),
+										Path:   "/healthz",
+									},
+								},
+								InitialDelaySeconds: 10,
+								PeriodSeconds:       10,
+								TimeoutSeconds:      15,
+								FailureThreshold:    8,
+								SuccessThreshold:    1,
+							},
+							// readiness on the same /healthz endpoint is fine here
+							ReadinessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Scheme: corev1.URISchemeHTTPS,
+										Host:   "127.0.0.1",
+										Port:   intstr.FromInt(10257),
+										Path:   "/healthz",
+									},
+								},
+								InitialDelaySeconds: 5,
+								PeriodSeconds:       5,
+								TimeoutSeconds:      15,
+								FailureThreshold:    3,
+								SuccessThreshold:    1,
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{

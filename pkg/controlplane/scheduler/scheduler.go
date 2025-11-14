@@ -19,6 +19,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -119,6 +120,36 @@ func buildDeployment(namespace string) *appsv1.Deployment {
 								"--authentication-kubeconfig=/etc/kubernetes/scheduler.conf",
 								"--authorization-kubeconfig=/etc/kubernetes/scheduler.conf",
 								"--leader-elect=true",
+							},
+							Ports: []corev1.ContainerPort{
+								{
+									Name:          "https",
+									ContainerPort: 10259,
+								},
+							},
+							LivenessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Scheme: corev1.URISchemeHTTPS,
+										Host:   "127.0.0.1",
+										Port:   intstr.FromInt(10259),
+										Path:   "/livez",
+									},
+								},
+								InitialDelaySeconds: 10,
+								PeriodSeconds:       10,
+							},
+							ReadinessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Scheme: corev1.URISchemeHTTPS,
+										Host:   "127.0.0.1",
+										Port:   intstr.FromInt(10259),
+										Path:   "/readyz",
+									},
+								},
+								InitialDelaySeconds: 5,
+								PeriodSeconds:       5,
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
