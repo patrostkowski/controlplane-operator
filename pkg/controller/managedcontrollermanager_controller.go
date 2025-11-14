@@ -17,7 +17,10 @@ package controller
 import (
 	"context"
 
+	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/operator-template/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -25,9 +28,15 @@ import (
 
 type ManagedControllerManagerReconciler struct {
 	client.Client
+	Log      logr.Logger
+	Recorder record.EventRecorder
+	Scheme   *runtime.Scheme
 }
 
 func (r *ManagedControllerManagerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("managedcontrollermanager", req.NamespacedName)
+	log.Info("Reconciling managedcontrollermanager")
+	log.Info("Finished reconciling managedcontrollermanager")
 	return ctrl.Result{}, nil
 }
 
@@ -35,5 +44,10 @@ func SetupManagedControllerManagerReconciler(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&mcpv1alpha1.ManagedControllerManager{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
-		Complete(&ManagedControllerManagerReconciler{Client: mgr.GetClient()})
+		Complete(&ManagedControllerManagerReconciler{
+			Client:   mgr.GetClient(),
+			Log:      ctrl.Log.WithName("controller").WithName("ManagedControllerManager"),
+			Recorder: mgr.GetEventRecorderFor("managedcontrollermanager"),
+			Scheme:   mgr.GetScheme(),
+		})
 }

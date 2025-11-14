@@ -17,7 +17,10 @@ package controller
 import (
 	"context"
 
+	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/operator-template/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -25,9 +28,15 @@ import (
 
 type ManagedPKIReconciler struct {
 	client.Client
+	Log      logr.Logger
+	Recorder record.EventRecorder
+	Scheme   *runtime.Scheme
 }
 
 func (r *ManagedPKIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("managedpki", req.NamespacedName)
+	log.Info("Reconciling managedpki")
+	log.Info("Finished reconciling managedpki")
 	return ctrl.Result{}, nil
 }
 
@@ -35,5 +44,10 @@ func SetupManagedPKIReconciler(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&mcpv1alpha1.ManagedPKI{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
-		Complete(&ManagedPKIReconciler{Client: mgr.GetClient()})
+		Complete(&ManagedPKIReconciler{
+			Client:   mgr.GetClient(),
+			Log:      ctrl.Log.WithName("controller").WithName("ManagedPKI"),
+			Recorder: mgr.GetEventRecorderFor("managedpki"),
+			Scheme:   mgr.GetScheme(),
+		})
 }

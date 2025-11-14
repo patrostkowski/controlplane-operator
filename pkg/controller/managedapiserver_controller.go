@@ -17,23 +17,37 @@ package controller
 import (
 	"context"
 
+	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/operator-template/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
 
-type ManagedETCDReconciler struct {
+type ManagedAPIServerReconciler struct {
 	client.Client
+	Log      logr.Logger
+	Recorder record.EventRecorder
+	Scheme   *runtime.Scheme
 }
 
-func (r *ManagedETCDReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ManagedAPIServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("managedapiserver", req.NamespacedName)
+	log.Info("Reconciling managedapiserver")
+	log.Info("Finished reconciling managedapiserver")
 	return ctrl.Result{}, nil
 }
 
-func SetupManagedETCDReconciler(mgr ctrl.Manager) error {
+func SetupManagedAPIServerReconciler(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&mcpv1alpha1.ManagedETCD{}).
+		For(&mcpv1alpha1.ManagedAPIServer{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
-		Complete(&ManagedETCDReconciler{Client: mgr.GetClient()})
+		Complete(&ManagedAPIServerReconciler{
+			Client:   mgr.GetClient(),
+			Log:      ctrl.Log.WithName("controller").WithName("ManagedAPIServer"),
+			Recorder: mgr.GetEventRecorderFor("managedapiserver"),
+			Scheme:   mgr.GetScheme(),
+		})
 }
