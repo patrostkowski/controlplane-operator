@@ -1,0 +1,46 @@
+# /etc/kubernetes/kubelet-config.yaml
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+
+# Bind kubelet to all interfaces, standard ports
+address: 0.0.0.0
+port: 10250
+readOnlyPort: 0
+
+# Cluster DNS & domain (adjust if your MCP uses different ones)
+clusterDomain: cluster.local
+clusterDNS:
+  - 10.96.0.10
+
+# Cgroups – you’re using containerd with cgroupfs
+cgroupDriver: "cgroupfs"
+cgroupsPerQOS: true
+cgroupRoot: "/"
+
+# Don’t die because of swap (you probably don't even have it)
+failSwapOn: false
+
+# Kubelet directories
+staticPodPath: /etc/kubernetes/manifests
+authentication:
+  anonymous:
+    enabled: false
+  webhook:
+    enabled: true
+  x509:
+    clientCAFile: /etc/kubernetes/pki/ca.crt
+
+authorization:
+  mode: Webhook
+
+# Node identity & TLS
+rotateCertificates: true
+serverTLSBootstrap: true
+
+# Misc defaults
+resolvConf: /etc/resolv.conf
+
+# Optional: slightly more verbose logging while you’re bringing this up
+# logging:
+#   format: text
+#   verbosity: 2

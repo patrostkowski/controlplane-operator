@@ -1,0 +1,56 @@
+#!/bin/sh
+
+# Very minimal init for MCPos
+# Runs from initramfs
+
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/usr/local/bin/
+
+log() {
+  TS="$(toybox date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "0000-00-00T00:00:00Z")"
+  echo " ${TS} [MCPos][init] $*" >&2
+}
+
+log "initramfs /init starting"
+
+###############################################################################
+# 0. Basic FS + mountpoints
+###############################################################################
+
+toybox mkdir -p /proc /sys /dev /tmp /run /etc /var /var/log
+
+# /dev should already be devtmpfs from kernel, but just in case:
+toybox mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+
+# Mount proc & sysfs
+toybox mount -t proc proc /proc || log "WARN: failed to mount /proc"
+toybox mount -t sysfs sys /sys || log "WARN: failed to mount /sys"
+
+# single unified cgroup v2 (good enough later for containerd + kubelet)
+toybox mkdir -p /sys/fs/cgroup
+toybox mount -t cgroup2 none /sys/fs/cgroup 2>/dev/null || log "WARN: cgroup2 mount failed"
+
+# Make sure /dev/console exists
+if [ ! -e /dev/console ]; then
+  toybox mknod -m 600 /dev/console c 5 1 2>/dev/null || true
+fi
+
+log "Filesystem setup done, PATH=${PATH}"
+
+###############################################################################
+# 1. Runtime dirs (but no configs, no containerd, no kubelet yet)
+###############################################################################
+
+toybox mkdir -p \
+    /etc/containerd \
+    /etc/cni/net.d \
+    /etc/kubernetes \
+    /var/lib/containerd \
+    /var/lib/kubelet \
+    /run/containerd \
+    /run/kubelet
+
+toybox ifconfig lo up || log "ERROR: failed to bring up lo interface"
+toybox ifconfig eth0 up || log "ERROR: failed to bring up eth0 interface"
+
+log "Dropping into shell for manual setup"
+exec /bin/bash

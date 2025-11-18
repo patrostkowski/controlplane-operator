@@ -154,7 +154,7 @@ func Resources(pkiObj *mcpv1alpha1.ManagedPKI) []client.Object {
 				"kubernetes.default.svc.cluster.local",
 				"localhost",
 			},
-			IPAddresses: []string{"127.0.0.1"},
+			IPAddresses: []string{"127.0.0.1", "172.19.0.3"}, // TODO: fix...
 		},
 
 		// kube-apiserver -> kubelet client cert (O=system:masters)
@@ -198,7 +198,7 @@ func Resources(pkiObj *mcpv1alpha1.ManagedPKI) []client.Object {
 				"etcd." + ns + ".svc",
 				"localhost",
 			},
-			IPAddresses: []string{"127.0.0.1"},
+			IPAddresses: []string{"127.0.0.1", "172.19.0.3"}, // TODO: fix...
 		},
 
 		// etcd peer
@@ -220,7 +220,7 @@ func Resources(pkiObj *mcpv1alpha1.ManagedPKI) []client.Object {
 				"etcd-0.etcd." + ns + ".svc",
 				"localhost",
 			},
-			IPAddresses: []string{"127.0.0.1"},
+			IPAddresses: []string{"127.0.0.1", "172.19.0.3"}, // TODO: fix...
 		},
 
 		// etcd healthcheck client
