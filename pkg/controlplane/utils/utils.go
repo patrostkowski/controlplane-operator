@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -28,15 +29,21 @@ func EnsureCreatedAndOwned(
 	c client.Client,
 	scheme *runtime.Scheme,
 	owner client.Object,
-	obj client.Object,
+	template client.Object,
 	log logr.Logger,
 	mutate func(obj client.Object) error,
 ) error {
-	_, err := controllerutil.CreateOrUpdate(ctx, c, obj, func() error {
-		if err := controllerutil.SetControllerReference(owner, obj, scheme); err != nil {
-			return err
-		}
-		return mutate(obj)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		obj := template.DeepCopyObject().(client.Object)
+		_, err := controllerutil.CreateOrUpdate(ctx, c, obj, func() error {
+			if err := controllerutil.SetControllerReference(owner, obj, scheme); err != nil {
+				return err
+			}
+			if mutate != nil {
+				return mutate(obj)
+			}
+			return nil
+		})
+		return err
 	})
-	return err
 }

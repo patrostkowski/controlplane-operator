@@ -108,13 +108,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
-	if err := r.setMCPReadyCondition(
-		ctx,
-		mcpObj,
-		metav1.ConditionTrue,
-		"ControlPlaneReady",
-		"All control plane components are Ready",
-	); err != nil {
+	if err := r.setMCPReadyCondition(ctx, mcpObj, true); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -228,7 +222,7 @@ func (r *ManagedControlPlaneReconciler) reconcilePKI(
 	if err := r.Get(ctx, client.ObjectKeyFromObject(pki), current); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("ManagedPKI not yet visible, requeueing")
-			_ = r.setMCPReadyCondition(ctx, mcp, metav1.ConditionFalse, "WaitingForPKI", "Waiting for ManagedPKI to become Ready")
+			_ = r.setMCPReadyCondition(ctx, mcp, false)
 			return ctrl.Result{Requeue: true}, nil
 		}
 		return ctrl.Result{}, err
@@ -236,7 +230,7 @@ func (r *ManagedControlPlaneReconciler) reconcilePKI(
 
 	if !isReady(current.Status.Conditions) {
 		log.Info("ManagedPKI not Ready yet, waiting")
-		if err := r.setMCPReadyCondition(ctx, mcp, metav1.ConditionFalse, "WaitingForPKI", "Waiting for ManagedPKI to become Ready"); err != nil {
+		if err := r.setMCPReadyCondition(ctx, mcp, false); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
@@ -273,7 +267,7 @@ func (r *ManagedControlPlaneReconciler) reconcileETCD(
 	if err := r.Get(ctx, client.ObjectKeyFromObject(etcd), current); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("ManagedETCD not yet visible, requeueing")
-			_ = r.setMCPReadyCondition(ctx, mcp, metav1.ConditionFalse, "WaitingForETCD", "Waiting for ManagedETCD to become Ready")
+			_ = r.setMCPReadyCondition(ctx, mcp, false)
 			return ctrl.Result{Requeue: true}, nil
 		}
 		return ctrl.Result{}, err
@@ -281,7 +275,7 @@ func (r *ManagedControlPlaneReconciler) reconcileETCD(
 
 	if !isReady(current.Status.Conditions) {
 		log.Info("ManagedETCD not Ready yet, waiting")
-		if err := r.setMCPReadyCondition(ctx, mcp, metav1.ConditionFalse, "WaitingForETCD", "Waiting for ManagedETCD to become Ready"); err != nil {
+		if err := r.setMCPReadyCondition(ctx, mcp, false); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
@@ -318,7 +312,7 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServer(
 	if err := r.Get(ctx, client.ObjectKeyFromObject(api), current); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("ManagedAPIServer not yet visible, requeueing")
-			_ = r.setMCPReadyCondition(ctx, mcp, metav1.ConditionFalse, "WaitingForAPIServer", "Waiting for ManagedAPIServer to become Ready")
+			_ = r.setMCPReadyCondition(ctx, mcp, false)
 			return ctrl.Result{Requeue: true}, nil
 		}
 		return ctrl.Result{}, err
@@ -326,7 +320,7 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServer(
 
 	if !isReady(current.Status.Conditions) {
 		log.Info("ManagedAPIServer not Ready yet, waiting")
-		if err := r.setMCPReadyCondition(ctx, mcp, metav1.ConditionFalse, "WaitingForAPIServer", "Waiting for ManagedAPIServer to become Ready"); err != nil {
+		if err := r.setMCPReadyCondition(ctx, mcp, false); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
@@ -363,7 +357,7 @@ func (r *ManagedControlPlaneReconciler) reconcileControllerManager(
 	if err := r.Get(ctx, client.ObjectKeyFromObject(cm), current); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("ManagedControllerManager not yet visible, requeueing")
-			_ = r.setMCPReadyCondition(ctx, mcp, metav1.ConditionFalse, "WaitingForControllerManager", "Waiting for ManagedControllerManager to become Ready")
+			_ = r.setMCPReadyCondition(ctx, mcp, false)
 			return ctrl.Result{Requeue: true}, nil
 		}
 		return ctrl.Result{}, err
@@ -371,7 +365,7 @@ func (r *ManagedControlPlaneReconciler) reconcileControllerManager(
 
 	if !isReady(current.Status.Conditions) {
 		log.Info("ManagedControllerManager not Ready yet, waiting")
-		if err := r.setMCPReadyCondition(ctx, mcp, metav1.ConditionFalse, "WaitingForControllerManager", "Waiting for ManagedControllerManager to become Ready"); err != nil {
+		if err := r.setMCPReadyCondition(ctx, mcp, false); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
@@ -408,7 +402,7 @@ func (r *ManagedControlPlaneReconciler) reconcileScheduler(
 	if err := r.Get(ctx, client.ObjectKeyFromObject(sched), current); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("ManagedScheduler not yet visible, requeueing")
-			_ = r.setMCPReadyCondition(ctx, mcp, metav1.ConditionFalse, "WaitingForScheduler", "Waiting for ManagedScheduler to become Ready")
+			_ = r.setMCPReadyCondition(ctx, mcp, false)
 			return ctrl.Result{Requeue: true}, nil
 		}
 		return ctrl.Result{}, err
@@ -416,7 +410,7 @@ func (r *ManagedControlPlaneReconciler) reconcileScheduler(
 
 	if !isReady(current.Status.Conditions) {
 		log.Info("ManagedScheduler not Ready yet, waiting")
-		if err := r.setMCPReadyCondition(ctx, mcp, metav1.ConditionFalse, "WaitingForScheduler", "Waiting for ManagedScheduler to become Ready"); err != nil {
+		if err := r.setMCPReadyCondition(ctx, mcp, false); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
@@ -441,29 +435,20 @@ func (r *ManagedControlPlaneReconciler) createOrUpdateOwned(
 	return err
 }
 
+// isReady checks whether the Ready condition is true on a child status.
 func isReady(conds []metav1.Condition) bool {
-	return apimeta.IsStatusConditionTrue(conds, "Ready")
+	return apimeta.IsStatusConditionTrue(conds, string(controlplane.ConditionReady))
 }
 
-// setMCPReadyCondition sets/updates the top-level Ready condition on ManagedControlPlane.
+// setMCPReadyCondition uses the shared controlplane.ReadyConditionsForMCP
+// helper to set the top-level Ready condition based on the aggregated state.
 func (r *ManagedControlPlaneReconciler) setMCPReadyCondition(
 	ctx context.Context,
-	mcp *mcpv1alpha1.ManagedControlPlane,
-	status metav1.ConditionStatus,
-	reason, message string,
+	mcpObj *mcpv1alpha1.ManagedControlPlane,
+	allReady bool,
 ) error {
-	cond := metav1.Condition{
-		Type:               "Ready",
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: mcp.Generation,
-	}
-
-	if apimeta.SetStatusCondition(&mcp.Status.Conditions, cond) {
-		return r.Status().Update(ctx, mcp)
-	}
-	return nil
+	conds := controlplane.ReadyConditionsForMCP(allReady)
+	return r.UpdateCondition(ctx, mcpObj, conds)
 }
 
 func SetupManagedControlPlaneController(mgr ctrl.Manager) error {

@@ -18,7 +18,6 @@ import (
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/scheduler"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -54,7 +53,7 @@ func (r *ManagedSchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	if err := r.updateReadyCondition(ctx, schedObj, allReady); err != nil {
+	if err := r.updateCondition(ctx, schedObj, allReady); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -138,35 +137,26 @@ func (r *ManagedSchedulerReconciler) checkResourcesReady(
 	return allReady, nil
 }
 
-func (r *ManagedSchedulerReconciler) updateReadyCondition(
+func (r *ManagedSchedulerReconciler) updateCondition(
 	ctx context.Context,
 	schedObj *mcpv1alpha1.ManagedScheduler,
 	allReady bool,
 ) error {
-	var cond metav1.Condition
-
 	if allReady {
-		cond = metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionTrue,
-			Reason:             "DeploymentReady",
-			Message:            "kube-scheduler Deployment is Ready",
-			ObservedGeneration: schedObj.Generation,
-		}
-	} else {
-		cond = metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionFalse,
-			Reason:             "WaitingForDeployment",
-			Message:            "Waiting for kube-scheduler Deployment to become Ready",
-			ObservedGeneration: schedObj.Generation,
-		}
+		return r.UpdateCondition(ctx, schedObj, controlplane.Conditions{
+			Type:    controlplane.ConditionReady,
+			Status:  metav1.ConditionTrue,
+			Reason:  controlplane.ReasonDeploymentReady,
+			Message: controlplane.MessageDeploymentReady,
+		})
 	}
 
-	if apimeta.SetStatusCondition(&schedObj.Status.Conditions, cond) {
-		return r.Status().Update(ctx, schedObj)
-	}
-	return nil
+	return r.UpdateCondition(ctx, schedObj, controlplane.Conditions{
+		Type:    controlplane.ConditionReady,
+		Status:  metav1.ConditionFalse,
+		Reason:  controlplane.ReasonWaitingForDeployment,
+		Message: controlplane.MessageWaitingForDeployment,
+	})
 }
 
 func SetupManagedSchedulerReconciler(mgr ctrl.Manager) error {

@@ -54,6 +54,7 @@ func buildService(namespace, name string) *corev1.Service {
 					TargetPort: intstrFromInt(6443),
 				},
 			},
+			Type: corev1.ServiceTypeLoadBalancer,
 		},
 	}
 }

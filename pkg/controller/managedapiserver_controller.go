@@ -62,7 +62,7 @@ func (r *ManagedAPIServerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	if err := r.updateAPIServerReadyCondition(ctx, apiObj, allReady); err != nil {
+	if err := r.updateCondition(ctx, apiObj, allReady); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -151,34 +151,27 @@ func (r *ManagedAPIServerReconciler) checkResourcesReady(
 	return allReady, nil
 }
 
-func (r *ManagedAPIServerReconciler) updateAPIServerReadyCondition(
+func (r *ManagedAPIServerReconciler) updateCondition(
 	ctx context.Context,
 	apiObj *mcpv1alpha1.ManagedAPIServer,
 	allReady bool,
 ) error {
+
 	if allReady {
-		return utils.UpdateCondition(
-			ctx,
-			r.Status(),
-			apiObj,
-			&apiObj.Status.Conditions,
-			"Ready",
-			metav1.ConditionTrue,
-			"DeploymentReady",
-			"kube-apiserver Deployment is Ready",
-		)
+		return r.UpdateCondition(ctx, apiObj, controlplane.Conditions{
+			Type:    controlplane.ConditionReady,
+			Status:  metav1.ConditionTrue,
+			Reason:  controlplane.ReasonDeploymentReady,
+			Message: controlplane.MessageDeploymentReady,
+		})
 	}
 
-	return utils.UpdateCondition(
-		ctx,
-		r.Status(),
-		apiObj,
-		&apiObj.Status.Conditions,
-		"Ready",
-		metav1.ConditionFalse,
-		"WaitingForDeployment",
-		"Waiting for kube-apiserver Deployment to become Ready",
-	)
+	return r.UpdateCondition(ctx, apiObj, controlplane.Conditions{
+		Type:    controlplane.ConditionReady,
+		Status:  metav1.ConditionFalse,
+		Reason:  controlplane.ReasonWaitingForDeployment,
+		Message: controlplane.MessageWaitingForDeployment,
+	})
 }
 
 func isDeploymentReady(dep *appsv1.Deployment) bool {

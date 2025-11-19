@@ -26,7 +26,6 @@ import (
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/pki"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -62,7 +61,7 @@ func (r *ManagedPKIReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
-	if err := r.updatePKIReadyCondition(ctx, pkiObj, allReady); err != nil {
+	if err := r.updateCondition(ctx, pkiObj, allReady); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -146,37 +145,26 @@ func (r *ManagedPKIReconciler) checkResourcesReady(
 	return allReady, nil
 }
 
-func (r *ManagedPKIReconciler) updatePKIReadyCondition(
+func (r *ManagedPKIReconciler) updateCondition(
 	ctx context.Context,
 	pkiObj *mcpv1alpha1.ManagedPKI,
 	allReady bool,
 ) error {
-
-	var cond metav1.Condition
-
 	if allReady {
-		cond = metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionTrue,
-			Reason:             "AllResourcesReady",
-			Message:            "All PKI resources are Ready",
-			ObservedGeneration: pkiObj.Generation,
-		}
-	} else {
-		cond = metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionFalse,
-			Reason:             "WaitingForResources",
-			Message:            "Waiting for PKI resources to become Ready",
-			ObservedGeneration: pkiObj.Generation,
-		}
+		return r.UpdateCondition(ctx, pkiObj, controlplane.Conditions{
+			Type:    controlplane.ConditionReady,
+			Status:  metav1.ConditionTrue,
+			Reason:  controlplane.ReasonAllResourcesReady,
+			Message: controlplane.MessageAllResourcesReady,
+		})
 	}
 
-	if apimeta.SetStatusCondition(&pkiObj.Status.Conditions, cond) {
-		return r.Status().Update(ctx, pkiObj)
-	}
-
-	return nil
+	return r.UpdateCondition(ctx, pkiObj, controlplane.Conditions{
+		Type:    controlplane.ConditionReady,
+		Status:  metav1.ConditionFalse,
+		Reason:  controlplane.ReasonWaitingForResources,
+		Message: controlplane.MessageWaitingForResources,
+	})
 }
 
 func isIssuerReady(iss *certmanagerv1.Issuer) bool {

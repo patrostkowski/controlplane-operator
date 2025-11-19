@@ -26,7 +26,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -62,7 +61,7 @@ func (r *ManagedETCDReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	if err := r.updateETCDReadyCondition(ctx, etcdObj, allReady); err != nil {
+	if err := r.updateCondition(ctx, etcdObj, allReady); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -152,35 +151,26 @@ func (r *ManagedETCDReconciler) checkResourcesReady(
 	return allReady, nil
 }
 
-func (r *ManagedETCDReconciler) updateETCDReadyCondition(
+func (r *ManagedETCDReconciler) updateCondition(
 	ctx context.Context,
 	etcdObj *mcpv1alpha1.ManagedETCD,
 	allReady bool,
 ) error {
-	var cond metav1.Condition
-
 	if allReady {
-		cond = metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionTrue,
-			Reason:             "AllResourcesReady",
-			Message:            "etcd StatefulSet is Ready",
-			ObservedGeneration: etcdObj.Generation,
-		}
-	} else {
-		cond = metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionFalse,
-			Reason:             "WaitingForResources",
-			Message:            "Waiting for etcd StatefulSet to become Ready",
-			ObservedGeneration: etcdObj.Generation,
-		}
+		return r.UpdateCondition(ctx, etcdObj, controlplane.Conditions{
+			Type:    controlplane.ConditionReady,
+			Status:  metav1.ConditionTrue,
+			Reason:  controlplane.ReasonAllResourcesReady,
+			Message: controlplane.MessageAllResourcesReady,
+		})
 	}
 
-	if apimeta.SetStatusCondition(&etcdObj.Status.Conditions, cond) {
-		return r.Status().Update(ctx, etcdObj)
-	}
-	return nil
+	return r.UpdateCondition(ctx, etcdObj, controlplane.Conditions{
+		Type:    controlplane.ConditionReady,
+		Status:  metav1.ConditionFalse,
+		Reason:  controlplane.ReasonWaitingForResources,
+		Message: controlplane.MessageWaitingForResources,
+	})
 }
 
 func mergeStringMap(dst, src map[string]string) map[string]string {

@@ -27,7 +27,6 @@ import (
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/controllermanager"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -63,7 +62,7 @@ func (r *ManagedControllerManagerReconciler) Reconcile(ctx context.Context, req 
 		return ctrl.Result{}, err
 	}
 
-	if err := r.updateReadyCondition(ctx, cmObj, allReady); err != nil {
+	if err := r.updateCondition(ctx, cmObj, allReady); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -146,35 +145,26 @@ func (r *ManagedControllerManagerReconciler) checkResourcesReady(
 	return allReady, nil
 }
 
-func (r *ManagedControllerManagerReconciler) updateReadyCondition(
+func (r *ManagedControllerManagerReconciler) updateCondition(
 	ctx context.Context,
 	cmObj *mcpv1alpha1.ManagedControllerManager,
 	allReady bool,
 ) error {
-	var cond metav1.Condition
-
 	if allReady {
-		cond = metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionTrue,
-			Reason:             "DeploymentReady",
-			Message:            "kube-controller-manager Deployment is Ready",
-			ObservedGeneration: cmObj.Generation,
-		}
-	} else {
-		cond = metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionFalse,
-			Reason:             "WaitingForDeployment",
-			Message:            "Waiting for kube-controller-manager Deployment to become Ready",
-			ObservedGeneration: cmObj.Generation,
-		}
+		return r.UpdateCondition(ctx, cmObj, controlplane.Conditions{
+			Type:    controlplane.ConditionReady,
+			Status:  metav1.ConditionTrue,
+			Reason:  controlplane.ReasonDeploymentReady,
+			Message: controlplane.MessageDeploymentReady,
+		})
 	}
 
-	if apimeta.SetStatusCondition(&cmObj.Status.Conditions, cond) {
-		return r.Status().Update(ctx, cmObj)
-	}
-	return nil
+	return r.UpdateCondition(ctx, cmObj, controlplane.Conditions{
+		Type:    controlplane.ConditionReady,
+		Status:  metav1.ConditionFalse,
+		Reason:  controlplane.ReasonWaitingForDeployment,
+		Message: controlplane.MessageWaitingForDeployment,
+	})
 }
 
 func SetupManagedControllerManagerReconciler(mgr ctrl.Manager) error {
