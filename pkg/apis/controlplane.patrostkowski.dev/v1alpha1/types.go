@@ -97,6 +97,7 @@ type ManagedPKIList struct {
 // ManagedETCDSpec defines the desired state of ManagedETCD.
 type ManagedETCDSpec struct {
 	ControlPlaneName string `json:"controlPlaneName,omitempty"`
+	Version          string `json:"version"`
 }
 
 // ManagedETCDStatus defines the observed state of ManagedETCD.
@@ -133,6 +134,7 @@ type ManagedETCDList struct {
 // ManagedAPIServerSpec defines the desired state of ManagedAPIServer.
 type ManagedAPIServerSpec struct {
 	ControlPlaneName string `json:"controlPlaneName,omitempty"`
+	Version          string `json:"version"`
 }
 
 // ManagedAPIServerStatus defines the observed state of ManagedAPIServer.
@@ -169,6 +171,7 @@ type ManagedAPIServerList struct {
 // ManagedControllerManagerSpec defines the desired state of ManagedControllerManager.
 type ManagedControllerManagerSpec struct {
 	ControlPlaneName string `json:"controlPlaneName,omitempty"`
+	Version          string `json:"version"`
 }
 
 // ManagedControllerManagerStatus defines the observed state of ManagedControllerManager.
@@ -205,6 +208,7 @@ type ManagedControllerManagerList struct {
 // ManagedSchedulerSpec defines the desired state of ManagedScheduler.
 type ManagedSchedulerSpec struct {
 	ControlPlaneName string `json:"controlPlaneName,omitempty"`
+	Version          string `json:"version"`
 }
 
 // ManagedSchedulerStatus defines the observed state of ManagedScheduler.

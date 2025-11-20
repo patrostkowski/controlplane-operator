@@ -24,22 +24,28 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+var EtcdVersionByKubeMinor = map[string]string{
+	"1.30": "3.5.21-0",
+	"1.31": "3.5.24-0",
+	"1.32": "3.5.24-0",
+	"1.33": "3.5.24-0",
+	"1.34": "3.6.5-0",
+}
+
 // Resources returns the Service + StatefulSet required for etcd.
 func Resources(etcdObj *mcpv1alpha1.ManagedETCD) []client.Object {
-	ns := etcdObj.Namespace
-	// For now we hardcode "etcd" to match your cert SANs: etcd-0.etcd.<ns>.svc
-	name := "etcd"
-
 	return []client.Object{
-		buildService(ns, name),
-		buildStatefulSet(ns, name),
+		buildService(etcdObj),
+		buildStatefulSet(etcdObj),
 	}
 }
 
-func buildService(namespace, name string) *corev1.Service {
+func buildService(etcdObj *mcpv1alpha1.ManagedETCD) *corev1.Service {
 	labels := map[string]string{
 		"app": "etcd",
 	}
+	name := "etcd"
+	namespace := etcdObj.Namespace
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -64,10 +70,13 @@ func buildService(namespace, name string) *corev1.Service {
 	}
 }
 
-func buildStatefulSet(namespace, name string) *appsv1.StatefulSet {
+func buildStatefulSet(etcdObj *mcpv1alpha1.ManagedETCD) *appsv1.StatefulSet {
 	labels := map[string]string{
 		"app": "etcd",
 	}
+	name := "etcd"
+	namespace := etcdObj.Namespace
+	version := etcdObj.Spec.Version
 
 	replicas := int32(1)
 
@@ -78,7 +87,7 @@ func buildStatefulSet(namespace, name string) *appsv1.StatefulSet {
 			Labels:    labels,
 		},
 		Spec: appsv1.StatefulSetSpec{
-			ServiceName: name,
+			ServiceName: "etcd",
 			Replicas:    &replicas,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
@@ -90,8 +99,8 @@ func buildStatefulSet(namespace, name string) *appsv1.StatefulSet {
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  "etcd",
-							Image: "registry.k8s.io/etcd:3.5.15-0",
+							Name:  name,
+							Image: "registry.k8s.io/etcd" + ":" + version,
 							Command: []string{
 								"etcd",
 							},

@@ -16,10 +16,13 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
+	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/etcd"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -255,8 +258,17 @@ func (r *ManagedControlPlaneReconciler) reconcileETCD(
 		},
 	}
 
+	etcdVersion, err := r.resolveEtcdImageForKubeVersion(mcp.Spec.Version)
+	if err != nil {
+		log.Error(err, "failed to resolve etcd version from Kubernetes version",
+			"kubeVersion", mcp.Spec.Version)
+		_ = r.setMCPReadyCondition(ctx, mcp, false)
+		return ctrl.Result{}, err
+	}
+
 	if err := r.createOrUpdateOwned(ctx, mcp, etcd, func() error {
 		etcd.Spec.ControlPlaneName = mcp.Name
+		etcd.Spec.Version = etcdVersion
 		return nil
 	}); err != nil {
 		log.Error(err, "failed to reconcile ManagedETCD")
@@ -302,6 +314,7 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServer(
 
 	if err := r.createOrUpdateOwned(ctx, mcp, api, func() error {
 		api.Spec.ControlPlaneName = mcp.Name
+		api.Spec.Version = mcp.Spec.Version
 		return nil
 	}); err != nil {
 		log.Error(err, "failed to reconcile ManagedAPIServer")
@@ -347,6 +360,7 @@ func (r *ManagedControlPlaneReconciler) reconcileControllerManager(
 
 	if err := r.createOrUpdateOwned(ctx, mcp, cm, func() error {
 		cm.Spec.ControlPlaneName = mcp.Name
+		cm.Spec.Version = mcp.Spec.Version
 		return nil
 	}); err != nil {
 		log.Error(err, "failed to reconcile ManagedControllerManager")
@@ -392,6 +406,7 @@ func (r *ManagedControlPlaneReconciler) reconcileScheduler(
 
 	if err := r.createOrUpdateOwned(ctx, mcp, sched, func() error {
 		sched.Spec.ControlPlaneName = mcp.Name
+		sched.Spec.Version = mcp.Spec.Version
 		return nil
 	}); err != nil {
 		log.Error(err, "failed to reconcile ManagedScheduler")
@@ -449,6 +464,29 @@ func (r *ManagedControlPlaneReconciler) setMCPReadyCondition(
 ) error {
 	conds := controlplane.ReadyConditionsForMCP(allReady)
 	return r.UpdateCondition(ctx, mcpObj, conds)
+}
+
+func (r *ManagedControlPlaneReconciler) resolveEtcdImageForKubeVersion(kubeVersion string) (string, error) {
+	// kubeVersion is expected like "v1.31.0" or "1.31.0"
+	v := strings.TrimPrefix(kubeVersion, "v")
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) < 2 {
+		return "", fmt.Errorf("unable to parse Kubernetes version %q", kubeVersion)
+	}
+
+	minorKey := parts[0] + "." + parts[1]
+
+	ver, ok := etcd.EtcdVersionByKubeMinor[minorKey]
+	if !ok {
+		return "", fmt.Errorf("no etcd version mapping for Kubernetes minor %q", minorKey)
+	}
+
+	r.Log.Info("Resolved etcd version for kube version",
+		"kubeVersion", kubeVersion,
+		"etcdVersion", ver,
+	)
+
+	return ver, nil
 }
 
 func SetupManagedControlPlaneController(mgr ctrl.Manager) error {

@@ -27,18 +27,16 @@ import (
 
 // Resources returns ConfigMap + Deployment for kube-controller-manager.
 func Resources(cm *mcpv1alpha1.ManagedControllerManager) []client.Object {
-	ns := cm.Namespace
-
 	return []client.Object{
-		buildConfigMap(ns),
-		buildDeployment(ns),
+		buildConfigMap(cm),
+		buildDeployment(cm),
 	}
 }
 
-func buildConfigMap(namespace string) *corev1.ConfigMap {
-	kcfg := buildControllerManagerKubeconfig(namespace)
+func buildConfigMap(cm *mcpv1alpha1.ManagedControllerManager) *corev1.ConfigMap {
+	ns := cm.Namespace
+	kcfg := buildControllerManagerKubeconfig(ns)
 
-	// marshal kubeconfig to YAML
 	kubeconfigData, err := clientcmd.Write(*kcfg)
 	if err != nil {
 		panic(err) // should never happen
@@ -47,7 +45,7 @@ func buildConfigMap(namespace string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "controller-kubeconfig",
-			Namespace: namespace,
+			Namespace: ns,
 		},
 		Data: map[string]string{
 			"controller-manager.conf": string(kubeconfigData),
@@ -83,16 +81,16 @@ func buildControllerManagerKubeconfig(namespace string) *clientcmdapi.Config {
 	return cfg
 }
 
-func buildDeployment(namespace string) *appsv1.Deployment {
-	labels := map[string]string{
-		"app": "kcm",
-	}
+func buildDeployment(cm *mcpv1alpha1.ManagedControllerManager) *appsv1.Deployment {
+	ns := cm.Namespace
+	labels := map[string]string{"app": "kcm"}
 	replicas := int32(1)
+	version := cm.Spec.Version
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "kube-controller-manager",
-			Namespace: namespace,
+			Namespace: ns,
 			Labels:    labels,
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -108,7 +106,7 @@ func buildDeployment(namespace string) *appsv1.Deployment {
 					Containers: []corev1.Container{
 						{
 							Name:            "kcm",
-							Image:           "registry.k8s.io/kube-controller-manager:v1.31.3",
+							Image:           "registry.k8s.io/kube-controller-manager" + ":" + version,
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							Command: []string{
 								"kube-controller-manager",

@@ -25,16 +25,15 @@ import (
 
 // Resources returns Service + Deployment for the kube-apiserver.
 func Resources(api *mcpv1alpha1.ManagedAPIServer) []client.Object {
-	ns := api.Namespace
-	name := "kube-apiserver" // matches your static YAML
-
 	return []client.Object{
-		buildService(ns, name),
-		buildDeployment(ns, name),
+		buildService(api),
+		buildDeployment(api),
 	}
 }
 
-func buildService(namespace, name string) *corev1.Service {
+func buildService(api *mcpv1alpha1.ManagedAPIServer) *corev1.Service {
+	ns := api.Namespace
+	name := "kube-apiserver"
 	labels := map[string]string{
 		"app": "kube-apiserver",
 	}
@@ -42,7 +41,7 @@ func buildService(namespace, name string) *corev1.Service {
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: namespace,
+			Namespace: ns,
 			Labels:    labels,
 		},
 		Spec: corev1.ServiceSpec{
@@ -59,17 +58,18 @@ func buildService(namespace, name string) *corev1.Service {
 	}
 }
 
-func buildDeployment(namespace, name string) *appsv1.Deployment {
-	labels := map[string]string{
-		"app": "kube-apiserver",
-	}
-
+func buildDeployment(api *mcpv1alpha1.ManagedAPIServer) *appsv1.Deployment {
+	ns := api.Namespace
+	name := "kube-apiserver"
+	labels := map[string]string{"app": "kube-apiserver"}
 	replicas := int32(1)
+
+	version := api.Spec.Version
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: namespace,
+			Namespace: ns,
 			Labels:    labels,
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -85,7 +85,7 @@ func buildDeployment(namespace, name string) *appsv1.Deployment {
 					Containers: []corev1.Container{
 						{
 							Name:            "apiserver",
-							Image:           "registry.k8s.io/kube-apiserver:v1.31.3",
+							Image:           "registry.k8s.io/kube-apiserver" + ":" + version,
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							Command: []string{
 								"kube-apiserver",
@@ -96,7 +96,7 @@ func buildDeployment(namespace, name string) *appsv1.Deployment {
 								"--secure-port=6443",
 								"--service-cluster-ip-range=10.200.0.0/16",
 
-								"--etcd-servers=https://etcd-0.etcd." + namespace + ".svc:2379",
+								"--etcd-servers=https://etcd-0.etcd." + ns + ".svc:2379",
 								"--etcd-cafile=/var/run/k8s/etcd-ca/ca.crt",
 								"--etcd-certfile=/var/run/k8s/etcd-client/tls.crt",
 								"--etcd-keyfile=/var/run/k8s/etcd-client/tls.key",

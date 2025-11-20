@@ -55,6 +55,10 @@ spec:
             properties:
               controlPlaneName:
                 type: string
+              version:
+                type: string
+            required:
+            - version
             type: object
           status:
             description: ManagedControllerManagerStatus defines the observed state

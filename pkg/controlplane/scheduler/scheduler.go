@@ -27,16 +27,15 @@ import (
 
 // Resources returns ConfigMap + Deployment for kube-scheduler.
 func Resources(ms *mcpv1alpha1.ManagedScheduler) []client.Object {
-	ns := ms.Namespace
-
 	return []client.Object{
-		buildConfigMap(ns),
-		buildDeployment(ns),
+		buildConfigMap(ms),
+		buildDeployment(ms),
 	}
 }
 
-func buildConfigMap(namespace string) *corev1.ConfigMap {
-	kcfg := buildSchedulerKubeconfig(namespace)
+func buildConfigMap(ms *mcpv1alpha1.ManagedScheduler) *corev1.ConfigMap {
+	ns := ms.Namespace
+	kcfg := buildSchedulerKubeconfig(ns)
 
 	// marshal kubeconfig to YAML
 	kubeconfigData, err := clientcmd.Write(*kcfg)
@@ -48,7 +47,7 @@ func buildConfigMap(namespace string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "scheduler-kubeconfig",
-			Namespace: namespace,
+			Namespace: ns,
 		},
 		Data: map[string]string{
 			"scheduler.conf": string(kubeconfigData),
@@ -84,16 +83,16 @@ func buildSchedulerKubeconfig(namespace string) *clientcmdapi.Config {
 	return cfg
 }
 
-func buildDeployment(namespace string) *appsv1.Deployment {
-	labels := map[string]string{
-		"app": "ks",
-	}
+func buildDeployment(ms *mcpv1alpha1.ManagedScheduler) *appsv1.Deployment {
+	ns := ms.Namespace
+	labels := map[string]string{"app": "ks"}
 	replicas := int32(1)
+	version := ms.Spec.Version
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "kube-scheduler",
-			Namespace: namespace,
+			Namespace: ns,
 			Labels:    labels,
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -109,7 +108,7 @@ func buildDeployment(namespace string) *appsv1.Deployment {
 					Containers: []corev1.Container{
 						{
 							Name:            "ks",
-							Image:           "registry.k8s.io/kube-scheduler:v1.31.3",
+							Image:           "registry.k8s.io/kube-scheduler" + ":" + version,
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							Command: []string{
 								"kube-scheduler",
