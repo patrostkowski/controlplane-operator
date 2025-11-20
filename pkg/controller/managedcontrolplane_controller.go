@@ -231,8 +231,11 @@ func (r *ManagedControlPlaneReconciler) reconcilePKI(
 		return ctrl.Result{}, err
 	}
 
-	if !isReady(current.Status.Conditions) {
-		log.Info("ManagedPKI not Ready yet, waiting")
+	if !r.isReadyForLatestSpec(current, current.Status.Conditions) {
+		log.Info("ManagedPKI not Ready yet, waiting",
+			"child", current.GetName(),
+			"generation", current.GetGeneration(),
+		)
 		if err := r.setMCPReadyCondition(ctx, mcp, false); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -285,8 +288,11 @@ func (r *ManagedControlPlaneReconciler) reconcileETCD(
 		return ctrl.Result{}, err
 	}
 
-	if !isReady(current.Status.Conditions) {
-		log.Info("ManagedETCD not Ready yet, waiting")
+	if !r.isReadyForLatestSpec(current, current.Status.Conditions) {
+		log.Info("ManagedETCD not Ready yet, waiting",
+			"child", current.GetName(),
+			"generation", current.GetGeneration(),
+		)
 		if err := r.setMCPReadyCondition(ctx, mcp, false); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -331,8 +337,11 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServer(
 		return ctrl.Result{}, err
 	}
 
-	if !isReady(current.Status.Conditions) {
-		log.Info("ManagedAPIServer not Ready yet, waiting")
+	if !r.isReadyForLatestSpec(current, current.Status.Conditions) {
+		log.Info("ManagedAPIServer not Ready yet, waiting",
+			"child", current.GetName(),
+			"generation", current.GetGeneration(),
+		)
 		if err := r.setMCPReadyCondition(ctx, mcp, false); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -377,8 +386,11 @@ func (r *ManagedControlPlaneReconciler) reconcileControllerManager(
 		return ctrl.Result{}, err
 	}
 
-	if !isReady(current.Status.Conditions) {
-		log.Info("ManagedControllerManager not Ready yet, waiting")
+	if !r.isReadyForLatestSpec(current, current.Status.Conditions) {
+		log.Info("ManagedControllerManager not Ready yet, waiting",
+			"child", current.GetName(),
+			"generation", current.GetGeneration(),
+		)
 		if err := r.setMCPReadyCondition(ctx, mcp, false); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -423,8 +435,11 @@ func (r *ManagedControlPlaneReconciler) reconcileScheduler(
 		return ctrl.Result{}, err
 	}
 
-	if !isReady(current.Status.Conditions) {
-		log.Info("ManagedScheduler not Ready yet, waiting")
+	if !r.isReadyForLatestSpec(current, current.Status.Conditions) {
+		log.Info("ManagedScheduler not Ready yet, waiting",
+			"child", current.GetName(),
+			"generation", current.GetGeneration(),
+		)
 		if err := r.setMCPReadyCondition(ctx, mcp, false); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -448,11 +463,6 @@ func (r *ManagedControlPlaneReconciler) createOrUpdateOwned(
 		return mutate()
 	})
 	return err
-}
-
-// isReady checks whether the Ready condition is true on a child status.
-func isReady(conds []metav1.Condition) bool {
-	return apimeta.IsStatusConditionTrue(conds, string(controlplane.ConditionReady))
 }
 
 // setMCPReadyCondition uses the shared controlplane.ReadyConditionsForMCP
@@ -487,6 +497,21 @@ func (r *ManagedControlPlaneReconciler) resolveEtcdImageForKubeVersion(kubeVersi
 	)
 
 	return ver, nil
+}
+
+func (r *ManagedControlPlaneReconciler) isReadyForLatestSpec(obj client.Object, conds []metav1.Condition) bool {
+	cond := apimeta.FindStatusCondition(conds, string(controlplane.ConditionReady))
+	if cond == nil {
+		return false
+	}
+	if cond.Status != metav1.ConditionTrue {
+		return false
+	}
+	// Critical upgrade-serialization check:
+	if cond.ObservedGeneration != obj.GetGeneration() {
+		return false
+	}
+	return true
 }
 
 func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
