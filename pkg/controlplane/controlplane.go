@@ -53,4 +53,5 @@ func (r *BaseReconciler) IsDeploymentReady(dep *appsv1.Deployment) bool {
 type ObjectHelper interface {
 	client.Object
 	GetConditions() *[]metav1.Condition
+	GetStatus() *Status
 }

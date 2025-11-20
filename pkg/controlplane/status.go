@@ -69,14 +69,15 @@ type Conditions struct {
 }
 
 type Status struct {
-	Message Message
-	Ready   bool
+	Message string `json:"message,omitempty"`
+	Ready   bool   `json:"ready,omitempty"`
 }
 
 func (r *BaseReconciler) UpdateCondition(
 	ctx context.Context,
 	obj ObjectHelper,
 	conditions Conditions,
+	status Status,
 ) error {
 	key := client.ObjectKeyFromObject(obj)
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -96,6 +97,14 @@ func (r *BaseReconciler) UpdateCondition(
 		conds := latest.GetConditions()
 		if !meta.SetStatusCondition(conds, cond) {
 			return nil
+		}
+
+		if st := latest.GetStatus(); st != nil {
+			st.Message = string(conditions.Message)
+
+			if conditions.Type == ConditionReady {
+				st.Ready = (conditions.Status == metav1.ConditionTrue)
+			}
 		}
 
 		r.Log.Info("Updating status condition",

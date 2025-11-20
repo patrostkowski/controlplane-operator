@@ -48,12 +48,18 @@ func (r *ManagedPKIReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	log.Info("Reconciling ManagedPKI")
 
-	if err := r.UpdateCondition(ctx, pkiObj, controlplane.Conditions{
-		Type:    controlplane.ConditionReconciling,
-		Status:  metav1.ConditionFalse,
-		Reason:  controlplane.ReasonReconciling,
-		Message: controlplane.MessageReconciling,
-	}); err != nil {
+	if err := r.UpdateCondition(ctx, pkiObj,
+		controlplane.Conditions{
+			Type:    controlplane.ConditionReconciling,
+			Status:  metav1.ConditionFalse,
+			Reason:  controlplane.ReasonReconciling,
+			Message: controlplane.MessageReconciling,
+		},
+		controlplane.Status{
+			Ready:   false,
+			Message: "reconciling",
+		},
+	); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -69,22 +75,34 @@ func (r *ManagedPKIReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	if !allReady {
-		_ = r.UpdateCondition(ctx, pkiObj, controlplane.Conditions{
-			Type:    controlplane.ConditionWaitingForResource,
-			Status:  metav1.ConditionFalse,
-			Reason:  controlplane.ReasonWaitingForResources,
-			Message: controlplane.MessageWaitingForResources,
-		})
+		_ = r.UpdateCondition(ctx, pkiObj,
+			controlplane.Conditions{
+				Type:    controlplane.ConditionWaitingForResource,
+				Status:  metav1.ConditionFalse,
+				Reason:  controlplane.ReasonWaitingForResources,
+				Message: controlplane.MessageWaitingForResources,
+			},
+			controlplane.Status{
+				Ready:   false,
+				Message: "awaiting all ready",
+			},
+		)
 		log.Info("requeueing reconcile for PKI controller")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	_ = r.UpdateCondition(ctx, pkiObj, controlplane.Conditions{
-		Type:    controlplane.ConditionReady,
-		Status:  metav1.ConditionTrue,
-		Reason:  controlplane.ReasonAllResourcesReady,
-		Message: controlplane.MessageAllResourcesReady,
-	})
+	_ = r.UpdateCondition(ctx, pkiObj,
+		controlplane.Conditions{
+			Type:    controlplane.ConditionReady,
+			Status:  metav1.ConditionTrue,
+			Reason:  controlplane.ReasonAllResourcesReady,
+			Message: controlplane.MessageAllResourcesReady,
+		},
+		controlplane.Status{
+			Ready:   true,
+			Message: "all ready",
+		},
+	)
 
 	log.Info("Finished reconciling ManagedPKI")
 

@@ -15,6 +15,7 @@
 package v1alpha1
 
 import (
+	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -65,7 +66,8 @@ type ManagedPKISpec struct {
 
 // ManagedPKIStatus defines the observed state of ManagedPKI.
 type ManagedPKIStatus struct {
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Conditions          []metav1.Condition `json:"conditions,omitempty"`
+	controlplane.Status `json:",inline,omitempty"`
 }
 
 // ManagedPKI manages the PKI resources (Certificate CRs, Secrets, etc.) for a control plane.

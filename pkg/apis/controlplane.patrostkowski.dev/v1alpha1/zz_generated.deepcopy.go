@@ -499,6 +499,7 @@ func (in *ManagedPKIStatus) DeepCopyInto(out *ManagedPKIStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	out.Status = in.Status
 	return
 }
 
