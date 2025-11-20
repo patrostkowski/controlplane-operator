@@ -1,6 +1,8 @@
 package v1alpha1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 func (m *ManagedControlPlane) GetConditions() *[]metav1.Condition {
 	return &m.Status.Conditions

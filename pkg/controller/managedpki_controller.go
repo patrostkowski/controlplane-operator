@@ -1,4 +1,4 @@
-// Copyright 2025 controlplane.patrostkowski.dev
+// Copyright 2025 mcpv1alpha1.patrostkowski.dev
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	certmanagermeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
-	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/pki"
@@ -30,7 +29,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 type ManagedPKIReconciler struct {
@@ -50,42 +48,59 @@ func (r *ManagedPKIReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	log.Info("Reconciling ManagedPKI")
 
-	resources := pki.Resources(pkiObj)
-
-	if err := r.ensureResources(ctx, pkiObj, resources, log); err != nil {
+	if err := r.UpdateCondition(ctx, pkiObj, controlplane.Conditions{
+		Type:    controlplane.ConditionReconciling,
+		Status:  metav1.ConditionFalse,
+		Reason:  controlplane.ReasonReconciling,
+		Message: controlplane.MessageReconciling,
+	}); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	allReady, err := r.checkResourcesReady(ctx, resources, log)
+	resources := pki.Resources(pkiObj)
+
+	if err := r.ensureResources(ctx, pkiObj, resources); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	allReady, err := r.checkResourcesReady(ctx, resources)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	if err := r.updateCondition(ctx, pkiObj, allReady); err != nil {
-		return ctrl.Result{}, err
+	if !allReady {
+		_ = r.UpdateCondition(ctx, pkiObj, controlplane.Conditions{
+			Type:    controlplane.ConditionWaitingForResource,
+			Status:  metav1.ConditionFalse,
+			Reason:  controlplane.ReasonWaitingForResources,
+			Message: controlplane.MessageWaitingForResources,
+		})
+		log.Info("requeueing reconcile for PKI controller")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	if !allReady {
-		log.Info("requeueing reconcile for PKI controller")
-		return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
-	}
+	_ = r.UpdateCondition(ctx, pkiObj, controlplane.Conditions{
+		Type:    controlplane.ConditionReady,
+		Status:  metav1.ConditionTrue,
+		Reason:  controlplane.ReasonAllResourcesReady,
+		Message: controlplane.MessageAllResourcesReady,
+	})
 
 	log.Info("Finished reconciling ManagedPKI")
 
-	return reconcile.Result{}, nil
+	return ctrl.Result{}, nil
 }
 
 func (r *ManagedPKIReconciler) ensureResources(
 	ctx context.Context,
 	pkiObj *mcpv1alpha1.ManagedPKI,
 	resources []client.Object,
-	log logr.Logger,
 ) error {
 
 	for _, desired := range resources {
-		log.Info("Ensuring PKI resource", "name", desired.GetName(), "namespace", desired.GetNamespace())
+		r.Log.Info("Ensuring PKI resource", "name", desired.GetName(), "namespace", desired.GetNamespace())
 
-		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, pkiObj, desired, log, func(obj client.Object) error {
+		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, pkiObj, desired, r.Log, func(obj client.Object) error {
 			switch o := obj.(type) {
 			case *certmanagerv1.Issuer:
 				o.Spec = desired.(*certmanagerv1.Issuer).Spec
@@ -95,7 +110,7 @@ func (r *ManagedPKIReconciler) ensureResources(
 			return nil
 		})
 		if err != nil {
-			log.Error(err, "failed to ensure PKI resource", "name", desired.GetName())
+			r.Log.Error(err, "failed to ensure PKI resource", "name", desired.GetName())
 			return err
 		}
 	}
@@ -106,12 +121,13 @@ func (r *ManagedPKIReconciler) ensureResources(
 func (r *ManagedPKIReconciler) checkResourcesReady(
 	ctx context.Context,
 	resources []client.Object,
-	log logr.Logger,
 ) (bool, error) {
 
 	allReady := true
 
 	for _, desired := range resources {
+		r.Log.Info("Ensuring PKI resource", "name", desired.GetName(), "namespace", desired.GetNamespace())
+
 		key := client.ObjectKey{Namespace: desired.GetNamespace(), Name: desired.GetName()}
 
 		switch desired.(type) {
@@ -119,24 +135,24 @@ func (r *ManagedPKIReconciler) checkResourcesReady(
 		case *certmanagerv1.Issuer:
 			iss := &certmanagerv1.Issuer{}
 			if err := r.Get(ctx, key, iss); err != nil {
-				log.Error(err, "failed to get Issuer", "name", key.Name)
+				r.Log.Error(err, "failed to get Issuer", "name", key.Name)
 				allReady = false
 				continue
 			}
-			if !isIssuerReady(iss) {
-				log.Info("Issuer not ready", "name", iss.Name)
+			if !r.isIssuerReady(iss) {
+				r.Log.Info("Issuer not ready", "name", iss.Name)
 				allReady = false
 			}
 
 		case *certmanagerv1.Certificate:
 			cert := &certmanagerv1.Certificate{}
 			if err := r.Get(ctx, key, cert); err != nil {
-				log.Error(err, "failed to get Certificate", "name", key.Name)
+				r.Log.Error(err, "failed to get Certificate", "name", key.Name)
 				allReady = false
 				continue
 			}
-			if !isCertificateReady(cert) {
-				log.Info("Certificate not ready", "name", cert.Name)
+			if !r.isCertificateReady(cert) {
+				r.Log.Info("Certificate not ready", "name", cert.Name)
 				allReady = false
 			}
 		}
@@ -145,45 +161,27 @@ func (r *ManagedPKIReconciler) checkResourcesReady(
 	return allReady, nil
 }
 
-func (r *ManagedPKIReconciler) updateCondition(
-	ctx context.Context,
-	pkiObj *mcpv1alpha1.ManagedPKI,
-	allReady bool,
-) error {
-	if allReady {
-		return r.UpdateCondition(ctx, pkiObj, controlplane.Conditions{
-			Type:    controlplane.ConditionReady,
-			Status:  metav1.ConditionTrue,
-			Reason:  controlplane.ReasonAllResourcesReady,
-			Message: controlplane.MessageAllResourcesReady,
-		})
-	}
-
-	return r.UpdateCondition(ctx, pkiObj, controlplane.Conditions{
-		Type:    controlplane.ConditionReady,
-		Status:  metav1.ConditionFalse,
-		Reason:  controlplane.ReasonWaitingForResources,
-		Message: controlplane.MessageWaitingForResources,
-	})
-}
-
-func isIssuerReady(iss *certmanagerv1.Issuer) bool {
+func (r *ManagedPKIReconciler) isIssuerReady(iss *certmanagerv1.Issuer) bool {
 	for _, cond := range iss.Status.Conditions {
 		if cond.Type == certmanagerv1.IssuerConditionReady &&
 			cond.Status == certmanagermeta.ConditionTrue {
+			r.Log.Info("Issuer ready", "issuer", iss.Name)
 			return true
 		}
 	}
+	r.Log.Info("Issuer not ready", "issuer", iss.Name)
 	return false
 }
 
-func isCertificateReady(cert *certmanagerv1.Certificate) bool {
+func (r *ManagedPKIReconciler) isCertificateReady(cert *certmanagerv1.Certificate) bool {
 	for _, cond := range cert.Status.Conditions {
 		if cond.Type == certmanagerv1.CertificateConditionReady &&
 			cond.Status == certmanagermeta.ConditionTrue {
+			r.Log.Info("Certificate ready", "issuer", cert.Name)
 			return true
 		}
 	}
+	r.Log.Info("Certificate not ready", "issuer", cert.Name)
 	return false
 }
 

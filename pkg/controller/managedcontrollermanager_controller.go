@@ -27,11 +27,9 @@ import (
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/controllermanager"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 type ManagedControllerManagerReconciler struct {
@@ -49,6 +47,18 @@ func (r *ManagedControllerManagerReconciler) Reconcile(ctx context.Context, req 
 		return ctrl.Result{}, err
 	}
 
+	// cond := apimeta.FindStatusCondition(cmObj.Status.Conditions, string(controlplane.ConditionReady))
+	// if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != string(controlplane.ReasonReconciling) {
+	// 	if err := r.UpdateCondition(ctx, cmObj, controlplane.Conditions{
+	// 		Type:    controlplane.ConditionReady,
+	// 		Status:  metav1.ConditionFalse,
+	// 		Reason:  controlplane.ReasonReconciling,
+	// 		Message: controlplane.MessageReconciling,
+	// 	}); err != nil {
+	// 		return ctrl.Result{}, err
+	// 	}
+	// }
+
 	log.Info("Reconciling ManagedControllerManager")
 
 	resources := controllermanager.Resources(cmObj)
@@ -62,17 +72,17 @@ func (r *ManagedControllerManagerReconciler) Reconcile(ctx context.Context, req 
 		return ctrl.Result{}, err
 	}
 
-	if err := r.updateCondition(ctx, cmObj, allReady); err != nil {
-		return ctrl.Result{}, err
-	}
+	// if err := r.updateCondition(ctx, cmObj, allReady); err != nil {
+	// 	return ctrl.Result{}, err
+	// }
 
 	if !allReady {
 		log.Info("requeueing reconcile for ManagedControllerManager until Deployment is Ready")
-		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
 	log.Info("Finished reconciling ManagedControllerManager")
-	return reconcile.Result{}, nil
+	return ctrl.Result{}, nil
 }
 
 func (r *ManagedControllerManagerReconciler) ensureResources(
@@ -135,7 +145,7 @@ func (r *ManagedControllerManagerReconciler) checkResourcesReady(
 				allReady = false
 				continue
 			}
-			if !isDeploymentReady(deploy) {
+			if !r.IsDeploymentReady(deploy) {
 				log.Info("Deployment not ready", "name", deploy.Name, "readyReplicas", deploy.Status.ReadyReplicas)
 				allReady = false
 			}
@@ -145,27 +155,27 @@ func (r *ManagedControllerManagerReconciler) checkResourcesReady(
 	return allReady, nil
 }
 
-func (r *ManagedControllerManagerReconciler) updateCondition(
-	ctx context.Context,
-	cmObj *mcpv1alpha1.ManagedControllerManager,
-	allReady bool,
-) error {
-	if allReady {
-		return r.UpdateCondition(ctx, cmObj, controlplane.Conditions{
-			Type:    controlplane.ConditionReady,
-			Status:  metav1.ConditionTrue,
-			Reason:  controlplane.ReasonDeploymentReady,
-			Message: controlplane.MessageDeploymentReady,
-		})
-	}
+// func (r *ManagedControllerManagerReconciler) updateCondition(
+// 	ctx context.Context,
+// 	cmObj *mcpv1alpha1.ManagedControllerManager,
+// 	allReady bool,
+// ) error {
+// 	if allReady {
+// 		return r.UpdateCondition(ctx, cmObj, controlplane.Conditions{
+// 			Type:    controlplane.ConditionReady,
+// 			Status:  metav1.ConditionTrue,
+// 			Reason:  controlplane.ReasonDeploymentReady,
+// 			Message: controlplane.MessageDeploymentReady,
+// 		})
+// 	}
 
-	return r.UpdateCondition(ctx, cmObj, controlplane.Conditions{
-		Type:    controlplane.ConditionReady,
-		Status:  metav1.ConditionFalse,
-		Reason:  controlplane.ReasonWaitingForDeployment,
-		Message: controlplane.MessageWaitingForDeployment,
-	})
-}
+// 	return r.UpdateCondition(ctx, cmObj, controlplane.Conditions{
+// 		Type:    controlplane.ConditionReady,
+// 		Status:  metav1.ConditionFalse,
+// 		Reason:  controlplane.ReasonWaitingForDeployment,
+// 		Message: controlplane.MessageWaitingForDeployment,
+// 	})
+// }
 
 func SetupManagedControllerManagerReconciler(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).

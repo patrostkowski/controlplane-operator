@@ -50,6 +50,20 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
+	// cond := apimeta.FindStatusCondition(mcpObj.Status.Conditions, string(controlplane.ConditionReady))
+	// if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != string(controlplane.ReasonReconciling) {
+	// 	if err := r.UpdateCondition(ctx, mcpObj, controlplane.Conditions{
+	// 		Type:    controlplane.ConditionReady,
+	// 		Status:  metav1.ConditionFalse,
+	// 		Reason:  controlplane.ReasonReconciling,
+	// 		Message: controlplane.MessageReconciling,
+	// 	}); err != nil {
+	// 		return ctrl.Result{}, err
+	// 	}
+	// }
+
+	log.Info("Reconciling ManagedControlPlane", "version", mcpObj.Spec.Version)
+
 	if !mcpObj.ObjectMeta.DeletionTimestamp.IsZero() {
 		// If finalizer not present, nothing to do
 		if !controllerutil.ContainsFinalizer(mcpObj, ManagedControlPlaneFinalizer) {
@@ -89,8 +103,6 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, nil
 	}
 
-	log.Info("Reconciling ManagedControlPlane", "version", mcpObj.Spec.Version)
-
 	if res, err := r.reconcilePKI(ctx, mcpObj, log); !res.IsZero() || err != nil {
 		return res, err
 	}
@@ -111,9 +123,9 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
-	if err := r.setMCPReadyCondition(ctx, mcpObj, true); err != nil {
-		return ctrl.Result{}, err
-	}
+	// if err := r.updateCondition(ctx, mcpObj, true); err != nil {
+	// 	return ctrl.Result{}, err
+	// }
 
 	log.Info("Finished reconciling ManagedControlPlane")
 	return ctrl.Result{}, nil
@@ -225,8 +237,8 @@ func (r *ManagedControlPlaneReconciler) reconcilePKI(
 	if err := r.Get(ctx, client.ObjectKeyFromObject(pki), current); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("ManagedPKI not yet visible, requeueing")
-			_ = r.setMCPReadyCondition(ctx, mcp, false)
-			return ctrl.Result{Requeue: true}, nil
+			// err = r.updateCondition(ctx, mcp, false)
+			return ctrl.Result{Requeue: true}, err
 		}
 		return ctrl.Result{}, err
 	}
@@ -236,9 +248,9 @@ func (r *ManagedControlPlaneReconciler) reconcilePKI(
 			"child", current.GetName(),
 			"generation", current.GetGeneration(),
 		)
-		if err := r.setMCPReadyCondition(ctx, mcp, false); err != nil {
-			return ctrl.Result{}, err
-		}
+		// if err := r.updateCondition(ctx, mcp, false); err != nil {
+		// 	return ctrl.Result{}, err
+		// }
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -265,7 +277,7 @@ func (r *ManagedControlPlaneReconciler) reconcileETCD(
 	if err != nil {
 		log.Error(err, "failed to resolve etcd version from Kubernetes version",
 			"kubeVersion", mcp.Spec.Version)
-		_ = r.setMCPReadyCondition(ctx, mcp, false)
+		// _ = r.updateCondition(ctx, mcp, false)
 		return ctrl.Result{}, err
 	}
 
@@ -282,8 +294,8 @@ func (r *ManagedControlPlaneReconciler) reconcileETCD(
 	if err := r.Get(ctx, client.ObjectKeyFromObject(etcd), current); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("ManagedETCD not yet visible, requeueing")
-			_ = r.setMCPReadyCondition(ctx, mcp, false)
-			return ctrl.Result{Requeue: true}, nil
+			// err = r.updateCondition(ctx, mcp, false)
+			return ctrl.Result{Requeue: true}, err
 		}
 		return ctrl.Result{}, err
 	}
@@ -293,9 +305,9 @@ func (r *ManagedControlPlaneReconciler) reconcileETCD(
 			"child", current.GetName(),
 			"generation", current.GetGeneration(),
 		)
-		if err := r.setMCPReadyCondition(ctx, mcp, false); err != nil {
-			return ctrl.Result{}, err
-		}
+		// if err := r.updateCondition(ctx, mcp, false); err != nil {
+		// 	return ctrl.Result{}, err
+		// }
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -331,8 +343,8 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServer(
 	if err := r.Get(ctx, client.ObjectKeyFromObject(api), current); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("ManagedAPIServer not yet visible, requeueing")
-			_ = r.setMCPReadyCondition(ctx, mcp, false)
-			return ctrl.Result{Requeue: true}, nil
+			// err = r.updateCondition(ctx, mcp, false)
+			return ctrl.Result{Requeue: true}, err
 		}
 		return ctrl.Result{}, err
 	}
@@ -342,9 +354,9 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServer(
 			"child", current.GetName(),
 			"generation", current.GetGeneration(),
 		)
-		if err := r.setMCPReadyCondition(ctx, mcp, false); err != nil {
-			return ctrl.Result{}, err
-		}
+		// if err := r.updateCondition(ctx, mcp, false); err != nil {
+		// 	return ctrl.Result{}, err
+		// }
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -380,8 +392,8 @@ func (r *ManagedControlPlaneReconciler) reconcileControllerManager(
 	if err := r.Get(ctx, client.ObjectKeyFromObject(cm), current); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("ManagedControllerManager not yet visible, requeueing")
-			_ = r.setMCPReadyCondition(ctx, mcp, false)
-			return ctrl.Result{Requeue: true}, nil
+			// err = r.updateCondition(ctx, mcp, false)
+			return ctrl.Result{Requeue: true}, err
 		}
 		return ctrl.Result{}, err
 	}
@@ -391,9 +403,9 @@ func (r *ManagedControlPlaneReconciler) reconcileControllerManager(
 			"child", current.GetName(),
 			"generation", current.GetGeneration(),
 		)
-		if err := r.setMCPReadyCondition(ctx, mcp, false); err != nil {
-			return ctrl.Result{}, err
-		}
+		// if err := r.updateCondition(ctx, mcp, false); err != nil {
+		// 	return ctrl.Result{}, err
+		// }
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -429,8 +441,8 @@ func (r *ManagedControlPlaneReconciler) reconcileScheduler(
 	if err := r.Get(ctx, client.ObjectKeyFromObject(sched), current); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("ManagedScheduler not yet visible, requeueing")
-			_ = r.setMCPReadyCondition(ctx, mcp, false)
-			return ctrl.Result{Requeue: true}, nil
+			// err = r.updateCondition(ctx, mcp, false)
+			return ctrl.Result{Requeue: true}, err
 		}
 		return ctrl.Result{}, err
 	}
@@ -440,9 +452,9 @@ func (r *ManagedControlPlaneReconciler) reconcileScheduler(
 			"child", current.GetName(),
 			"generation", current.GetGeneration(),
 		)
-		if err := r.setMCPReadyCondition(ctx, mcp, false); err != nil {
-			return ctrl.Result{}, err
-		}
+		// if err := r.updateCondition(ctx, mcp, false); err != nil {
+		// 	return ctrl.Result{}, err
+		// }
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -465,16 +477,16 @@ func (r *ManagedControlPlaneReconciler) createOrUpdateOwned(
 	return err
 }
 
-// setMCPReadyCondition uses the shared controlplane.ReadyConditionsForMCP
+// updateCondition uses the shared controlplane.ReadyConditionsForMCP
 // helper to set the top-level Ready condition based on the aggregated state.
-func (r *ManagedControlPlaneReconciler) setMCPReadyCondition(
-	ctx context.Context,
-	mcpObj *mcpv1alpha1.ManagedControlPlane,
-	allReady bool,
-) error {
-	conds := controlplane.ReadyConditionsForMCP(allReady)
-	return r.UpdateCondition(ctx, mcpObj, conds)
-}
+// func (r *ManagedControlPlaneReconciler) updateCondition(
+// 	ctx context.Context,
+// 	mcpObj *mcpv1alpha1.ManagedControlPlane,
+// 	allReady bool,
+// ) error {
+// 	conds := controlplane.ReadyConditionsForMCP(allReady)
+// 	return r.UpdateCondition(ctx, mcpObj, conds)
+// }
 
 func (r *ManagedControlPlaneReconciler) resolveEtcdImageForKubeVersion(kubeVersion string) (string, error) {
 	// kubeVersion is expected like "v1.31.0" or "1.31.0"

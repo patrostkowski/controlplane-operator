@@ -18,11 +18,9 @@ import (
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/scheduler"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 type ManagedSchedulerReconciler struct {
@@ -40,6 +38,18 @@ func (r *ManagedSchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
+	// cond := apimeta.FindStatusCondition(schedObj.Status.Conditions, string(controlplane.ConditionReady))
+	// if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != string(controlplane.ReasonReconciling) {
+	// 	if err := r.UpdateCondition(ctx, schedObj, controlplane.Conditions{
+	// 		Type:    controlplane.ConditionReady,
+	// 		Status:  metav1.ConditionFalse,
+	// 		Reason:  controlplane.ReasonReconciling,
+	// 		Message: controlplane.MessageReconciling,
+	// 	}); err != nil {
+	// 		return ctrl.Result{}, err
+	// 	}
+	// }
+
 	log.Info("Reconciling ManagedScheduler")
 
 	resources := scheduler.Resources(schedObj)
@@ -53,17 +63,17 @@ func (r *ManagedSchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	if err := r.updateCondition(ctx, schedObj, allReady); err != nil {
-		return ctrl.Result{}, err
-	}
+	// if err := r.updateCondition(ctx, schedObj, allReady); err != nil {
+	// 	return ctrl.Result{}, err
+	// }
 
 	if !allReady {
 		log.Info("requeueing reconcile for ManagedScheduler until Deployment is Ready")
-		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
 	log.Info("Finished reconciling ManagedScheduler")
-	return reconcile.Result{}, nil
+	return ctrl.Result{}, nil
 }
 
 func (r *ManagedSchedulerReconciler) ensureResources(
@@ -127,7 +137,7 @@ func (r *ManagedSchedulerReconciler) checkResourcesReady(
 				allReady = false
 				continue
 			}
-			if !isDeploymentReady(deploy) {
+			if !r.IsDeploymentReady(deploy) {
 				log.Info("Deployment not ready", "name", deploy.Name, "readyReplicas", deploy.Status.ReadyReplicas)
 				allReady = false
 			}
@@ -137,27 +147,27 @@ func (r *ManagedSchedulerReconciler) checkResourcesReady(
 	return allReady, nil
 }
 
-func (r *ManagedSchedulerReconciler) updateCondition(
-	ctx context.Context,
-	schedObj *mcpv1alpha1.ManagedScheduler,
-	allReady bool,
-) error {
-	if allReady {
-		return r.UpdateCondition(ctx, schedObj, controlplane.Conditions{
-			Type:    controlplane.ConditionReady,
-			Status:  metav1.ConditionTrue,
-			Reason:  controlplane.ReasonDeploymentReady,
-			Message: controlplane.MessageDeploymentReady,
-		})
-	}
+// func (r *ManagedSchedulerReconciler) updateCondition(
+// 	ctx context.Context,
+// 	schedObj *mcpv1alpha1.ManagedScheduler,
+// 	allReady bool,
+// ) error {
+// 	if allReady {
+// 		return r.UpdateCondition(ctx, schedObj, controlplane.Conditions{
+// 			Type:    controlplane.ConditionReady,
+// 			Status:  metav1.ConditionTrue,
+// 			Reason:  controlplane.ReasonDeploymentReady,
+// 			Message: controlplane.MessageDeploymentReady,
+// 		})
+// 	}
 
-	return r.UpdateCondition(ctx, schedObj, controlplane.Conditions{
-		Type:    controlplane.ConditionReady,
-		Status:  metav1.ConditionFalse,
-		Reason:  controlplane.ReasonWaitingForDeployment,
-		Message: controlplane.MessageWaitingForDeployment,
-	})
-}
+// 	return r.UpdateCondition(ctx, schedObj, controlplane.Conditions{
+// 		Type:    controlplane.ConditionReady,
+// 		Status:  metav1.ConditionFalse,
+// 		Reason:  controlplane.ReasonWaitingForDeployment,
+// 		Message: controlplane.MessageWaitingForDeployment,
+// 	})
+// }
 
 func SetupManagedSchedulerReconciler(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
