@@ -24,6 +24,7 @@ import (
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/pki"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -118,7 +119,7 @@ func (r *ManagedPKIReconciler) ensureResources(
 ) error {
 
 	for _, desired := range resources {
-		r.Log.Info("Ensuring PKI resource", "name", desired.GetName(), "namespace", desired.GetNamespace())
+		r.Log.Info("Ensuring PKI resource", "name", desired.GetName(), "namespace", desired.GetNamespace(), "kind", desired.GetObjectKind())
 
 		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, pkiObj, desired, r.Log, func(obj client.Object) error {
 			switch o := obj.(type) {
@@ -146,7 +147,7 @@ func (r *ManagedPKIReconciler) checkResourcesReady(
 	allReady := true
 
 	for _, desired := range resources {
-		r.Log.Info("Ensuring PKI resource", "name", desired.GetName(), "namespace", desired.GetNamespace())
+		r.Log.Info("Checking PKI resource if ready", "name", desired.GetName(), "namespace", desired.GetNamespace(), "kind", desired.GetObjectKind())
 
 		key := client.ObjectKey{Namespace: desired.GetNamespace(), Name: desired.GetName()}
 
@@ -210,6 +211,7 @@ func SetupManagedPKIReconciler(mgr ctrl.Manager) error {
 		For(&mcpv1alpha1.ManagedPKI{}).
 		Owns(&certmanagerv1.Issuer{}).
 		Owns(&certmanagerv1.Certificate{}).
+		Owns(&corev1.ConfigMap{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		Complete(&ManagedPKIReconciler{
 			BaseReconciler: controlplane.BaseReconciler{

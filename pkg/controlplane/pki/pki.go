@@ -20,7 +20,10 @@ import (
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	certmanagermeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -46,7 +49,6 @@ type PKICertificateSpec struct {
 	RenewBefore   *metav1.Duration
 	Usages        []certmanagerv1.KeyUsage
 	DNSNames      []string
-	IPAddresses   []string
 	Organizations []string
 }
 
@@ -154,7 +156,6 @@ func Resources(pkiObj *mcpv1alpha1.ManagedPKI) []client.Object {
 				"kubernetes.default.svc.cluster.local",
 				"localhost",
 			},
-			IPAddresses: []string{"127.0.0.1", "172.19.0.3"}, // TODO: fix...
 		},
 
 		// kube-apiserver -> kubelet client cert (O=system:masters)
@@ -198,7 +199,6 @@ func Resources(pkiObj *mcpv1alpha1.ManagedPKI) []client.Object {
 				"etcd." + ns + ".svc",
 				"localhost",
 			},
-			IPAddresses: []string{"127.0.0.1", "172.19.0.3"}, // TODO: fix...
 		},
 
 		// etcd peer
@@ -220,7 +220,6 @@ func Resources(pkiObj *mcpv1alpha1.ManagedPKI) []client.Object {
 				"etcd-0.etcd." + ns + ".svc",
 				"localhost",
 			},
-			IPAddresses: []string{"127.0.0.1", "172.19.0.3"}, // TODO: fix...
 		},
 
 		// etcd healthcheck client
@@ -304,11 +303,31 @@ func Resources(pkiObj *mcpv1alpha1.ManagedPKI) []client.Object {
 				certmanagerv1.UsageClientAuth,
 			},
 		},
+
+		// =========================
+		// Admin Client Cert
+		// =========================
+		{
+			Name:        "admin-client",
+			Namespace:   ns,
+			SecretName:  "admin-client",
+			CommonName:  "kubernetes-admin",
+			IssuerName:  "ca-issuer",
+			Duration:    &tenYears,
+			RenewBefore: &thirtyDays,
+			Usages: []certmanagerv1.KeyUsage{
+				certmanagerv1.UsageDigitalSignature,
+				certmanagerv1.UsageKeyEncipherment,
+				certmanagerv1.UsageClientAuth,
+			},
+		},
 	}
 
 	for _, cs := range certSpecs {
 		objs = append(objs, BuildCertificate(cs))
 	}
+
+	objs = append(objs, BuildConfigMap(pkiObj))
 
 	return objs
 }
@@ -375,9 +394,6 @@ func BuildCertificate(spec PKICertificateSpec) *certmanagerv1.Certificate {
 	if len(spec.DNSNames) > 0 {
 		certSpec.DNSNames = spec.DNSNames
 	}
-	if len(spec.IPAddresses) > 0 {
-		certSpec.IPAddresses = spec.IPAddresses
-	}
 	if len(spec.Organizations) > 0 {
 		certSpec.Subject = &certmanagerv1.X509Subject{
 			Organizations: spec.Organizations,
@@ -386,4 +402,53 @@ func BuildCertificate(spec PKICertificateSpec) *certmanagerv1.Certificate {
 
 	c.Spec = certSpec
 	return c
+}
+
+func BuildConfigMap(pki *mcpv1alpha1.ManagedPKI) *corev1.ConfigMap {
+	ns := pki.Namespace
+
+	kcfg := BuildAdminKubeconfig(ns)
+
+	kubeconfigData, err := clientcmd.Write(*kcfg)
+	if err != nil {
+		panic(err) // should never happen
+	}
+
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "admin-kubeconfig",
+			Namespace: ns,
+		},
+		Data: map[string]string{
+			"config": string(kubeconfigData),
+		},
+	}
+}
+
+func BuildAdminKubeconfig(namespace string) *clientcmdapi.Config {
+	serverURL := "https://kube-apiserver." + namespace + ".svc:443"
+
+	cfg := clientcmdapi.NewConfig()
+
+	// --- Cluster ---
+	cfg.Clusters["local"] = &clientcmdapi.Cluster{
+		Server:                   serverURL,
+		CertificateAuthorityData: []byte{},
+	}
+
+	// --- User ---
+	cfg.AuthInfos["local"] = &clientcmdapi.AuthInfo{
+		ClientCertificateData: []byte{},
+		ClientKeyData:         []byte{},
+	}
+
+	// --- Context ---
+	cfg.Contexts["local"] = &clientcmdapi.Context{
+		Cluster:  "local",
+		AuthInfo: "local",
+	}
+
+	cfg.CurrentContext = "local"
+
+	return cfg
 }
