@@ -29,7 +29,8 @@ type ManagedControlPlaneSpec struct {
 type ManagedControlPlaneStatus struct {
 	// Conditions represents the latest available observations of the control plane's state.
 	// e.g. APIServerAvailable, EtcdHealthy, ControllersHealthy, Ready, etc.
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Conditions          []metav1.Condition `json:"conditions,omitempty"`
+	controlplane.Status `json:",inline,omitempty"`
 }
 
 // ManagedControlPlane is the root CR that “owns” the other managed components.
@@ -104,7 +105,8 @@ type ManagedETCDSpec struct {
 
 // ManagedETCDStatus defines the observed state of ManagedETCD.
 type ManagedETCDStatus struct {
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Conditions          []metav1.Condition `json:"conditions,omitempty"`
+	controlplane.Status `json:",inline,omitempty"`
 }
 
 // ManagedETCD manages the etcd StatefulSet and associated configuration.
@@ -141,7 +143,8 @@ type ManagedAPIServerSpec struct {
 
 // ManagedAPIServerStatus defines the observed state of ManagedAPIServer.
 type ManagedAPIServerStatus struct {
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Conditions          []metav1.Condition `json:"conditions,omitempty"`
+	controlplane.Status `json:",inline,omitempty"`
 }
 
 // ManagedAPIServer manages the kube-apiserver Deployment/Service and related config.
@@ -178,7 +181,8 @@ type ManagedControllerManagerSpec struct {
 
 // ManagedControllerManagerStatus defines the observed state of ManagedControllerManager.
 type ManagedControllerManagerStatus struct {
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Conditions          []metav1.Condition `json:"conditions,omitempty"`
+	controlplane.Status `json:",inline,omitempty"`
 }
 
 // ManagedControllerManager manages the kube-controller-manager Deployment.
@@ -215,7 +219,8 @@ type ManagedSchedulerSpec struct {
 
 // ManagedSchedulerStatus defines the observed state of ManagedScheduler.
 type ManagedSchedulerStatus struct {
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Conditions          []metav1.Condition `json:"conditions,omitempty"`
+	controlplane.Status `json:",inline,omitempty"`
 }
 
 // ManagedScheduler manages the kube-scheduler Deployment.

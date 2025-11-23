@@ -32,3 +32,23 @@ func (m *ManagedScheduler) GetConditions() *[]metav1.Condition {
 func (m *ManagedPKI) GetStatus() *controlplane.Status {
 	return &m.Status.Status
 }
+
+func (m *ManagedETCD) GetStatus() *controlplane.Status {
+	return &m.Status.Status
+}
+
+func (m *ManagedAPIServer) GetStatus() *controlplane.Status {
+	return &m.Status.Status
+}
+
+func (m *ManagedControllerManager) GetStatus() *controlplane.Status {
+	return &m.Status.Status
+}
+
+func (m *ManagedScheduler) GetStatus() *controlplane.Status {
+	return &m.Status.Status
+}
+
+func (m *ManagedControlPlane) GetStatus() *controlplane.Status {
+	return &m.Status.Status
+}

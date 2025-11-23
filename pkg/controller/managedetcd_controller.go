@@ -26,6 +26,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -46,19 +47,22 @@ func (r *ManagedETCDReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	// cond := apimeta.FindStatusCondition(etcdObj.Status.Conditions, string(controlplane.ConditionReady))
-	// if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != string(controlplane.ReasonReconciling) {
-	// 	if err := r.UpdateCondition(ctx, etcdObj, controlplane.Conditions{
-	// 		Type:    controlplane.ConditionReady,
-	// 		Status:  metav1.ConditionFalse,
-	// 		Reason:  controlplane.ReasonReconciling,
-	// 		Message: controlplane.MessageReconciling,
-	// 	}); err != nil {
-	// 		return ctrl.Result{}, err
-	// 	}
-	// }
-
 	log.Info("Reconciling ManagedETCD")
+
+	if err := r.UpdateCondition(ctx, etcdObj,
+		controlplane.Conditions{
+			Type:    controlplane.ConditionReconciling,
+			Status:  metav1.ConditionFalse,
+			Reason:  controlplane.ReasonReconciling,
+			Message: controlplane.MessageReconciling,
+		},
+		controlplane.Status{
+			Ready:   false,
+			Message: "reconciling",
+		},
+	); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	resources := etcd.Resources(etcdObj)
 
@@ -71,13 +75,36 @@ func (r *ManagedETCDReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	// if err := r.updateCondition(ctx, etcdObj, allReady); err != nil {
-	// 	return ctrl.Result{}, err
-	// }
-
 	if !allReady {
-		log.Info("requeueing reconcile for ManagedETCD")
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		_ = r.UpdateCondition(ctx, etcdObj,
+			controlplane.Conditions{
+				Type:    controlplane.ConditionWaitingForResource,
+				Status:  metav1.ConditionFalse,
+				Reason:  controlplane.ReasonWaitingForResources,
+				Message: controlplane.MessageWaitingForResources,
+			},
+			controlplane.Status{
+				Ready:   false,
+				Message: "awaiting all ready",
+			},
+		)
+		log.Info("requeueing reconcile for ETCD controller")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	if err := r.UpdateCondition(ctx, etcdObj,
+		controlplane.Conditions{
+			Type:    controlplane.ConditionReady,
+			Status:  metav1.ConditionTrue,
+			Reason:  controlplane.ReasonAllResourcesReady,
+			Message: controlplane.MessageAllResourcesReady,
+		},
+		controlplane.Status{
+			Ready:   true,
+			Message: "all ready",
+		},
+	); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	log.Info("Finished reconciling ManagedETCD")
@@ -160,28 +187,6 @@ func (r *ManagedETCDReconciler) checkResourcesReady(
 
 	return allReady, nil
 }
-
-// func (r *ManagedETCDReconciler) updateCondition(
-// 	ctx context.Context,
-// 	etcdObj *mcpv1alpha1.ManagedETCD,
-// 	allReady bool,
-// ) error {
-// 	if allReady {
-// 		return r.UpdateCondition(ctx, etcdObj, controlplane.Conditions{
-// 			Type:    controlplane.ConditionReady,
-// 			Status:  metav1.ConditionTrue,
-// 			Reason:  controlplane.ReasonAllResourcesReady,
-// 			Message: controlplane.MessageAllResourcesReady,
-// 		})
-// 	}
-
-// 	return r.UpdateCondition(ctx, etcdObj, controlplane.Conditions{
-// 		Type:    controlplane.ConditionReady,
-// 		Status:  metav1.ConditionFalse,
-// 		Reason:  controlplane.ReasonWaitingForResources,
-// 		Message: controlplane.MessageWaitingForResources,
-// 	})
-// }
 
 func mergeStringMap(dst, src map[string]string) map[string]string {
 	if dst == nil && src == nil {

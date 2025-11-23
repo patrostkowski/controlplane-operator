@@ -27,6 +27,7 @@ import (
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/apiserver"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -47,19 +48,22 @@ func (r *ManagedAPIServerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	// cond := apimeta.FindStatusCondition(apiObj.Status.Conditions, string(controlplane.ConditionReady))
-	// if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != string(controlplane.ReasonReconciling) {
-	// 	if err := r.UpdateCondition(ctx, apiObj, controlplane.Conditions{
-	// 		Type:    controlplane.ConditionReady,
-	// 		Status:  metav1.ConditionFalse,
-	// 		Reason:  controlplane.ReasonReconciling,
-	// 		Message: controlplane.MessageReconciling,
-	// 	}); err != nil {
-	// 		return ctrl.Result{}, err
-	// 	}
-	// }
-
 	log.Info("Reconciling ManagedAPIServer")
+
+	if err := r.UpdateCondition(ctx, apiObj,
+		controlplane.Conditions{
+			Type:    controlplane.ConditionReconciling,
+			Status:  metav1.ConditionFalse,
+			Reason:  controlplane.ReasonReconciling,
+			Message: controlplane.MessageReconciling,
+		},
+		controlplane.Status{
+			Ready:   false,
+			Message: "reconciling",
+		},
+	); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	resources := apiserver.Resources(apiObj)
 
@@ -72,13 +76,36 @@ func (r *ManagedAPIServerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	// if err := r.updateCondition(ctx, apiObj, allReady); err != nil {
-	// 	return ctrl.Result{}, err
-	// }
-
 	if !allReady {
-		log.Info("requeueing reconcile for ManagedAPIServer until Deployment is Ready")
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		_ = r.UpdateCondition(ctx, apiObj,
+			controlplane.Conditions{
+				Type:    controlplane.ConditionWaitingForResource,
+				Status:  metav1.ConditionFalse,
+				Reason:  controlplane.ReasonWaitingForResources,
+				Message: controlplane.MessageWaitingForResources,
+			},
+			controlplane.Status{
+				Ready:   false,
+				Message: "awaiting all ready",
+			},
+		)
+		log.Info("requeueing reconcile for API Server controller")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	if err := r.UpdateCondition(ctx, apiObj,
+		controlplane.Conditions{
+			Type:    controlplane.ConditionReady,
+			Status:  metav1.ConditionTrue,
+			Reason:  controlplane.ReasonAllResourcesReady,
+			Message: controlplane.MessageAllResourcesReady,
+		},
+		controlplane.Status{
+			Ready:   true,
+			Message: "all ready",
+		},
+	); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	log.Info("Finished reconciling ManagedAPIServer")
@@ -160,29 +187,6 @@ func (r *ManagedAPIServerReconciler) checkResourcesReady(
 
 	return allReady, nil
 }
-
-// func (r *ManagedAPIServerReconciler) updateCondition(
-// 	ctx context.Context,
-// 	apiObj *mcpv1alpha1.ManagedAPIServer,
-// 	allReady bool,
-// ) error {
-
-// 	if allReady {
-// 		return r.UpdateCondition(ctx, apiObj, controlplane.Conditions{
-// 			Type:    controlplane.ConditionReady,
-// 			Status:  metav1.ConditionTrue,
-// 			Reason:  controlplane.ReasonDeploymentReady,
-// 			Message: controlplane.MessageDeploymentReady,
-// 		})
-// 	}
-
-// 	return r.UpdateCondition(ctx, apiObj, controlplane.Conditions{
-// 		Type:    controlplane.ConditionReady,
-// 		Status:  metav1.ConditionFalse,
-// 		Reason:  controlplane.ReasonWaitingForDeployment,
-// 		Message: controlplane.MessageWaitingForDeployment,
-// 	})
-// }
 
 func SetupManagedAPIServerReconciler(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).

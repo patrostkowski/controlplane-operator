@@ -50,19 +50,22 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
-	// cond := apimeta.FindStatusCondition(mcpObj.Status.Conditions, string(controlplane.ConditionReady))
-	// if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != string(controlplane.ReasonReconciling) {
-	// 	if err := r.UpdateCondition(ctx, mcpObj, controlplane.Conditions{
-	// 		Type:    controlplane.ConditionReady,
-	// 		Status:  metav1.ConditionFalse,
-	// 		Reason:  controlplane.ReasonReconciling,
-	// 		Message: controlplane.MessageReconciling,
-	// 	}); err != nil {
-	// 		return ctrl.Result{}, err
-	// 	}
-	// }
-
 	log.Info("Reconciling ManagedControlPlane", "version", mcpObj.Spec.Version)
+
+	if err := r.UpdateCondition(ctx, mcpObj,
+		controlplane.Conditions{
+			Type:    controlplane.ConditionReconciling,
+			Status:  metav1.ConditionFalse,
+			Reason:  controlplane.ReasonReconciling,
+			Message: controlplane.MessageReconciling,
+		},
+		controlplane.Status{
+			Ready:   false,
+			Message: "reconciling",
+		},
+	); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	if !mcpObj.ObjectMeta.DeletionTimestamp.IsZero() {
 		// If finalizer not present, nothing to do
@@ -123,9 +126,20 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
-	// if err := r.updateCondition(ctx, mcpObj, true); err != nil {
-	// 	return ctrl.Result{}, err
-	// }
+	if err := r.UpdateCondition(ctx, mcpObj,
+		controlplane.Conditions{
+			Type:    controlplane.ConditionReady,
+			Status:  metav1.ConditionTrue,
+			Reason:  controlplane.ReasonAllResourcesReady,
+			Message: controlplane.MessageAllResourcesReady,
+		},
+		controlplane.Status{
+			Ready:   true,
+			Message: "all ready",
+		},
+	); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	log.Info("Finished reconciling ManagedControlPlane")
 	return ctrl.Result{}, nil
@@ -476,17 +490,6 @@ func (r *ManagedControlPlaneReconciler) createOrUpdateOwned(
 	})
 	return err
 }
-
-// updateCondition uses the shared controlplane.ReadyConditionsForMCP
-// helper to set the top-level Ready condition based on the aggregated state.
-// func (r *ManagedControlPlaneReconciler) updateCondition(
-// 	ctx context.Context,
-// 	mcpObj *mcpv1alpha1.ManagedControlPlane,
-// 	allReady bool,
-// ) error {
-// 	conds := controlplane.ReadyConditionsForMCP(allReady)
-// 	return r.UpdateCondition(ctx, mcpObj, conds)
-// }
 
 func (r *ManagedControlPlaneReconciler) resolveEtcdImageForKubeVersion(kubeVersion string) (string, error) {
 	// kubeVersion is expected like "v1.31.0" or "1.31.0"

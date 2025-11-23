@@ -91,7 +91,7 @@ func (r *ManagedPKIReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	_ = r.UpdateCondition(ctx, pkiObj,
+	if err := r.UpdateCondition(ctx, pkiObj,
 		controlplane.Conditions{
 			Type:    controlplane.ConditionReady,
 			Status:  metav1.ConditionTrue,
@@ -102,7 +102,9 @@ func (r *ManagedPKIReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			Ready:   true,
 			Message: "all ready",
 		},
-	)
+	); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	log.Info("Finished reconciling ManagedPKI")
 
