@@ -99,6 +99,7 @@ func (in *ManagedAPIServerStatus) DeepCopyInto(out *ManagedAPIServerStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	out.Status = in.Status
 	return
 }
 
@@ -199,6 +200,7 @@ func (in *ManagedControlPlaneStatus) DeepCopyInto(out *ManagedControlPlaneStatus
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	out.Status = in.Status
 	return
 }
 
@@ -299,6 +301,7 @@ func (in *ManagedControllerManagerStatus) DeepCopyInto(out *ManagedControllerMan
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	out.Status = in.Status
 	return
 }
 
@@ -399,6 +402,7 @@ func (in *ManagedETCDStatus) DeepCopyInto(out *ManagedETCDStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	out.Status = in.Status
 	return
 }
 
@@ -600,6 +604,7 @@ func (in *ManagedSchedulerStatus) DeepCopyInto(out *ManagedSchedulerStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	out.Status = in.Status
 	return
 }
 

@@ -1,4 +1,4 @@
-# Copyright 2025 controlplane.patrostkowski.dev
+# Copyright 2025 Patryk Rostkowski
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,18 +15,37 @@
 version: '3'
 
 tasks:
+  kind:create:
+    desc: "Create kind cluster for controlplane development"
+    cmds:
+      - kind create cluster --name controlplane
+
+  kind:delete:
+    desc: "Delete kind cluster used for controlplane development"
+    cmds:
+      - kind delete cluster --name controlplane
+
+  kind:load-image:
+    desc: "Load locally built operator image into kind cluster"
+    deps:
+      - dev:build
+    cmds:
+      - kind load docker-image patrostkowski/controlplane-operator:latest --name controlplane
+
+
   docs:
     desc: "Serve controlplane MkDocs from ./docs/"
     cmds:
-      - docker run --rm -it -p 8000:8000 -v $(pwd)/docs:/docs squidfunk/mkdocs-material serve -f /docs/mkdocs.yml -a 0.0.0.0:8000
+      - docker run --rm -it -p 8000:8000 -v ${PWD}/docs:/docs squidfunk/mkdocs-material serve -f /docs/mkdocs.yml -a 0.0.0.0:8000
 
-  codegen:
+  dev:codegen:
     desc: "Run all code generation scripts (client + CRDs) inside hack/"
     cmds:
+      - addlicense -c "Patryk Rostkowski" -l apache -y 2025 .
       - bash hack/update-codegen.sh
       - bash hack/update-crds.sh
   
-  install:
+  dev:install:
     desc: "Install controlplane CRDs into current kube context"
     cmds:
       - helm upgrade --install cert-manager "oci://quay.io/jetstack/charts/cert-manager"                                       
@@ -35,16 +54,16 @@ tasks:
         --set crds.enabled=true
       - kubectl apply -f config/crd/
 
-  uninstall-crds:
-    desc: "Remove controlplane CRDs from cluster"
-    cmds:
-      - kubectl delete -f config/crd/ || true
-
-  run:
+  dev:run:
     desc: "Run the controlplane operator locally (for development)"
     dir: cmd/controlplane-operator
     cmds:
       - go run main.go
+
+  dev:build:
+    desc: "Build controlplane operator Docker image"
+    cmds:
+      - docker build . -t patrostkowski/controlplane-operator:latest
 
   os:builder:
     desc: Build MCPos builder image

@@ -1,4 +1,4 @@
-// Copyright 2025 controlplane.patrostkowski.dev
+// Copyright 2025 Patryk Rostkowski
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // ...

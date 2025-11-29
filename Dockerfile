@@ -12,8 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# 01-namespace-and-pki.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: managed-k8s
+FROM golang:1.25-trixie AS builder
+
+WORKDIR /app
+
+COPY . .
+
+RUN go mod download
+
+RUN go build -o controlplane-operator ./cmd/controlplane-operator
+
+FROM debian:trixie-slim
+
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/controlplane-operator /usr/local/bin/controlplane-operator
+
+ENTRYPOINT ["/usr/local/bin/controlplane-operator"]

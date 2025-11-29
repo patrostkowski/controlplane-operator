@@ -1,3 +1,3 @@
 # controlplane
 
-TODO
+Bootstrap Kubernetes Control planes with one resource.
