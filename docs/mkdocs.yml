@@ -25,6 +25,7 @@ nav:
       - Overview: admin-guide/overview.md
   - API Reference:
       - Overview: api-reference/overview.md
+      - Design: api-reference/design.md
   - Contributing:
       - Overview: contributing/overview.md
 
