@@ -1,35 +1,13 @@
 version = 2
 
-root = "/var/lib/containerd"
-state = "/run/containerd"
+[plugins."io.containerd.grpc.v1.cri".containerd]
+  snapshotter = "overlayfs"
+  default_runtime_name = "runc"
 
-[grpc]
-  address = "/run/containerd/containerd.sock"
-  uid = 0
-  gid = 0
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+  runtime_type = "io.containerd.runc.v2"
+  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+    SystemdCgroup = true
 
-[debug]
-  level = "info"
-
-[plugins]
-  [plugins."io.containerd.internal.v1.opt"]
-    path = "/opt/containerd"
-
-  [plugins."io.containerd.metadata.v1.bolt"]
-    content_sharing_policy = "shared"
-
-  [plugins."io.containerd.grpc.v1.cri"]
-    sandbox_image = "registry.k8s.io/pause:3.9"
-
-    [plugins."io.containerd.grpc.v1.cri".containerd]
-      snapshotter = "overlayfs"
-      default_runtime_name = "runc"
-
-      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
-        runtime_type = "io.containerd.runc.v2"
-        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-          SystemdCgroup = false
-
-    [plugins."io.containerd.grpc.v1.cri".cni]
-      bin_dir = "/opt/cni/bin"
-      conf_dir = "/etc/cni/net.d"
+[plugins."io.containerd.grpc.v1.cri"]
+  sandbox_image = "registry.k8s.io/pause:3.10"
