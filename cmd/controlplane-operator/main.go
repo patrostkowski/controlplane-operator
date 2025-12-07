@@ -66,6 +66,9 @@ func main() {
 	if err := controller.SetupManagedSchedulerReconciler(mgr); err != nil {
 		panic(err)
 	}
+	if err := controller.SetupManagedAddonReconciler(mgr); err != nil {
+		panic(err)
+	}
 
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		os.Exit(1)

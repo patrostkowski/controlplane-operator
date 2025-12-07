@@ -248,3 +248,42 @@ type ManagedSchedulerList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ManagedScheduler `json:"items"`
 }
+
+// ManagedAddonSpec defines the desired state of ManagedAddon.
+type ManagedAddonSpec struct {
+	ControlPlaneName string `json:"controlPlaneName,omitempty"`
+	Type             string `json:"type,omitempty"`
+	Version          string `json:"version"`
+}
+
+// ManagedAddonStatus defines the observed state of ManagedAddon.
+type ManagedAddonStatus struct {
+	Conditions          []metav1.Condition `json:"conditions,omitempty"`
+	controlplane.Status `json:",inline,omitempty"`
+}
+
+// ManagedAddon manages controlplane addons installation.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:path=managedaddons,scope=Namespaced,shortName=maddon
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].message`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+type ManagedAddon struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   ManagedAddonSpec   `json:"spec,omitempty"`
+	Status ManagedAddonStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+
+// ManagedAddonList contains a list of ManagedAddon.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type ManagedAddonList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []ManagedAddon `json:"items"`
+}

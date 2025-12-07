@@ -308,11 +308,14 @@ func Resources(pkiObj *mcpv1alpha1.ManagedPKI) []client.Object {
 		// Admin Client Cert
 		// =========================
 		{
-			Name:        "admin-client",
-			Namespace:   ns,
-			SecretName:  "admin-client",
-			CommonName:  "kubernetes-admin",
-			IssuerName:  "ca-issuer",
+			Name:       "admin-client",
+			Namespace:  ns,
+			SecretName: "admin-client",
+			CommonName: "kubernetes-admin",
+			IssuerName: "ca-issuer",
+			Organizations: []string{
+				"system:masters",
+			},
 			Duration:    &tenYears,
 			RenewBefore: &thirtyDays,
 			Usages: []certmanagerv1.KeyUsage{
