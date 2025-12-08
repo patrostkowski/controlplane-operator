@@ -1,0 +1,26 @@
+[Unit]
+Description=containerd container runtime
+Documentation=https://containerd.io
+After=network-online.target local-fs.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStartPre=/sbin/modprobe overlay
+ExecStart=/usr/local/bin/containerd
+
+# Recommended settings for running a container runtime
+Delegate=yes
+KillMode=process
+Restart=always
+RestartSec=5
+
+# Lift a bunch of limits, like the upstream unit does
+LimitNOFILE=1048576
+LimitNPROC=infinity
+LimitCORE=infinity
+TasksMax=infinity
+OOMScoreAdjust=-999
+
+[Install]
+WantedBy=multi-user.target

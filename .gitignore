@@ -33,3 +33,5 @@ go.work.sum
 
 os/build
 os/rootfs
+
+*.crt

@@ -1,0 +1,24 @@
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+
+# Basic runtime + cgroups
+cgroupDriver: systemd
+containerRuntimeEndpoint: "unix:///run/containerd/containerd.sock"
+failSwapOn: false
+
+clusterDomain: cluster.local
+
+# API server auth (typical kubeadm-style settings)
+authentication:
+  anonymous:
+    enabled: false
+  webhook:
+    enabled: true
+authorization:
+  mode: Webhook
+
+# Node status / heartbeats etc. – sane defaults
+readOnlyPort: 0
+healthzBindAddress: 127.0.0.1
+healthzPort: 10248
+port: 10250
