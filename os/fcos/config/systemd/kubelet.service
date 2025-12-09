@@ -2,8 +2,8 @@
 Description=kubelet: The Kubernetes Node Agent
 Documentation=https://kubernetes.io/docs/home/
 Wants=network-online.target
-After=network-online.target containerd.service
-Requires=containerd.service
+After=network-online.target crio.service
+Requires=crio.service
 
 [Service]
 Type=notify
@@ -11,11 +11,9 @@ ExecStart=/usr/bin/kubelet \
   --config=/etc/kubernetes/config.yaml \
   --bootstrap-kubeconfig=/etc/kubernetes/kubeconfig \
   --kubeconfig=/var/lib/kubelet/kubeconfig
-
 Restart=always
 RestartSec=10
-StartLimitInterval=0
-
+#StartLimitIntervalSec=0
 CPUAccounting=true
 MemoryAccounting=true
 

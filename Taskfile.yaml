@@ -52,7 +52,10 @@ tasks:
         --namespace cert-manager
         --create-namespace
         --set crds.enabled=true
+      - kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
       - kubectl apply -f config/crd/
+      - kubectl create ns mcp || true
+      - kubectl apply -f ./example/mcp.yaml
 
   dev:run:
     desc: "Run the controlplane operator locally (for development)"
@@ -64,6 +67,14 @@ tasks:
     desc: "Build controlplane operator Docker image"
     cmds:
       - docker build . -t patrostkowski/controlplane-operator:latest
+
+  dev:build-tesseractd:
+    cmds:
+      - go build -o bin/tesseractd ./cmd/tesseractd/
+
+  dev:build-tesseractl:
+    cmds:
+      - go build -o bin/tesseractl ./cmd/tesseractl/
 
   os:builder:
     desc: Build MCPos builder image
