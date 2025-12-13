@@ -121,10 +121,7 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControllerManager) *appsv1.Deploymen
 								"--leader-elect=true",
 								"--use-service-account-credentials=true",
 								"--controllers=*,bootstrapsigner,tokencleaner",
-
-								// you had this as false; keep it as-is unless you want pod CIDR management
-								"--allocate-node-cidrs=false",
-
+								"--allocate-node-cidrs=true",
 								"--service-account-private-key-file=/var/run/k8s/sa/tls.key",
 								"--cluster-signing-cert-file=/var/run/k8s/ca/tls.crt",
 								"--cluster-signing-key-file=/var/run/k8s/ca/tls.key",
@@ -133,6 +130,7 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControllerManager) *appsv1.Deploymen
 
 								// optional but often nice to mirror apiserver:
 								// "--service-cluster-ip-range=10.200.0.0/16",
+								"--cluster-cidr=10.244.0.0/16", // TODO: adjust via CR
 							},
 							Ports: []corev1.ContainerPort{
 								{

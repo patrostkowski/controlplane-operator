@@ -34,6 +34,8 @@ BOILERPLATE="${REPO_ROOT}/hack/boilerplate.go.txt"
 # Verbosity (export to let kube_codegen pick it up)
 export KUBE_VERBOSE="${KUBE_VERBOSE:-3}"
 
+# Kubernetes
+
 # Source the helpers and call functions directly
 source "${CODEGEN_PKG}/kube_codegen.sh"
 
@@ -51,5 +53,18 @@ kube::codegen::gen_client \
   "${APIS_DIR}"
 
 ${GOPATH}/bin/controller-gen rbac:roleName=manager-role paths=./... output:rbac:dir=./config/rbac
+
+# gRPC
+
+PROTO_ROOT="${REPO_ROOT}/proto"
+GRPC_OUT="${PROTO_ROOT}"
+
+echo "Generating gRPC code from protos under ${PROTO_ROOT}"
+
+protoc \
+  -I "${PROTO_ROOT}" \
+  --go_out="${GRPC_OUT}" --go_opt=paths=source_relative \
+  --go-grpc_out="${GRPC_OUT}" --go-grpc_opt=paths=source_relative \
+  $(find "${PROTO_ROOT}" -type f -name '*.proto' | sort)
 
 echo "code-generation done"

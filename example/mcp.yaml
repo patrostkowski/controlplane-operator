@@ -12,6 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: first-pool
+  namespace: metallb-system
+spec:
+  addresses:
+  - 172.30.0.250-172.30.0.255
+  autoAssign: true
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: example
+  namespace: metallb-system
+---
 apiVersion: controlplane.patrostkowski.dev/v1alpha1
 kind: ManagedControlPlane
 metadata:
@@ -76,24 +93,86 @@ metadata:
   name: test-kubectl
   namespace: mcp
 spec:
-  restartPolicy: Never
+  initContainers:
+  - name: setup-kubectl
+    image: ubuntu:24.04
+    command: ["/bin/bash", "-c"]
+    args:
+      - |
+        set -euo pipefail
+
+        # Install tools we need just in this init container
+        apt-get update
+        apt-get install -y curl ca-certificates bash-completion
+
+        mkdir -p /work/bin
+
+        # Download kubectl matching your MCP version
+        curl -sSLo /work/bin/kubectl \
+          https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl
+        chmod +x /work/bin/kubectl
+
+        # Generate kubectl completion script into the shared volume
+        /work/bin/kubectl completion bash > /work/kubectl_completion.sh
+
+        # Copy bash-completion core script into the shared volume
+        cp /usr/share/bash-completion/bash_completion /work/bash_completion
+
+        # Create a .bashrc in the shared volume
+        cat << 'EOF' > /work/.bashrc
+        # Use kubeconfig mounted in the pod
+        export KUBECONFIG=/etc/kube/config
+
+        # Put shared bin (kubectl) on PATH
+        export PATH="$HOME/bin:$PATH"
+
+        # Load bash-completion from shared volume if present
+        if [ -f "$HOME/bash_completion" ]; then
+          . "$HOME/bash_completion"
+        fi
+
+        # Load kubectl completion script if present
+        if [ -f "$HOME/kubectl_completion.sh" ]; then
+          . "$HOME/kubectl_completion.sh"
+        fi
+
+        # Alias for kubectl
+        alias k=kubectl
+
+        # Make sure alias gets completion too (ignore errors if any)
+        complete -F __start_kubectl k 2>/dev/null || true
+        EOF
+    volumeMounts:
+      - name: work
+        mountPath: /work
+
   containers:
   - name: kubectl
-    image: bitnami/kubectl:latest
-    command: ["sleep", "infinity"]
+    image: ubuntu:24.04
+    command: ["/bin/bash", "-c", "sleep infinity"]
     env:
       - name: KUBECONFIG
         value: /etc/kube/config
     volumeMounts:
+      # kubeconfig
       - name: test-kubeconfig
         mountPath: /etc/kube
         readOnly: true
+
+      # client cert key pair
       - name: test-client
         mountPath: /var/run/k8s/test
         readOnly: true
+
+      # CA cert
       - name: ca
         mountPath: /var/run/k8s/ca
         readOnly: true
+
+      # shared volume from init container, mounted as /root
+      # (so /root/.bashrc, /root/bin/kubectl, etc.)
+      - name: work
+        mountPath: /root
   volumes:
     - name: test-kubeconfig
       configMap:
@@ -107,3 +186,5 @@ spec:
     - name: ca
       secret:
         secretName: managed-ca
+    - name: work
+      emptyDir: {}

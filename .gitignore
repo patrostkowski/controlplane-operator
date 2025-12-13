@@ -31,7 +31,17 @@ go.work.sum
 # .idea/
 # .vscode/
 
-os/build
-os/rootfs
-
 *.crt
+
+builds
+cache
+tmp
+*.iso*
+
+*.tfstate*
+*.lock.hcl
+.terraform
+*.qcow2
+bin
+.build*
+manifest-qcow2.json

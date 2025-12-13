@@ -1,0 +1,188 @@
+ARG VERSION="v0.0.0"
+ARG FEDORA_VERSION="42"
+
+FROM quay.io/fedora/fedora-bootc:${FEDORA_VERSION}
+
+ARG COS_NAME="ContainerOS"
+ARG COS_ID="cos"
+ARG COS_VERSION="${VERSION}-${FEDORA_VERSION}"
+ARG COS_HOME_URL="https://example.com"
+
+ARG KUBERNETES_VERSION="1.32"
+ARG CRIO_VERSION="1.32.0-2.fc42"
+ARG RUNC_VERSION="2:1.3.3-1.fc42"
+ARG CRI_TOOLS_VERSION="1.29.0-7.fc42"
+
+### ### ### ### ### ### ### ### ### 
+### packages
+### ### ### ### ### ### ### ### ### 
+
+RUN dnf install -y \
+    cri-o-${CRIO_VERSION} \
+    runc-${RUNC_VERSION} \
+    cri-tools-${CRI_TOOLS_VERSION} \
+    kubernetes${KUBERNETES_VERSION} \
+    kubernetes${KUBERNETES_VERSION}-client \
+    iptables \
+    && dnf clean all
+
+RUN dnf install -y cloud-init && dnf clean all
+
+RUN systemctl enable cloud-init cloud-init-local cloud-config cloud-final
+
+RUN dnf install -y qemu-guest-agent && dnf clean all
+RUN systemctl enable qemu-guest-agent
+
+# RUN dnf remove -y \
+#       openssh-server \
+#       openssh-clients \
+#       openssh \
+#     && dnf clean all \
+#     && rm -rf /etc/ssh \
+#     && systemctl mask sshd.service sshd.socket
+
+# RUN dnf -y clean all && rm -rf /var/cache/dnf /var/cache/libdnf5
+
+# RUN systemctl disable \
+#   systemd-homed.service \
+#   systemd-userdbd.service \
+#   systemd-userwork.service \
+#   systemd-logind.service \
+#   avahi-daemon.service \
+#   NetworkManager-dispatcher.service \
+#   polkit.service
+
+# RUN dnf remove -y \
+#   avahi avahi-libs avahi-autoipd nss-mdns \
+#   polkit polkit-libs \
+#   systemd-homed systemd-userdbd \
+#   iwlwifi-firmware bluez wpa_supplicant \
+#   ModemManager usb_modeswitch \
+#   && dnf clean all \
+#   && rm -rf /var/cache/dnf /var/cache/libdnf5
+
+### ### ### ### ### ### ### ### ### 
+### kernel config
+### ### ### ### ### ### ### ### ### 
+
+RUN cat > /usr/lib/sysctl.d/99-quiet-kernel.conf << EOF
+# Only print kernel errors to console
+kernel.printk = 3 3 3 3
+EOF
+
+RUN cat > /usr/lib/modules-load.d/99-kubernetes.conf << EOF
+overlay
+br_netfilter
+EOF
+
+RUN cat > /usr/lib/sysctl.d/99-kubernetes.conf << EOF
+# Required for Kubernetes networking
+net.bridge.bridge-nf-call-iptables  = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward                 = 1
+EOF
+
+### ### ### ### ### ### ### ### ### 
+### writable /opt
+### ### ### ### ### ### ### ### ### 
+
+RUN cat > /usr/lib/systemd/system/opt.mount << EOF
+[Unit]
+Description=Writable /opt (backed by /var/opt)
+Before=local-fs.target
+
+[Mount]
+What=/var/opt
+Where=/opt
+Type=none
+Options=bind
+
+[Install]
+WantedBy=local-fs.target
+EOF
+RUN systemctl enable opt.mount
+
+### ### ### ### ### ### ### ### ### 
+### branding
+### ### ### ### ### ### ### ### ### 
+
+RUN rm -f /etc/motd.d/* || true
+RUN cat > /etc/motd << 'EOF'
+  ██████╗ ██████╗ ███████╗
+ ██╔════╝██╔═══██╗██╔════╝
+ ██║     ██║   ██║███████╗   ContainerOS (COS)
+ ██║     ██║   ██║╚════██║   Immutable Kubernetes Node OS
+ ╚██████╗╚██████╔╝███████║
+  ╚═════╝ ╚═════╝ ╚══════╝
+
+Image:   ContainerOS v0.1.0-42
+EOF
+
+RUN cat > /etc/os-release <<EOF
+NAME="${COS_NAME}"
+ID="${COS_ID}"
+ID_LIKE="fedora"
+VERSION="42"
+VERSION_ID="42"
+PRETTY_NAME="${COS_NAME}"
+ANSI_COLOR="0;34"
+HOME_URL="${COS_HOME_URL}"
+EOF
+
+RUN cat > /etc/issue << EOF
+${COS_NAME} \r (\l)
+Authorized access only.
+EOF
+
+### ### ### ### ### ### ### ### ### 
+### tesseractd
+### ### ### ### ### ### ### ### ### 
+
+COPY bin/tesseractd /usr/local/bin/tesseractd
+RUN chmod +x /usr/local/bin/tesseractd
+RUN cat > /usr/lib/systemd/system/tesseractd.service <<'EOF'
+[Unit]
+Description=Tesseract Daemon
+Documentation=https://github.com/patrostkowski/controlplane-operator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tesseractd
+Restart=always
+RestartSec=5
+
+# run as root (explicit for clarity)
+User=root
+Group=root
+
+# basic hardening (safe defaults)
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+
+# allow writing where needed (adjust if tesseractd needs more)
+ReadWritePaths=/var /run /tmp /etc/hosts /etc/kubernetes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+RUN systemctl enable tesseractd.service
+
+### ### ### ### ### ### ### ### ### 
+### kubelet
+### ### ### ### ### ### ### ### ### 
+
+COPY config/systemd/kubelet.service /etc/systemd/system/kubelet.service
+COPY config/kubelet/config.yaml /etc/kubernetes/config.yaml
+
+CMD ["/bin/bash"]
