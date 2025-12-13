@@ -43,6 +43,10 @@ func (m *ManagedScheduler) GetConditions() *[]metav1.Condition {
 	return &m.Status.Conditions
 }
 
+func (m *ManagedAddon) GetConditions() *[]metav1.Condition {
+	return &m.Status.Conditions
+}
+
 func (m *ManagedPKI) GetStatus() *controlplane.Status {
 	return &m.Status.Status
 }
@@ -64,5 +68,9 @@ func (m *ManagedScheduler) GetStatus() *controlplane.Status {
 }
 
 func (m *ManagedControlPlane) GetStatus() *controlplane.Status {
+	return &m.Status.Status
+}
+
+func (m *ManagedAddon) GetStatus() *controlplane.Status {
 	return &m.Status.Status
 }

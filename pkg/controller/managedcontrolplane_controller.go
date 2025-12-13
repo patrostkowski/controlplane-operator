@@ -126,6 +126,10 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
+	if res, err := r.reconcileAddon(ctx, mcpObj, log); !res.IsZero() || err != nil {
+		return res, err
+	}
+
 	if err := r.UpdateCondition(ctx, mcpObj,
 		controlplane.Conditions{
 			Type:    controlplane.ConditionReady,
@@ -181,6 +185,12 @@ func (r *ManagedControlPlaneReconciler) deleteChildren(
 		&mcpv1alpha1.ManagedScheduler{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      baseName + "-scheduler",
+				Namespace: ns,
+			},
+		},
+		&mcpv1alpha1.ManagedAddon{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      baseName + "-addon",
 				Namespace: ns,
 			},
 		},
@@ -463,6 +473,57 @@ func (r *ManagedControlPlaneReconciler) reconcileScheduler(
 
 	if !r.isReadyForLatestSpec(current, current.Status.Conditions) {
 		log.Info("ManagedScheduler not Ready yet, waiting",
+			"child", current.GetName(),
+			"generation", current.GetGeneration(),
+		)
+		// if err := r.updateCondition(ctx, mcp, false); err != nil {
+		// 	return ctrl.Result{}, err
+		// }
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	log.Info("ManagedScheduler Ready")
+	return ctrl.Result{}, nil
+}
+
+func (r *ManagedControlPlaneReconciler) reconcileAddon(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+	log logr.Logger,
+) (ctrl.Result, error) {
+	baseName := mcp.Name
+	addonName := baseName + "-addon"
+
+	addon := &mcpv1alpha1.ManagedAddon{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      addonName,
+			Namespace: mcp.Namespace,
+		},
+	}
+
+	if err := r.createOrUpdateOwned(ctx, mcp, addon, func() error {
+		addon.Spec.ControlPlaneName = mcp.Name
+		// temporary set to Helm
+		addon.Spec.Type = "Helm"
+		addon.Spec.Version = mcp.Spec.Version
+		return nil
+	}); err != nil {
+		log.Error(err, "failed to reconcile ManagedAddon")
+		return ctrl.Result{}, err
+	}
+
+	current := &mcpv1alpha1.ManagedAddon{}
+	if err := r.Get(ctx, client.ObjectKeyFromObject(addon), current); err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("ManagedAddon not yet visible, requeueing")
+			// err = r.updateCondition(ctx, mcp, false)
+			return ctrl.Result{Requeue: true}, err
+		}
+		return ctrl.Result{}, err
+	}
+
+	if !r.isReadyForLatestSpec(current, current.Status.Conditions) {
+		log.Info("ManagedAddon not Ready yet, waiting",
 			"child", current.GetName(),
 			"generation", current.GetGeneration(),
 		)
