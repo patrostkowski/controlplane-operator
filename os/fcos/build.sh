@@ -60,9 +60,11 @@ fi
 echo "Inputs changed (or missing output). Building qcow2..."
 echo "${fingerprint}" > "${STAMP}.tmp"
 
-sudo podman build --pull=newer -t "${IMAGE}" .
+podman --connection podman-machine-default-root-root build --pull=newer -t "${IMAGE}" .
 
-sudo podman run \
+chmod -R a+rwx "${SCRIPT_DIR}/output"
+
+podman --connection podman-machine-default-root-root run \
   --rm -it \
   --privileged \
   --pull=newer \
