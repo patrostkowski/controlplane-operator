@@ -131,6 +131,7 @@ case "${subcmd}" in
       docker run -d --name "${dhcp_name}" \
         --network "${net}" \
         --cap-add NET_ADMIN \
+        --cap-add NET_RAW \
         --restart unless-stopped \
         "${DEFAULT_DHCP_IMAGE}" \
         --dhcp-range="${DEFAULT_DHCP_RANGE}" >/dev/null

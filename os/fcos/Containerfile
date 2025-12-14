@@ -65,17 +65,17 @@ RUN systemctl enable qemu-guest-agent
 ### kernel config
 ### ### ### ### ### ### ### ### ### 
 
-RUN cat > /usr/lib/sysctl.d/99-quiet-kernel.conf << EOF
+RUN cat > /usr/lib/sysctl.d/99-quiet-kernel.conf <<EOF
 # Only print kernel errors to console
 kernel.printk = 3 3 3 3
 EOF
 
-RUN cat > /usr/lib/modules-load.d/99-kubernetes.conf << EOF
+RUN cat > /usr/lib/modules-load.d/99-kubernetes.conf <<EOF
 overlay
 br_netfilter
 EOF
 
-RUN cat > /usr/lib/sysctl.d/99-kubernetes.conf << EOF
+RUN cat > /usr/lib/sysctl.d/99-kubernetes.conf <<EOF
 # Required for Kubernetes networking
 net.bridge.bridge-nf-call-iptables  = 1
 net.bridge.bridge-nf-call-ip6tables = 1
@@ -86,7 +86,7 @@ EOF
 ### writable /opt
 ### ### ### ### ### ### ### ### ### 
 
-RUN cat > /usr/lib/systemd/system/opt.mount << EOF
+RUN cat > /usr/lib/systemd/system/opt.mount <<EOF
 [Unit]
 Description=Writable /opt (backed by /var/opt)
 Before=local-fs.target
@@ -107,7 +107,7 @@ RUN systemctl enable opt.mount
 ### ### ### ### ### ### ### ### ### 
 
 RUN rm -f /etc/motd.d/* || true
-RUN cat > /etc/motd << 'EOF'
+RUN cat > /etc/motd <<'EOF'
   ██████╗ ██████╗ ███████╗
  ██╔════╝██╔═══██╗██╔════╝
  ██║     ██║   ██║███████╗   ContainerOS (COS)
@@ -129,7 +129,7 @@ ANSI_COLOR="0;34"
 HOME_URL="${COS_HOME_URL}"
 EOF
 
-RUN cat > /etc/issue << EOF
+RUN cat > /etc/issue <<EOF
 ${COS_NAME} \r (\l)
 Authorized access only.
 EOF
