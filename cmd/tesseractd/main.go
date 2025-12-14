@@ -123,10 +123,10 @@ func (s *agentServer) Join(ctx context.Context, req *agentv1alpha1.JoinRequest) 
 	}
 
 	caPath := filepath.Join(pkiDir, "ca.crt")
-	klog.InfoS("Fetching Kubernetes API certificate", "server", "kubernetes:443", "out", caPath)
-	if err := fetchFirstPeerCertToFile(ctx, "kubernetes:443", caPath); err != nil {
+	klog.InfoS("Fetching Kubernetes API certificate", "server", "kubernetes:6443", "out", caPath)
+	if err := fetchFirstPeerCertToFile(ctx, "kubernetes:6443", caPath); err != nil {
 		wrapped := fmt.Errorf("fetching api cert: %w", err)
-		klog.Error(wrapped, "Join step failed", "step", "fetchFirstPeerCertToFile", "server", "kubernetes:443", "out", caPath)
+		klog.Error(wrapped, "Join step failed", "step", "fetchFirstPeerCertToFile", "server", "kubernetes:6443", "out", caPath)
 		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, wrapped
 	}
 
@@ -202,7 +202,7 @@ func fetchFirstPeerCertToFile(ctx context.Context, hostport, outPath string) err
 		return fmt.Errorf("openssl not found in PATH: %w", err)
 	}
 
-	// Equivalent-ish to: echo '' | openssl s_client -connect kubernetes:443 -showcerts
+	// Equivalent-ish to: echo '' | openssl s_client -connect kubernetes:6443 -showcerts
 	cmd := exec.CommandContext(ctx, "openssl", "s_client", "-connect", hostport, "-showcerts")
 	cmd.Stdin = strings.NewReader("\n")
 
@@ -260,7 +260,7 @@ clusters:
 - name: default
   cluster:
     certificate-authority: /etc/kubernetes/pki/ca.crt
-    server: https://kubernetes:443
+    server: https://kubernetes:6443
 
 contexts:
 - name: default

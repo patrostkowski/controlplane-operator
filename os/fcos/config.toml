@@ -1,5 +1,4 @@
 [[customizations.user]]
 name = "root"
 password = "root"
-key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHbgvmhgzfePK1llpJoQu5MCiMKHVjCef+MZn93q5lm1 patrostkowski@fedora"
 groups = ["wheel"]

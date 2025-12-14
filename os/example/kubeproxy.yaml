@@ -49,35 +49,30 @@ data:
     apiVersion: kubeproxy.config.k8s.io/v1alpha1
     kind: KubeProxyConfiguration
     mode: "iptables"
-    clusterCIDR: "10.200.0.0/16"   # CLUSTER_CIDR (your Pod CIDR)
+    clusterCIDR: "10.244.0.0/16"   # CLUSTER_CIDR (your Pod CIDR)
     clientConnection:
       kubeconfig: /var/lib/kube-proxy/kubeconfig.conf
     # You can add:
     # bindAddress: "0.0.0.0"
     # metricsBindAddress: "0.0.0.0:10249"
-
-  # kubeconfig that pins:
-  # - apiserver URL
-  # - CA from the ServiceAccount mount
-  # - token from the ServiceAccount mount
   kubeconfig.conf: |
     apiVersion: v1
     kind: Config
     clusters:
     - name: default
       cluster:
+        server: https://172.30.0.250:6443
         certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-        server: https://kubernetes:443
+    users:
+    - name: kube-proxy
+      user:
+        tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
     contexts:
     - name: default
       context:
         cluster: default
-        user: default
+        user: kube-proxy
     current-context: default
-    users:
-    - name: default
-      user:
-        tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
 
 ---
 apiVersion: apps/v1

@@ -126,9 +126,9 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	}
 
-	if res, err := r.reconcileAddon(ctx, mcpObj, log); !res.IsZero() || err != nil {
-		return res, err
-	}
+	// if res, err := r.reconcileAddon(ctx, mcpObj, log); !res.IsZero() || err != nil {
+	// 	return res, err
+	// }
 
 	if err := r.UpdateCondition(ctx, mcpObj,
 		controlplane.Conditions{

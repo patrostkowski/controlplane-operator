@@ -101,24 +101,6 @@ data:
         "Type": "vxlan"
       }
     }
-  kubeconfig.conf: |
-    apiVersion: v1
-    kind: Config
-    clusters:
-    - name: default
-      cluster:
-        certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-        server: https://kubernetes:443
-    contexts:
-    - name: default
-      context:
-        cluster: default
-        user: default
-    current-context: default
-    users:
-    - name: default
-      user:
-        tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
 kind: ConfigMap
 metadata:
   labels:
@@ -162,7 +144,6 @@ spec:
       - args:
         - --ip-masq
         - --kube-subnet-mgr
-        - --kubeconfig-file=/var/lib/kube-flannel/kubeconfig.conf
         command:
         - /opt/bin/flanneld
         env:
@@ -195,9 +176,6 @@ spec:
           name: run
         - mountPath: /etc/kube-flannel/
           name: flannel-cfg
-        - name: flannel-kubeconfig
-          mountPath: /var/lib/kube-flannel
-          readOnly: true
         - mountPath: /run/xtables.lock
           name: xtables-lock
       hostNetwork: true
@@ -244,12 +222,6 @@ spec:
       - configMap:
           name: kube-flannel-cfg
         name: flannel-cfg
-      - name: flannel-kubeconfig
-        configMap:
-          name: kube-flannel-cfg
-          items:
-          - key: kubeconfig.conf
-            path: kubeconfig.conf
       - hostPath:
           path: /run/xtables.lock
           type: FileOrCreate

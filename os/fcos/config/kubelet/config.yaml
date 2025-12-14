@@ -21,6 +21,9 @@ containerRuntimeEndpoint: "unix:///run/crio/crio.sock"
 failSwapOn: false
 
 clusterDomain: cluster.local
+clusterDNS:
+  - 10.200.0.10
+resolvConf: "/run/systemd/resolve/resolv.conf"
 
 # API server auth (typical kubeadm-style settings)
 authentication:

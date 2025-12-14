@@ -184,5 +184,6 @@ RUN systemctl enable tesseractd.service
 
 COPY config/systemd/kubelet.service /etc/systemd/system/kubelet.service
 COPY config/kubelet/config.yaml /etc/kubernetes/config.yaml
+RUN systemctl enable kubelet crio && rm -rf /etc/cni/net.d/*
 
 CMD ["/bin/bash"]

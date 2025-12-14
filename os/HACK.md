@@ -62,5 +62,5 @@ EOF
 on worker node
 
 ```
-echo '' | openssl s_client -connect kubernetes:443 -showcerts 2>&1 | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{ if (/END CERTIFICATE/){ print ; exit } print }' > /etc/kubernetes/pki/ca.crt
+echo '' | openssl s_client -connect kubernetes:6443 -showcerts 2>&1 | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{ if (/END CERTIFICATE/){ print ; exit } print }' > /etc/kubernetes/pki/ca.crt
 ```
