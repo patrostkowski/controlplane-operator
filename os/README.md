@@ -32,6 +32,12 @@ Your SSH public key must exist at:
 ~/.ssh/id_ed25519.pub
 ```
 
+Create podman machine:
+
+```bash
+podman machine init --rootful --now podman-machine-default-root
+```
+
 ---
 
 ## 1. Build the node image
