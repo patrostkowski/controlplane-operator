@@ -25,7 +25,7 @@ data:
     clusters:
     - name: local
       cluster:
-        server: https://kube-apiserver.managed-k8s.svc:443
+        server: https://kube-apiserver.managed-k8s.svc:6443
         certificate-authority: /var/run/k8s/ca/ca.crt      # << file path (mounted)
     contexts:
     - name: local
@@ -51,7 +51,7 @@ data:
     clusters:
     - name: local
       cluster:
-        server: https://kube-apiserver.managed-k8s.svc:443
+        server: https://kube-apiserver.managed-k8s.svc:6443
         certificate-authority: /var/run/k8s/ca/ca.crt      # << file path (mounted)
     contexts:
     - name: local

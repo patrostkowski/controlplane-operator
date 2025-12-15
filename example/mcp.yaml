@@ -73,7 +73,7 @@ data:
     clusters:
     - name: managed
       cluster:
-        server: https://kube-apiserver.mcp.svc:443
+        server: https://kube-apiserver.mcp.svc:6443
         certificate-authority: /var/run/k8s/ca/ca.crt
     contexts:
     - name: managed

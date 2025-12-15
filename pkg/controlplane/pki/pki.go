@@ -49,6 +49,7 @@ type PKICertificateSpec struct {
 	RenewBefore   *metav1.Duration
 	Usages        []certmanagerv1.KeyUsage
 	DNSNames      []string
+	IPAddresses   []string
 	Organizations []string
 }
 
@@ -155,6 +156,11 @@ func Resources(pkiObj *mcpv1alpha1.ManagedPKI) []client.Object {
 				"kubernetes.default.svc",
 				"kubernetes.default.svc.cluster.local",
 				"localhost",
+			},
+			IPAddresses: []string{
+				"172.30.0.250", // todo use dynamic LB address instead
+				"10.200.0.1",   // use first addr from cluster IP
+				"127.0.0.1",
 			},
 		},
 
@@ -397,6 +403,9 @@ func BuildCertificate(spec PKICertificateSpec) *certmanagerv1.Certificate {
 	if len(spec.DNSNames) > 0 {
 		certSpec.DNSNames = spec.DNSNames
 	}
+	if len(spec.IPAddresses) > 0 {
+		certSpec.IPAddresses = spec.IPAddresses
+	}
 	if len(spec.Organizations) > 0 {
 		certSpec.Subject = &certmanagerv1.X509Subject{
 			Organizations: spec.Organizations,
@@ -429,7 +438,7 @@ func BuildConfigMap(pki *mcpv1alpha1.ManagedPKI) *corev1.ConfigMap {
 }
 
 func BuildAdminKubeconfig(namespace string) *clientcmdapi.Config {
-	serverURL := "https://kube-apiserver." + namespace + ".svc:443"
+	serverURL := "https://kube-apiserver." + namespace + ".svc:6443"
 
 	cfg := clientcmdapi.NewConfig()
 

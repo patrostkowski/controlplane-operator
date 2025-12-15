@@ -130,7 +130,7 @@ func (r *ManagedAddonReconciler) getChildConfig(
 	RESTKubeConf := &rest.Config{
 		// when testing with dev:run target
 		// it works only with port forwarding
-		Host: "https://127.0.0.1:6443",
+		Host: "https://172.30.0.250:6443", // TODO get actual API address
 		TLSClientConfig: rest.TLSClientConfig{
 			Insecure: true,
 			// comment as with insecure flag it won't work

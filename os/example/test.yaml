@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: busybox-app-1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: busybox-app-1
+  template:
+    metadata:
+      labels:
+        app: busybox-app-1
+    spec:
+      containers:
+      - name: busybox
+        image: busybox:latest
+        ports:
+        - containerPort: 8080
+        command: ["sh","-c"]
+        args:
+          - |
+            mkdir -p /www
+            echo "Hello from busybox app 1" > /www/index.html
+            exec httpd -f -p 8080 -h /www
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: busybox-service-1
+spec:
+  selector:
+    app: busybox-app-1
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: busybox-app-2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: busybox-app-2
+  template:
+    metadata:
+      labels:
+        app: busybox-app-2
+    spec:
+      containers:
+      - name: busybox
+        image: busybox:latest
+        ports:
+        - containerPort: 8080
+        command: ["sh","-c"]
+        args:
+          - |
+            mkdir -p /www
+            echo "Hello from busybox app 2" > /www/index.html
+            exec httpd -f -p 8080 -h /www
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: busybox-service-2
+spec:
+  selector:
+    app: busybox-app-2
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8080

@@ -54,14 +54,14 @@ func buildConfigMap(cm *mcpv1alpha1.ManagedControllerManager) *corev1.ConfigMap 
 }
 
 func buildControllerManagerKubeconfig(namespace string) *clientcmdapi.Config {
-	serverURL := "https://kube-apiserver." + namespace + ".svc:443"
+	serverURL := "https://kube-apiserver." + namespace + ".svc:6443"
 
 	cfg := clientcmdapi.NewConfig()
 
 	// --- Cluster ---
 	cfg.Clusters["local"] = &clientcmdapi.Cluster{
 		Server:               serverURL,
-		CertificateAuthority: "/var/run/k8s/ca/ca.crt",
+		CertificateAuthority: "/var/run/k8s/ca/tls.crt",
 	}
 
 	// --- User ---

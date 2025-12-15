@@ -23,7 +23,7 @@ spec:
     app: kube-apiserver
   ports:
     - name: https
-      port: 443
+      port: 6443
       targetPort: 6443
 ---
 apiVersion: apps/v1

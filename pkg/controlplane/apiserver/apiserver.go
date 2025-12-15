@@ -49,7 +49,7 @@ func buildService(api *mcpv1alpha1.ManagedAPIServer) *corev1.Service {
 			Ports: []corev1.ServicePort{
 				{
 					Name:       "https",
-					Port:       443,
+					Port:       6443,
 					TargetPort: intstrFromInt(6443),
 				},
 			},
@@ -91,7 +91,7 @@ func buildDeployment(api *mcpv1alpha1.ManagedAPIServer) *appsv1.Deployment {
 								"kube-apiserver",
 							},
 							Args: []string{
-								"--advertise-address=0.0.0.0",
+								"--advertise-address=172.30.0.250", // TODO: use domain instead IP
 								"--bind-address=0.0.0.0",
 								"--secure-port=6443",
 								"--service-cluster-ip-range=10.200.0.0/16",
