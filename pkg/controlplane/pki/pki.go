@@ -20,10 +20,7 @@ import (
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	certmanagermeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -336,8 +333,6 @@ func Resources(pkiObj *mcpv1alpha1.ManagedPKI) []client.Object {
 		objs = append(objs, BuildCertificate(cs))
 	}
 
-	objs = append(objs, BuildConfigMap(pkiObj))
-
 	return objs
 }
 
@@ -414,53 +409,4 @@ func BuildCertificate(spec PKICertificateSpec) *certmanagerv1.Certificate {
 
 	c.Spec = certSpec
 	return c
-}
-
-func BuildConfigMap(pki *mcpv1alpha1.ManagedPKI) *corev1.ConfigMap {
-	ns := pki.Namespace
-
-	kcfg := BuildAdminKubeconfig(ns)
-
-	kubeconfigData, err := clientcmd.Write(*kcfg)
-	if err != nil {
-		panic(err) // should never happen
-	}
-
-	return &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "admin-kubeconfig",
-			Namespace: ns,
-		},
-		Data: map[string]string{
-			"config": string(kubeconfigData),
-		},
-	}
-}
-
-func BuildAdminKubeconfig(namespace string) *clientcmdapi.Config {
-	serverURL := "https://kube-apiserver." + namespace + ".svc:6443"
-
-	cfg := clientcmdapi.NewConfig()
-
-	// --- Cluster ---
-	cfg.Clusters["local"] = &clientcmdapi.Cluster{
-		Server:                   serverURL,
-		CertificateAuthorityData: []byte{},
-	}
-
-	// --- User ---
-	cfg.AuthInfos["local"] = &clientcmdapi.AuthInfo{
-		ClientCertificateData: []byte{},
-		ClientKeyData:         []byte{},
-	}
-
-	// --- Context ---
-	cfg.Contexts["local"] = &clientcmdapi.Context{
-		Cluster:  "local",
-		AuthInfo: "local",
-	}
-
-	cfg.CurrentContext = "local"
-
-	return cfg
 }

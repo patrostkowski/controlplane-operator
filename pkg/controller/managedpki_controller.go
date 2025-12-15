@@ -26,7 +26,10 @@ import (
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -107,6 +110,12 @@ func (r *ManagedPKIReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
+	// We wait for certManger resources ensured
+	// so it shouldn't fail
+	if err := r.ensureAdminConfig(ctx, req.Namespace); err != nil {
+		return ctrl.Result{}, nil
+	}
+
 	log.Info("Finished reconciling ManagedPKI")
 
 	return ctrl.Result{}, nil
@@ -117,7 +126,6 @@ func (r *ManagedPKIReconciler) ensureResources(
 	pkiObj *mcpv1alpha1.ManagedPKI,
 	resources []client.Object,
 ) error {
-
 	for _, desired := range resources {
 		r.Log.Info("Ensuring PKI resource", "name", desired.GetName(), "namespace", desired.GetNamespace(), "kind", desired.GetObjectKind())
 
@@ -143,7 +151,6 @@ func (r *ManagedPKIReconciler) checkResourcesReady(
 	ctx context.Context,
 	resources []client.Object,
 ) (bool, error) {
-
 	allReady := true
 
 	for _, desired := range resources {
@@ -180,6 +187,59 @@ func (r *ManagedPKIReconciler) checkResourcesReady(
 	}
 
 	return allReady, nil
+}
+
+// Still it doesnt look perfect
+func (r *ManagedPKIReconciler) ensureAdminConfig(ctx context.Context, ns string) error {
+	// hardcoded until we find a way to pass
+	// API server addr
+	serverURL := "https://172.30.0.250:6443"
+	// get admin-client secret
+	adminClient := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Name: "admin-client", Namespace: ns}, adminClient); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+
+	ca := adminClient.Data["ca.crt"]
+	crt := adminClient.Data["tls.crt"]
+	key := adminClient.Data["tls.key"]
+
+	// build kubecfg
+	cfg := clientcmdapi.NewConfig()
+	cfg.Clusters["local"] = &clientcmdapi.Cluster{
+		Server:                   serverURL,
+		CertificateAuthorityData: ca,
+	}
+	cfg.AuthInfos["local"] = &clientcmdapi.AuthInfo{
+		ClientCertificateData: crt,
+		ClientKeyData:         key,
+	}
+	cfg.Contexts["local"] = &clientcmdapi.Context{Cluster: "local", AuthInfo: "local"}
+	cfg.CurrentContext = "local"
+
+	kubeconfigBytes, err := clientcmd.Write(*cfg)
+	if err != nil {
+		return err
+	}
+
+	s := &corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Secret",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "admin-config",
+			Namespace: ns,
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: map[string][]byte{"config": kubeconfigBytes},
+	}
+
+	if err := r.Patch(ctx, s, client.Apply, client.FieldOwner("managedpki-controller")); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r *ManagedPKIReconciler) isIssuerReady(iss *certmanagerv1.Issuer) bool {
