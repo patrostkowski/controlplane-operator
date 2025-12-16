@@ -23,105 +23,48 @@ import (
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/apiserver"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
 
-type ManagedAPIServerReconciler struct {
-	controlplane.BaseReconciler
-}
+func (r *ManagedControlPlaneReconciler) reconcileAPIServer(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
+	log := r.Log.WithValues("apiserver", mcp.GetObjectMeta().GetNamespace())
 
-func (r *ManagedAPIServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("managedapiserver", req.NamespacedName)
+	log.Info("Reconciling API Server")
 
-	apiObj := &mcpv1alpha1.ManagedAPIServer{}
-	if err := r.Get(ctx, req.NamespacedName, apiObj); err != nil {
-		if apierrors.IsNotFound(err) {
-			return ctrl.Result{}, nil
-		}
+	resources := apiserver.Resources(mcp)
+
+	if err := r.ensureAPIServerResources(ctx, mcp, resources, log); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	log.Info("Reconciling ManagedAPIServer")
-
-	if err := r.UpdateCondition(ctx, apiObj,
-		controlplane.Conditions{
-			Type:    controlplane.ConditionReconciling,
-			Status:  metav1.ConditionFalse,
-			Reason:  controlplane.ReasonReconciling,
-			Message: controlplane.MessageReconciling,
-		},
-		controlplane.Status{
-			Ready:   false,
-			Message: "reconciling",
-		},
-	); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	resources := apiserver.Resources(apiObj)
-
-	if err := r.ensureResources(ctx, apiObj, resources, log); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	allReady, err := r.checkResourcesReady(ctx, resources, log)
+	allReady, err := r.checkAPIServerResourcesReady(ctx, resources, log)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	if !allReady {
-		_ = r.UpdateCondition(ctx, apiObj,
-			controlplane.Conditions{
-				Type:    controlplane.ConditionWaitingForResource,
-				Status:  metav1.ConditionFalse,
-				Reason:  controlplane.ReasonWaitingForResources,
-				Message: controlplane.MessageWaitingForResources,
-			},
-			controlplane.Status{
-				Ready:   false,
-				Message: "awaiting all ready",
-			},
-		)
-		log.Info("requeueing reconcile for API Server controller")
+		log.Info("requeueing reconcile for API Server")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	if err := r.UpdateCondition(ctx, apiObj,
-		controlplane.Conditions{
-			Type:    controlplane.ConditionReady,
-			Status:  metav1.ConditionTrue,
-			Reason:  controlplane.ReasonAllResourcesReady,
-			Message: controlplane.MessageAllResourcesReady,
-		},
-		controlplane.Status{
-			Ready:   true,
-			Message: "all ready",
-		},
-	); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	log.Info("Finished reconciling ManagedAPIServer")
+	log.Info("Finished reconciling API Server")
 	return ctrl.Result{}, nil
 }
 
-func (r *ManagedAPIServerReconciler) ensureResources(
+func (r *ManagedControlPlaneReconciler) ensureAPIServerResources(
 	ctx context.Context,
-	apiObj *mcpv1alpha1.ManagedAPIServer,
+	mcp *mcpv1alpha1.ManagedControlPlane,
 	resources []client.Object,
 	log logr.Logger,
 ) error {
 	for _, desired := range resources {
 		log.Info("Ensuring APIServer resource", "kind", desired.GetObjectKind().GroupVersionKind().Kind, "name", desired.GetName())
 
-		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, apiObj, desired, log, func(obj client.Object) error {
+		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, mcp, desired, log, func(obj client.Object) error {
 			switch o := obj.(type) {
 			case *corev1.Service:
 				d := desired.(*corev1.Service)
@@ -147,7 +90,7 @@ func (r *ManagedAPIServerReconciler) ensureResources(
 	return nil
 }
 
-func (r *ManagedAPIServerReconciler) checkResourcesReady(
+func (r *ManagedControlPlaneReconciler) checkAPIServerResourcesReady(
 	ctx context.Context,
 	resources []client.Object,
 	log logr.Logger,
@@ -186,20 +129,4 @@ func (r *ManagedAPIServerReconciler) checkResourcesReady(
 	}
 
 	return allReady, nil
-}
-
-func SetupManagedAPIServerReconciler(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&mcpv1alpha1.ManagedAPIServer{}).
-		Owns(&corev1.Service{}).
-		Owns(&appsv1.Deployment{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
-		Complete(&ManagedAPIServerReconciler{
-			BaseReconciler: controlplane.BaseReconciler{
-				Client:   mgr.GetClient(),
-				Log:      ctrl.Log.WithName("controller").WithName("ManagedAPIServer"),
-				Recorder: mgr.GetEventRecorderFor("managedapiserver"),
-				Scheme:   mgr.GetScheme(),
-			},
-		})
 }

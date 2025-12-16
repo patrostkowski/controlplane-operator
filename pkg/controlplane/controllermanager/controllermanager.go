@@ -26,14 +26,14 @@ import (
 )
 
 // Resources returns ConfigMap + Deployment for kube-controller-manager.
-func Resources(cm *mcpv1alpha1.ManagedControllerManager) []client.Object {
+func Resources(cm *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	return []client.Object{
 		buildConfigMap(cm),
 		buildDeployment(cm),
 	}
 }
 
-func buildConfigMap(cm *mcpv1alpha1.ManagedControllerManager) *corev1.ConfigMap {
+func buildConfigMap(cm *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 	ns := cm.Namespace
 	kcfg := buildControllerManagerKubeconfig(ns)
 
@@ -81,7 +81,7 @@ func buildControllerManagerKubeconfig(namespace string) *clientcmdapi.Config {
 	return cfg
 }
 
-func buildDeployment(cm *mcpv1alpha1.ManagedControllerManager) *appsv1.Deployment {
+func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	ns := cm.Namespace
 	labels := map[string]string{"app": "kcm"}
 	replicas := int32(1)

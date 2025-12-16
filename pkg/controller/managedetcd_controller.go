@@ -20,107 +20,50 @@ import (
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/etcd"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
 
-type ManagedETCDReconciler struct {
-	controlplane.BaseReconciler
-}
+func (r *ManagedControlPlaneReconciler) reconcileETCD(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
+	log := r.Log.WithValues("etcd", mcp.GetObjectMeta().GetNamespace())
 
-func (r *ManagedETCDReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("managedetcd", req.NamespacedName)
+	log.Info("Reconciling ETCD")
 
-	etcdObj := &mcpv1alpha1.ManagedETCD{}
-	if err := r.Get(ctx, req.NamespacedName, etcdObj); err != nil {
-		if apierrors.IsNotFound(err) {
-			return ctrl.Result{}, nil
-		}
+	resources := etcd.Resources(mcp)
+
+	if err := r.ensureETCDResources(ctx, mcp, resources, log); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	log.Info("Reconciling ManagedETCD")
-
-	if err := r.UpdateCondition(ctx, etcdObj,
-		controlplane.Conditions{
-			Type:    controlplane.ConditionReconciling,
-			Status:  metav1.ConditionFalse,
-			Reason:  controlplane.ReasonReconciling,
-			Message: controlplane.MessageReconciling,
-		},
-		controlplane.Status{
-			Ready:   false,
-			Message: "reconciling",
-		},
-	); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	resources := etcd.Resources(etcdObj)
-
-	if err := r.ensureResources(ctx, etcdObj, resources, log); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	allReady, err := r.checkResourcesReady(ctx, resources, log)
+	allReady, err := r.checkETCDResourcesReady(ctx, resources, log)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	if !allReady {
-		_ = r.UpdateCondition(ctx, etcdObj,
-			controlplane.Conditions{
-				Type:    controlplane.ConditionWaitingForResource,
-				Status:  metav1.ConditionFalse,
-				Reason:  controlplane.ReasonWaitingForResources,
-				Message: controlplane.MessageWaitingForResources,
-			},
-			controlplane.Status{
-				Ready:   false,
-				Message: "awaiting all ready",
-			},
-		)
-		log.Info("requeueing reconcile for ETCD controller")
+		log.Info("requeueing reconcile for ETCD")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	if err := r.UpdateCondition(ctx, etcdObj,
-		controlplane.Conditions{
-			Type:    controlplane.ConditionReady,
-			Status:  metav1.ConditionTrue,
-			Reason:  controlplane.ReasonAllResourcesReady,
-			Message: controlplane.MessageAllResourcesReady,
-		},
-		controlplane.Status{
-			Ready:   true,
-			Message: "all ready",
-		},
-	); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	log.Info("Finished reconciling ManagedETCD")
+	log.Info("Finished reconciling ETCD")
 	return ctrl.Result{}, nil
 }
 
-func (r *ManagedETCDReconciler) ensureResources(
+func (r *ManagedControlPlaneReconciler) ensureETCDResources(
 	ctx context.Context,
-	etcdObj *mcpv1alpha1.ManagedETCD,
+	mcp *mcpv1alpha1.ManagedControlPlane,
 	resources []client.Object,
 	log logr.Logger,
 ) error {
 	for _, desired := range resources {
 		log.Info("Ensuring etcd resource", "kind", desired.GetObjectKind().GroupVersionKind().Kind, "name", desired.GetName())
 
-		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, etcdObj, desired, log, func(obj client.Object) error {
+		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, mcp, desired, log, func(obj client.Object) error {
 			switch o := obj.(type) {
 			case *corev1.Service:
 				d := desired.(*corev1.Service)
@@ -147,7 +90,7 @@ func (r *ManagedETCDReconciler) ensureResources(
 	return nil
 }
 
-func (r *ManagedETCDReconciler) checkResourcesReady(
+func (r *ManagedControlPlaneReconciler) checkETCDResourcesReady(
 	ctx context.Context,
 	resources []client.Object,
 	log logr.Logger,
@@ -199,20 +142,4 @@ func mergeStringMap(dst, src map[string]string) map[string]string {
 		dst[k] = v
 	}
 	return dst
-}
-
-func SetupManagedETCDReconciler(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&mcpv1alpha1.ManagedETCD{}).
-		Owns(&appsv1.StatefulSet{}).
-		Owns(&corev1.Service{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
-		Complete(&ManagedETCDReconciler{
-			BaseReconciler: controlplane.BaseReconciler{
-				Client:   mgr.GetClient(),
-				Log:      ctrl.Log.WithName("controller").WithName("ManagedETCD"),
-				Recorder: mgr.GetEventRecorderFor("managedetcd"),
-				Scheme:   mgr.GetScheme(),
-			},
-		})
 }

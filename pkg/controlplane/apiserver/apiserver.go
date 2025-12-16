@@ -24,14 +24,14 @@ import (
 )
 
 // Resources returns Service + Deployment for the kube-apiserver.
-func Resources(api *mcpv1alpha1.ManagedAPIServer) []client.Object {
+func Resources(api *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	return []client.Object{
 		buildService(api),
 		buildDeployment(api),
 	}
 }
 
-func buildService(api *mcpv1alpha1.ManagedAPIServer) *corev1.Service {
+func buildService(api *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 	ns := api.Namespace
 	name := "kube-apiserver"
 	labels := map[string]string{
@@ -58,7 +58,7 @@ func buildService(api *mcpv1alpha1.ManagedAPIServer) *corev1.Service {
 	}
 }
 
-func buildDeployment(api *mcpv1alpha1.ManagedAPIServer) *appsv1.Deployment {
+func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	ns := api.Namespace
 	name := "kube-apiserver"
 	labels := map[string]string{"app": "kube-apiserver"}

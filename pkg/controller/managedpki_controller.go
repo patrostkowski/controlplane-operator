@@ -22,109 +22,52 @@ import (
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	certmanagermeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/pki"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
 
-type ManagedPKIReconciler struct {
-	controlplane.BaseReconciler
-}
+func (r *ManagedControlPlaneReconciler) reconcilePKI(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
+	log := r.Log.WithValues("pki", mcp.GetObjectMeta().GetNamespace())
 
-func (r *ManagedPKIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("managedpki", req.NamespacedName)
+	log.Info("Reconciling PKI")
 
-	pkiObj := &mcpv1alpha1.ManagedPKI{}
-	if err := r.Get(ctx, req.NamespacedName, pkiObj); err != nil {
-		if apierrors.IsNotFound(err) {
-			return ctrl.Result{}, nil
-		}
+	resources := pki.Resources(mcp)
+
+	if err := r.ensurePKIResources(ctx, mcp, resources); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	log.Info("Reconciling ManagedPKI")
-
-	if err := r.UpdateCondition(ctx, pkiObj,
-		controlplane.Conditions{
-			Type:    controlplane.ConditionReconciling,
-			Status:  metav1.ConditionFalse,
-			Reason:  controlplane.ReasonReconciling,
-			Message: controlplane.MessageReconciling,
-		},
-		controlplane.Status{
-			Ready:   false,
-			Message: "reconciling",
-		},
-	); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	resources := pki.Resources(pkiObj)
-
-	if err := r.ensureResources(ctx, pkiObj, resources); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	allReady, err := r.checkResourcesReady(ctx, resources)
+	allReady, err := r.checkPKIResourcesReady(ctx, resources)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
 
 	if !allReady {
-		_ = r.UpdateCondition(ctx, pkiObj,
-			controlplane.Conditions{
-				Type:    controlplane.ConditionWaitingForResource,
-				Status:  metav1.ConditionFalse,
-				Reason:  controlplane.ReasonWaitingForResources,
-				Message: controlplane.MessageWaitingForResources,
-			},
-			controlplane.Status{
-				Ready:   false,
-				Message: "awaiting all ready",
-			},
-		)
-		log.Info("requeueing reconcile for PKI controller")
+		log.Info("requeueing reconcile for PKI")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
-	}
-
-	if err := r.UpdateCondition(ctx, pkiObj,
-		controlplane.Conditions{
-			Type:    controlplane.ConditionReady,
-			Status:  metav1.ConditionTrue,
-			Reason:  controlplane.ReasonAllResourcesReady,
-			Message: controlplane.MessageAllResourcesReady,
-		},
-		controlplane.Status{
-			Ready:   true,
-			Message: "all ready",
-		},
-	); err != nil {
-		return ctrl.Result{}, err
 	}
 
 	// We wait for certManger resources ensured
 	// so it shouldn't fail
-	if err := r.ensureAdminConfig(ctx, pkiObj, req.Namespace); err != nil {
+	if err := r.ensureAdminConfig(ctx, mcp, mcp.GetObjectMeta().GetNamespace()); err != nil {
 		return ctrl.Result{}, nil
 	}
 
-	log.Info("Finished reconciling ManagedPKI")
+	log.Info("Finished reconciling PKI")
 
 	return ctrl.Result{}, nil
 }
 
-func (r *ManagedPKIReconciler) ensureResources(
+func (r *ManagedControlPlaneReconciler) ensurePKIResources(
 	ctx context.Context,
-	pkiObj *mcpv1alpha1.ManagedPKI,
+	pkiObj *mcpv1alpha1.ManagedControlPlane,
 	resources []client.Object,
 ) error {
 	for _, desired := range resources {
@@ -148,7 +91,7 @@ func (r *ManagedPKIReconciler) ensureResources(
 	return nil
 }
 
-func (r *ManagedPKIReconciler) checkResourcesReady(
+func (r *ManagedControlPlaneReconciler) checkPKIResourcesReady(
 	ctx context.Context,
 	resources []client.Object,
 ) (bool, error) {
@@ -191,9 +134,9 @@ func (r *ManagedPKIReconciler) checkResourcesReady(
 }
 
 // Still it doesnt look perfect
-func (r *ManagedPKIReconciler) ensureAdminConfig(
+func (r *ManagedControlPlaneReconciler) ensureAdminConfig(
 	ctx context.Context,
-	pkiObj *mcpv1alpha1.ManagedPKI,
+	pkiObj *mcpv1alpha1.ManagedControlPlane,
 	ns string,
 ) error {
 	// hardcoded until we find a way to pass
@@ -259,7 +202,7 @@ func (r *ManagedPKIReconciler) ensureAdminConfig(
 	return nil
 }
 
-func (r *ManagedPKIReconciler) isIssuerReady(iss *certmanagerv1.Issuer) bool {
+func (r *ManagedControlPlaneReconciler) isIssuerReady(iss *certmanagerv1.Issuer) bool {
 	for _, cond := range iss.Status.Conditions {
 		if cond.Type == certmanagerv1.IssuerConditionReady &&
 			cond.Status == certmanagermeta.ConditionTrue {
@@ -271,7 +214,7 @@ func (r *ManagedPKIReconciler) isIssuerReady(iss *certmanagerv1.Issuer) bool {
 	return false
 }
 
-func (r *ManagedPKIReconciler) isCertificateReady(cert *certmanagerv1.Certificate) bool {
+func (r *ManagedControlPlaneReconciler) isCertificateReady(cert *certmanagerv1.Certificate) bool {
 	for _, cond := range cert.Status.Conditions {
 		if cond.Type == certmanagerv1.CertificateConditionReady &&
 			cond.Status == certmanagermeta.ConditionTrue {
@@ -281,21 +224,4 @@ func (r *ManagedPKIReconciler) isCertificateReady(cert *certmanagerv1.Certificat
 	}
 	r.Log.Info("Certificate not ready", "issuer", cert.Name)
 	return false
-}
-
-func SetupManagedPKIReconciler(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&mcpv1alpha1.ManagedPKI{}).
-		Owns(&certmanagerv1.Issuer{}).
-		Owns(&certmanagerv1.Certificate{}).
-		Owns(&corev1.Secret{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
-		Complete(&ManagedPKIReconciler{
-			BaseReconciler: controlplane.BaseReconciler{
-				Client:   mgr.GetClient(),
-				Log:      ctrl.Log.WithName("controller").WithName("ManagedPKI"),
-				Recorder: mgr.GetEventRecorderFor("managedpki"),
-				Scheme:   mgr.GetScheme(),
-			},
-		})
 }

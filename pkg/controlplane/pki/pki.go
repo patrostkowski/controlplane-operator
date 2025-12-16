@@ -51,7 +51,7 @@ type PKICertificateSpec struct {
 }
 
 // Resources returns all cert-manager objects that should exist for this ManagedPKI.
-func Resources(pkiObj *mcpv1alpha1.ManagedPKI) []client.Object {
+func Resources(pkiObj *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	ns := pkiObj.Namespace
 
 	tenYears := metav1.Duration{Duration: 87600 * time.Hour} // 10 years

@@ -26,14 +26,14 @@ import (
 )
 
 // Resources returns ConfigMap + Deployment for kube-scheduler.
-func Resources(ms *mcpv1alpha1.ManagedScheduler) []client.Object {
+func Resources(ms *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	return []client.Object{
 		buildConfigMap(ms),
 		buildDeployment(ms),
 	}
 }
 
-func buildConfigMap(ms *mcpv1alpha1.ManagedScheduler) *corev1.ConfigMap {
+func buildConfigMap(ms *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 	ns := ms.Namespace
 	kcfg := buildSchedulerKubeconfig(ns)
 
@@ -83,7 +83,7 @@ func buildSchedulerKubeconfig(namespace string) *clientcmdapi.Config {
 	return cfg
 }
 
-func buildDeployment(ms *mcpv1alpha1.ManagedScheduler) *appsv1.Deployment {
+func buildDeployment(ms *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	ns := ms.Namespace
 	labels := map[string]string{"app": "ks"}
 	replicas := int32(1)

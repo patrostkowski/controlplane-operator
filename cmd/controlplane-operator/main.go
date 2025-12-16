@@ -51,24 +51,6 @@ func main() {
 	if err := controller.SetupManagedControlPlaneController(mgr); err != nil {
 		panic(err)
 	}
-	if err := controller.SetupManagedPKIReconciler(mgr); err != nil {
-		panic(err)
-	}
-	if err := controller.SetupManagedETCDReconciler(mgr); err != nil {
-		panic(err)
-	}
-	if err := controller.SetupManagedAPIServerReconciler(mgr); err != nil {
-		panic(err)
-	}
-	if err := controller.SetupManagedControllerManagerReconciler(mgr); err != nil {
-		panic(err)
-	}
-	if err := controller.SetupManagedSchedulerReconciler(mgr); err != nil {
-		panic(err)
-	}
-	if err := controller.SetupManagedAddonReconciler(mgr); err != nil {
-		panic(err)
-	}
 
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		os.Exit(1)
