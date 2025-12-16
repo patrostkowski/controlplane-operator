@@ -15,22 +15,23 @@
 package v1alpha1
 
 import (
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // ManagedControlPlaneSpec defines the desired state of ManagedControlPlane.
 type ManagedControlPlaneSpec struct {
 	// Version is the desired Kubernetes control plane version, e.g. "v1.34.0".
-	Version string `json:"version"`
+	Version    string          `json:"version"`
+	Networking *NetworkingSpec `json:"networking,omitempty"`
 }
 
 // ManagedControlPlaneStatus defines the observed state of ManagedControlPlane.
 type ManagedControlPlaneStatus struct {
 	// Conditions represents the latest available observations of the control plane's state.
 	// e.g. APIServerAvailable, EtcdHealthy, ControllersHealthy, Ready, etc.
-	Conditions          []metav1.Condition `json:"conditions,omitempty"`
-	controlplane.Status `json:",inline,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Status     `json:",inline,omitempty"`
+	Address    string `json:"address,omitempty"`
 }
 
 // ManagedControlPlane is the root CR that “owns” the other managed components.
@@ -40,6 +41,7 @@ type ManagedControlPlaneStatus struct {
 // +kubebuilder:resource:path=managedcontrolplanes,scope=Namespaced,shortName=mcp
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].message`
+// +kubebuilder:printcolumn:name="Address",type=string,JSONPath=`.status.address`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type ManagedControlPlane struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -50,11 +52,36 @@ type ManagedControlPlane struct {
 }
 
 // +kubebuilder:object:root=true
-
 // ManagedControlPlaneList contains a list of ManagedControlPlane.
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type ManagedControlPlaneList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ManagedControlPlane `json:"items"`
+}
+
+type NetworkingSpec struct {
+	// +kubebuilder:validation:Items:Pattern=`^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$`
+	// +optional
+	PodCIDR string `json:"podCIDR,omitempty"`
+
+	// +kubebuilder:validation:Items:Pattern=`^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$`
+	// +optional
+	ServiceCIDR string `json:"serviceCIDR,omitempty"`
+}
+
+type Status struct {
+	Message string `json:"message,omitempty"`
+	Ready   bool   `json:"ready,omitempty"`
+}
+
+type Condition string
+type Reason string
+type Message string
+
+type Conditions struct {
+	Type    Condition
+	Status  metav1.ConditionStatus
+	Reason  Reason
+	Message Message
 }

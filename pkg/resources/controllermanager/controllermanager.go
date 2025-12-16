@@ -114,14 +114,13 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 							Args: []string{
 								// match kind-style bind address
 								"--bind-address=127.0.0.1",
-								"--cluster-name=managed",
+								"--cluster-name=" + cm.GetObjectMeta().GetName(),
 								"--kubeconfig=/etc/kubernetes/controller-manager.conf",
 								"--authentication-kubeconfig=/etc/kubernetes/controller-manager.conf",
 								"--authorization-kubeconfig=/etc/kubernetes/controller-manager.conf",
 								"--leader-elect=true",
 								"--use-service-account-credentials=true",
 								"--controllers=*,bootstrapsigner,tokencleaner",
-								"--allocate-node-cidrs=true",
 								"--service-account-private-key-file=/var/run/k8s/sa/tls.key",
 								"--cluster-signing-cert-file=/var/run/k8s/ca/tls.crt",
 								"--cluster-signing-key-file=/var/run/k8s/ca/tls.key",
@@ -129,8 +128,8 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 								"--root-ca-file=/var/run/k8s/ca/tls.crt",
 
 								// optional but often nice to mirror apiserver:
-								// "--service-cluster-ip-range=10.200.0.0/16",
-								"--cluster-cidr=10.244.0.0/16", // TODO: adjust via CR
+								"--cluster-cidr=" + cm.Spec.Networking.PodCIDR,
+								"--allocate-node-cidrs=true",
 							},
 							Ports: []corev1.ContainerPort{
 								{

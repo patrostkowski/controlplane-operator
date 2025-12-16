@@ -23,6 +23,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	KubeAPIServerSvcName = "kube-apiserver"
+)
+
 // Resources returns Service + Deployment for the kube-apiserver.
 func Resources(api *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	return []client.Object{
@@ -31,9 +35,19 @@ func Resources(api *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	}
 }
 
+// EndpointResources returns only the Service (LB) for kube-apiserver.
+func EndpointResources(api *mcpv1alpha1.ManagedControlPlane) []client.Object {
+	return []client.Object{buildService(api)}
+}
+
+// WorkloadResources returns only the Deployment for kube-apiserver.
+func WorkloadResources(api *mcpv1alpha1.ManagedControlPlane) []client.Object {
+	return []client.Object{buildDeployment(api)}
+}
+
 func buildService(api *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 	ns := api.Namespace
-	name := "kube-apiserver"
+	name := KubeAPIServerSvcName
 	labels := map[string]string{
 		"app": "kube-apiserver",
 	}
@@ -91,10 +105,10 @@ func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 								"kube-apiserver",
 							},
 							Args: []string{
-								"--advertise-address=172.30.0.250", // TODO: use domain instead IP
+								"--advertise-address=" + api.Status.Address,
 								"--bind-address=0.0.0.0",
 								"--secure-port=6443",
-								"--service-cluster-ip-range=10.200.0.0/16",
+								"--service-cluster-ip-range=" + api.Spec.Networking.ServiceCIDR,
 
 								"--etcd-servers=https://etcd-0.etcd." + ns + ".svc:2379",
 								"--etcd-cafile=/var/run/k8s/etcd-ca/ca.crt",

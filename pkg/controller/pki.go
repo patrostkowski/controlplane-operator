@@ -22,8 +22,8 @@ import (
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	certmanagermeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/pki"
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
+	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -67,13 +67,13 @@ func (r *ManagedControlPlaneReconciler) reconcilePKI(ctx context.Context, mcp *m
 
 func (r *ManagedControlPlaneReconciler) ensurePKIResources(
 	ctx context.Context,
-	pkiObj *mcpv1alpha1.ManagedControlPlane,
+	mcpObj *mcpv1alpha1.ManagedControlPlane,
 	resources []client.Object,
 ) error {
 	for _, desired := range resources {
 		r.Log.Info("Ensuring PKI resource", "name", desired.GetName(), "namespace", desired.GetNamespace(), "kind", desired.GetObjectKind())
 
-		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, pkiObj, desired, r.Log, func(obj client.Object) error {
+		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, mcpObj, desired, r.Log, func(obj client.Object) error {
 			switch o := obj.(type) {
 			case *certmanagerv1.Issuer:
 				o.Spec = desired.(*certmanagerv1.Issuer).Spec
@@ -136,12 +136,10 @@ func (r *ManagedControlPlaneReconciler) checkPKIResourcesReady(
 // Still it doesnt look perfect
 func (r *ManagedControlPlaneReconciler) ensureAdminConfig(
 	ctx context.Context,
-	pkiObj *mcpv1alpha1.ManagedControlPlane,
+	mcpObj *mcpv1alpha1.ManagedControlPlane,
 	ns string,
 ) error {
-	// hardcoded until we find a way to pass
-	// API server addr
-	serverURL := "https://172.30.0.250:6443"
+	serverURL := "https://" + mcpObj.Status.Address + ":6443"
 	// get admin-client secret
 	adminClient := &corev1.Secret{}
 	if err := r.Get(ctx, client.ObjectKey{Name: "admin-client", Namespace: ns}, adminClient); err != nil {
@@ -183,7 +181,7 @@ func (r *ManagedControlPlaneReconciler) ensureAdminConfig(
 		Type: corev1.SecretTypeOpaque,
 	}
 
-	err = utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, pkiObj, s, r.Log, func(obj client.Object) error {
+	err = utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, mcpObj, s, r.Log, func(obj client.Object) error {
 		sec := obj.(*corev1.Secret)
 		if sec.Data == nil {
 			sec.Data = map[string][]byte{}

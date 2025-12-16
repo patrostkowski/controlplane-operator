@@ -15,7 +15,6 @@
 package v1alpha1
 
 import (
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -23,6 +22,6 @@ func (m *ManagedControlPlane) GetConditions() *[]metav1.Condition {
 	return &m.Status.Conditions
 }
 
-func (m *ManagedControlPlane) GetStatus() *controlplane.Status {
+func (m *ManagedControlPlane) GetStatus() *Status {
 	return &m.Status.Status
 }

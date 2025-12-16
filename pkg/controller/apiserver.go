@@ -23,8 +23,8 @@ import (
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/apiserver"
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/apiserver"
+	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -35,7 +35,7 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServer(ctx context.Context, 
 
 	log.Info("Reconciling API Server")
 
-	resources := apiserver.Resources(mcp)
+	resources := apiserver.WorkloadResources(mcp)
 
 	if err := r.ensureAPIServerResources(ctx, mcp, resources, log); err != nil {
 		return ctrl.Result{}, err
@@ -129,4 +129,51 @@ func (r *ManagedControlPlaneReconciler) checkAPIServerResourcesReady(
 	}
 
 	return allReady, nil
+}
+
+func (r *ManagedControlPlaneReconciler) reconcileAPIServiceSvc(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+) (ctrl.Result, error) {
+	log := r.Log.WithValues("api-endpoint", mcp.Namespace)
+	log.Info("Reconciling API Service (endpoint)")
+
+	resources := apiserver.EndpointResources(mcp) // Service only
+
+	if err := r.ensureAPIServerResources(ctx, mcp, resources, log); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	apiSvc := &corev1.Service{}
+	if err := r.Get(ctx, client.ObjectKey{
+		Namespace: mcp.Namespace,
+		Name:      apiserver.KubeAPIServerSvcName,
+	}, apiSvc); err != nil {
+		if apierrors.IsNotFound(err) {
+			r.Log.Info("API Service not created yet")
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+		return ctrl.Result{}, err
+	}
+
+	var addr string
+	if len(apiSvc.Status.LoadBalancer.Ingress) > 0 {
+		ing := apiSvc.Status.LoadBalancer.Ingress[0]
+		if ing.IP != "" {
+			addr = ing.IP
+		} else if ing.Hostname != "" {
+			addr = ing.Hostname
+		}
+	}
+
+	if addr == "" {
+		r.Log.Info("Waiting for API Service LoadBalancer address", "service", apiSvc.Name)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	if err := r.UpdateMCPAddress(ctx, mcp, addr); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
 }

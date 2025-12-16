@@ -19,7 +19,7 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/state"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -32,7 +32,7 @@ import (
 const ManagedControlPlaneFinalizer = "controlplane.patrostkowski.dev/finalizer"
 
 type ManagedControlPlaneReconciler struct {
-	controlplane.BaseReconciler
+	BaseReconciler
 }
 
 func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -50,13 +50,13 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	log.Info("Reconciling ManagedControlPlane", "version", mcpObj.Spec.Version)
 
 	if err := r.UpdateCondition(ctx, mcpObj,
-		controlplane.Conditions{
-			Type:    controlplane.ConditionReconciling,
+		mcpv1alpha1.Conditions{
+			Type:    state.ConditionReconciling,
 			Status:  metav1.ConditionTrue,
-			Reason:  controlplane.ReasonReconciling,
-			Message: controlplane.MessageReconciling,
+			Reason:  state.ReasonReconciling,
+			Message: state.MessageReconciling,
 		},
-		controlplane.Status{
+		mcpv1alpha1.Status{
 			Ready:   false,
 			Message: "reconciling",
 		},
@@ -103,16 +103,46 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, nil
 	}
 
+	if res, err := r.reconcileAPIServiceSvc(ctx, mcpObj); err != nil {
+		_ = r.UpdateCondition(ctx, mcpObj,
+			mcpv1alpha1.Conditions{
+				Type:    state.ConditionReady,
+				Status:  metav1.ConditionFalse,
+				Reason:  state.ReasonFailed,
+				Message: state.MessageFailed,
+			},
+			mcpv1alpha1.Status{
+				Ready:   false,
+				Message: "failed API Service address",
+			},
+		)
+		return res, err
+	} else if !res.IsZero() {
+		_ = r.UpdateCondition(ctx, mcpObj,
+			mcpv1alpha1.Conditions{
+				Type:    state.ConditionReady,
+				Status:  metav1.ConditionFalse,
+				Reason:  state.ReasonWaitingForResources,
+				Message: state.MessageWaitingForResources,
+			},
+			mcpv1alpha1.Status{
+				Ready:   false,
+				Message: "waiting for API Service address",
+			},
+		)
+		return res, nil
+	}
+
 	// PKI
 	if res, err := r.reconcilePKI(ctx, mcpObj); err != nil {
 		_ = r.UpdateCondition(ctx, mcpObj,
-			controlplane.Conditions{
-				Type:    controlplane.ConditionReady,
+			mcpv1alpha1.Conditions{
+				Type:    state.ConditionReady,
 				Status:  metav1.ConditionFalse,
-				Reason:  controlplane.ReasonFailed,
-				Message: controlplane.MessageFailed,
+				Reason:  state.ReasonFailed,
+				Message: state.MessageFailed,
 			},
-			controlplane.Status{
+			mcpv1alpha1.Status{
 				Ready:   false,
 				Message: "failed PKI",
 			},
@@ -120,13 +150,13 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	} else if !res.IsZero() {
 		_ = r.UpdateCondition(ctx, mcpObj,
-			controlplane.Conditions{
-				Type:    controlplane.ConditionReady,
+			mcpv1alpha1.Conditions{
+				Type:    state.ConditionReady,
 				Status:  metav1.ConditionFalse,
-				Reason:  controlplane.ReasonWaitingForResources,
-				Message: controlplane.MessageWaitingForResources,
+				Reason:  state.ReasonWaitingForResources,
+				Message: state.MessageWaitingForResources,
 			},
-			controlplane.Status{
+			mcpv1alpha1.Status{
 				Ready:   false,
 				Message: "waiting for PKI",
 			},
@@ -137,13 +167,13 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	// ETCD
 	if res, err := r.reconcileETCD(ctx, mcpObj); err != nil {
 		_ = r.UpdateCondition(ctx, mcpObj,
-			controlplane.Conditions{
-				Type:    controlplane.ConditionReady,
+			mcpv1alpha1.Conditions{
+				Type:    state.ConditionReady,
 				Status:  metav1.ConditionFalse,
-				Reason:  controlplane.ReasonFailed,
-				Message: controlplane.MessageFailed,
+				Reason:  state.ReasonFailed,
+				Message: state.MessageFailed,
 			},
-			controlplane.Status{
+			mcpv1alpha1.Status{
 				Ready:   false,
 				Message: "failed ETCD",
 			},
@@ -151,13 +181,13 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	} else if !res.IsZero() {
 		_ = r.UpdateCondition(ctx, mcpObj,
-			controlplane.Conditions{
-				Type:    controlplane.ConditionReady,
+			mcpv1alpha1.Conditions{
+				Type:    state.ConditionReady,
 				Status:  metav1.ConditionFalse,
-				Reason:  controlplane.ReasonWaitingForResources,
-				Message: controlplane.MessageWaitingForResources,
+				Reason:  state.ReasonWaitingForResources,
+				Message: state.MessageWaitingForResources,
 			},
-			controlplane.Status{
+			mcpv1alpha1.Status{
 				Ready:   false,
 				Message: "waiting for ETCD",
 			},
@@ -168,13 +198,13 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	// APIServer
 	if res, err := r.reconcileAPIServer(ctx, mcpObj); err != nil {
 		_ = r.UpdateCondition(ctx, mcpObj,
-			controlplane.Conditions{
-				Type:    controlplane.ConditionReady,
+			mcpv1alpha1.Conditions{
+				Type:    state.ConditionReady,
 				Status:  metav1.ConditionFalse,
-				Reason:  controlplane.ReasonFailed,
-				Message: controlplane.MessageFailed,
+				Reason:  state.ReasonFailed,
+				Message: state.MessageFailed,
 			},
-			controlplane.Status{
+			mcpv1alpha1.Status{
 				Ready:   false,
 				Message: "failed APIServer",
 			},
@@ -182,13 +212,13 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	} else if !res.IsZero() {
 		_ = r.UpdateCondition(ctx, mcpObj,
-			controlplane.Conditions{
-				Type:    controlplane.ConditionReady,
+			mcpv1alpha1.Conditions{
+				Type:    state.ConditionReady,
 				Status:  metav1.ConditionFalse,
-				Reason:  controlplane.ReasonWaitingForResources,
-				Message: controlplane.MessageWaitingForResources,
+				Reason:  state.ReasonWaitingForResources,
+				Message: state.MessageWaitingForResources,
 			},
-			controlplane.Status{
+			mcpv1alpha1.Status{
 				Ready:   false,
 				Message: "waiting for APIServer",
 			},
@@ -199,13 +229,13 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	// ControllerManager
 	if res, err := r.reconcileControllerManager(ctx, mcpObj); err != nil {
 		_ = r.UpdateCondition(ctx, mcpObj,
-			controlplane.Conditions{
-				Type:    controlplane.ConditionReady,
+			mcpv1alpha1.Conditions{
+				Type:    state.ConditionReady,
 				Status:  metav1.ConditionFalse,
-				Reason:  controlplane.ReasonFailed,
-				Message: controlplane.MessageFailed,
+				Reason:  state.ReasonFailed,
+				Message: state.MessageFailed,
 			},
-			controlplane.Status{
+			mcpv1alpha1.Status{
 				Ready:   false,
 				Message: "failed ControllerManager",
 			},
@@ -213,13 +243,13 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	} else if !res.IsZero() {
 		_ = r.UpdateCondition(ctx, mcpObj,
-			controlplane.Conditions{
-				Type:    controlplane.ConditionReady,
+			mcpv1alpha1.Conditions{
+				Type:    state.ConditionReady,
 				Status:  metav1.ConditionFalse,
-				Reason:  controlplane.ReasonWaitingForResources,
-				Message: controlplane.MessageWaitingForResources,
+				Reason:  state.ReasonWaitingForResources,
+				Message: state.MessageWaitingForResources,
 			},
-			controlplane.Status{
+			mcpv1alpha1.Status{
 				Ready:   false,
 				Message: "waiting for ControllerManager",
 			},
@@ -230,13 +260,13 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	// Scheduler
 	if res, err := r.reconcileScheduler(ctx, mcpObj); err != nil {
 		_ = r.UpdateCondition(ctx, mcpObj,
-			controlplane.Conditions{
-				Type:    controlplane.ConditionReady,
+			mcpv1alpha1.Conditions{
+				Type:    state.ConditionReady,
 				Status:  metav1.ConditionFalse,
-				Reason:  controlplane.ReasonFailed,
-				Message: controlplane.MessageFailed,
+				Reason:  state.ReasonFailed,
+				Message: state.MessageFailed,
 			},
-			controlplane.Status{
+			mcpv1alpha1.Status{
 				Ready:   false,
 				Message: "failed Scheduler",
 			},
@@ -244,13 +274,13 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, err
 	} else if !res.IsZero() {
 		_ = r.UpdateCondition(ctx, mcpObj,
-			controlplane.Conditions{
-				Type:    controlplane.ConditionReady,
+			mcpv1alpha1.Conditions{
+				Type:    state.ConditionReady,
 				Status:  metav1.ConditionFalse,
-				Reason:  controlplane.ReasonWaitingForResources,
-				Message: controlplane.MessageWaitingForResources,
+				Reason:  state.ReasonWaitingForResources,
+				Message: state.MessageWaitingForResources,
 			},
-			controlplane.Status{
+			mcpv1alpha1.Status{
 				Ready:   false,
 				Message: "waiting for Scheduler",
 			},
@@ -263,13 +293,13 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	// }
 
 	if err := r.UpdateCondition(ctx, mcpObj,
-		controlplane.Conditions{
-			Type:    controlplane.ConditionReady,
+		mcpv1alpha1.Conditions{
+			Type:    state.ConditionReady,
 			Status:  metav1.ConditionTrue,
-			Reason:  controlplane.ReasonAllResourcesReady,
-			Message: controlplane.MessageAllResourcesReady,
+			Reason:  state.ReasonAllResourcesReady,
+			Message: state.MessageAllResourcesReady,
 		},
-		controlplane.Status{
+		mcpv1alpha1.Status{
 			Ready:   true,
 			Message: "all ready",
 		},
@@ -292,7 +322,7 @@ func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
 		Owns(&certmanagerv1.Certificate{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		Complete(&ManagedControlPlaneReconciler{
-			BaseReconciler: controlplane.BaseReconciler{
+			BaseReconciler: BaseReconciler{
 				Client:   mgr.GetClient(),
 				Log:      ctrl.Log.WithName("controller").WithName("ManagedControlPlane"),
 				Recorder: mgr.GetEventRecorderFor("managedcontrolplane"),
