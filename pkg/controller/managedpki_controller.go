@@ -15,6 +15,7 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"time"
 
@@ -112,7 +113,7 @@ func (r *ManagedPKIReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// We wait for certManger resources ensured
 	// so it shouldn't fail
-	if err := r.ensureAdminConfig(ctx, req.Namespace); err != nil {
+	if err := r.ensureAdminConfig(ctx, pkiObj, req.Namespace); err != nil {
 		return ctrl.Result{}, nil
 	}
 
@@ -190,7 +191,11 @@ func (r *ManagedPKIReconciler) checkResourcesReady(
 }
 
 // Still it doesnt look perfect
-func (r *ManagedPKIReconciler) ensureAdminConfig(ctx context.Context, ns string) error {
+func (r *ManagedPKIReconciler) ensureAdminConfig(
+	ctx context.Context,
+	pkiObj *mcpv1alpha1.ManagedPKI,
+	ns string,
+) error {
 	// hardcoded until we find a way to pass
 	// API server addr
 	serverURL := "https://172.30.0.250:6443"
@@ -203,6 +208,11 @@ func (r *ManagedPKIReconciler) ensureAdminConfig(ctx context.Context, ns string)
 	ca := adminClient.Data["ca.crt"]
 	crt := adminClient.Data["tls.crt"]
 	key := adminClient.Data["tls.key"]
+
+	if len(ca) == 0 || len(crt) == 0 || len(key) == 0 {
+		r.Log.Info("admin config secret not ready yet")
+		return nil
+	}
 
 	// build kubecfg
 	cfg := clientcmdapi.NewConfig()
@@ -223,19 +233,26 @@ func (r *ManagedPKIReconciler) ensureAdminConfig(ctx context.Context, ns string)
 	}
 
 	s := &corev1.Secret{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Secret",
-		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "admin-config",
 			Namespace: ns,
 		},
 		Type: corev1.SecretTypeOpaque,
-		Data: map[string][]byte{"config": kubeconfigBytes},
 	}
 
-	if err := r.Patch(ctx, s, client.Apply, client.FieldOwner("managedpki-controller")); err != nil {
+	err = utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, pkiObj, s, r.Log, func(obj client.Object) error {
+		sec := obj.(*corev1.Secret)
+		if sec.Data == nil {
+			sec.Data = map[string][]byte{}
+		}
+		if bytes.Equal(sec.Data["config"], kubeconfigBytes) {
+			return nil
+		}
+		sec.Data["config"] = kubeconfigBytes
+		return nil
+	})
+	if err != nil {
+		r.Log.Error(err, "failed to ensure Admin config secret", "name", s.GetName())
 		return err
 	}
 
@@ -271,7 +288,7 @@ func SetupManagedPKIReconciler(mgr ctrl.Manager) error {
 		For(&mcpv1alpha1.ManagedPKI{}).
 		Owns(&certmanagerv1.Issuer{}).
 		Owns(&certmanagerv1.Certificate{}).
-		Owns(&corev1.ConfigMap{}).
+		Owns(&corev1.Secret{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		Complete(&ManagedPKIReconciler{
 			BaseReconciler: controlplane.BaseReconciler{
