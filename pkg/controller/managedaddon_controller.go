@@ -11,65 +11,32 @@ import (
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/addons"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
 
-type ManagedAddonReconciler struct {
-	controlplane.BaseReconciler
-}
+func (r *ManagedControlPlaneReconciler) reconcileAddon(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
+	log := r.Log.WithValues("addons", mcp.GetObjectMeta().GetNamespace())
 
-func (r *ManagedAddonReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("managedaddon", req.NamespacedName)
+	log.Info("Reconciling Addons")
 
-	addonObj := &mcpv1alpha1.ManagedAddon{}
-	if err := r.Get(ctx, req.NamespacedName, addonObj); err != nil {
-		if apierrors.IsNotFound(err) {
-			return ctrl.Result{}, nil
-		}
-		return ctrl.Result{}, err
-	}
-
-	log.Info("Reconciling ManagedAddon")
-
-	resources := addons.Resources(addonObj)
+	resources := addons.Resources(mcp)
 
 	if err := r.ensureAddons(ctx, resources, log); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// TODO: properly update conditions
-	// based on installed stuff(addons)
-	if err := r.UpdateCondition(ctx, addonObj,
-		controlplane.Conditions{
-			Type:    controlplane.ConditionReady,
-			Status:  metav1.ConditionTrue,
-			Reason:  controlplane.ReasonAllResourcesReady,
-			Message: controlplane.MessageAllResourcesReady,
-		},
-		controlplane.Status{
-			Ready:   true,
-			Message: "all ready",
-		},
-	); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	log.Info("Finished reconciling ManagedAddon")
+	log.Info("Finished reconciling Addons")
 	// TODO: properly manage child addons status changes
 	// currently just requeue after 60 seconds
 	return ctrl.Result{RequeueAfter: 60 * time.Second}, nil
 }
 
 // TODO: properly handle all scenarios
-func (r *ManagedAddonReconciler) ensureAddons(
+func (r *ManagedControlPlaneReconciler) ensureAddons(
 	ctx context.Context,
 	resources []client.Object,
 	log logr.Logger,
@@ -101,12 +68,12 @@ func ServerSideApply(
 		ctx,
 		obj,
 		client.Apply,
-		client.FieldOwner("managedaddon-controller"),
+		client.FieldOwner("ManagedControlPlane-controller"),
 	)
 }
 
 // Get rest config from secrets
-func (r *ManagedAddonReconciler) getChildConfig(
+func (r *ManagedControlPlaneReconciler) getChildConfig(
 	ctx context.Context,
 ) (client.Client, error) {
 	// caSecret := corev1.Secret{}
@@ -149,18 +116,4 @@ func (r *ManagedAddonReconciler) getChildConfig(
 	}
 
 	return ctrlClient, nil
-}
-
-func SetupManagedAddonReconciler(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&mcpv1alpha1.ManagedAddon{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
-		Complete(&ManagedAddonReconciler{
-			BaseReconciler: controlplane.BaseReconciler{
-				Client:   mgr.GetClient(),
-				Log:      ctrl.Log.WithName("controller").WithName("ManagedAddon"),
-				Recorder: mgr.GetEventRecorderFor("managedaddon"),
-				Scheme:   mgr.GetScheme(),
-			},
-		})
 }

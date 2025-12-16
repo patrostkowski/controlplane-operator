@@ -24,23 +24,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var EtcdVersionByKubeMinor = map[string]string{
-	"1.30": "3.5.21-0",
-	"1.31": "3.5.24-0",
-	"1.32": "3.5.24-0",
-	"1.33": "3.5.24-0",
-	"1.34": "3.6.5-0",
-}
+var EtcdVersion = "3.6.5-0"
 
 // Resources returns the Service + StatefulSet required for etcd.
-func Resources(etcdObj *mcpv1alpha1.ManagedETCD) []client.Object {
+func Resources(etcdObj *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	return []client.Object{
 		buildService(etcdObj),
 		buildStatefulSet(etcdObj),
 	}
 }
 
-func buildService(etcdObj *mcpv1alpha1.ManagedETCD) *corev1.Service {
+func buildService(etcdObj *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 	labels := map[string]string{
 		"app": "etcd",
 	}
@@ -70,13 +64,13 @@ func buildService(etcdObj *mcpv1alpha1.ManagedETCD) *corev1.Service {
 	}
 }
 
-func buildStatefulSet(etcdObj *mcpv1alpha1.ManagedETCD) *appsv1.StatefulSet {
+func buildStatefulSet(etcdObj *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
 	labels := map[string]string{
 		"app": "etcd",
 	}
 	name := "etcd"
 	namespace := etcdObj.Namespace
-	version := etcdObj.Spec.Version
+	version := EtcdVersion
 
 	replicas := int32(1)
 

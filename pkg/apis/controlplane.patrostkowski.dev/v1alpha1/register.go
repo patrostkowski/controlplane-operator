@@ -32,12 +32,6 @@ var (
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&ManagedControlPlane{}, &ManagedControlPlaneList{},
-		&ManagedPKI{}, &ManagedPKIList{},
-		&ManagedETCD{}, &ManagedETCDList{},
-		&ManagedAPIServer{}, &ManagedAPIServerList{},
-		&ManagedControllerManager{}, &ManagedControllerManagerList{},
-		&ManagedScheduler{}, &ManagedSchedulerList{},
-		&ManagedAddon{}, &ManagedAddonList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

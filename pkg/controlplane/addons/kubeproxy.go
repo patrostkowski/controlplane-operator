@@ -25,7 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func buildKubeproxy(ma *mcpv1alpha1.ManagedAddon) []client.Object {
+func buildKubeproxy(ma *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	return []client.Object{
 		buildKubeproxyServiceAccount(),
 		buildKubeproxyClusterRoleBinding(),
@@ -127,7 +127,7 @@ users:
 	}
 }
 
-func buildKubeproxyDaemonSet(ma *mcpv1alpha1.ManagedAddon) *appsv1.DaemonSet {
+func buildKubeproxyDaemonSet(ma *mcpv1alpha1.ManagedControlPlane) *appsv1.DaemonSet {
 	labels := map[string]string{"k8s-app": "kube-proxy"}
 	version := ma.Spec.Version
 	priv := true

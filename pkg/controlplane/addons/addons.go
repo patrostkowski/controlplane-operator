@@ -34,7 +34,7 @@ func buildDefaultAddons(builders ...AddonsBuilder) []client.Object {
 	return addonObjs
 }
 
-func Resources(ma *mcpv1alpha1.ManagedAddon) []client.Object {
+func Resources(ma *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	return buildDefaultAddons(
 		func() []client.Object { return buildKubeproxy(ma) },
 		func() []client.Object { return buildFlannel() },

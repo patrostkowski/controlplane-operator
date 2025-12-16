@@ -14,98 +14,41 @@ import (
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/scheduler"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
 
-type ManagedSchedulerReconciler struct {
-	controlplane.BaseReconciler
-}
+func (r *ManagedControlPlaneReconciler) reconcileScheduler(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
+	log := r.Log.WithValues("controllermanager", mcp.GetObjectMeta().GetNamespace())
 
-func (r *ManagedSchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("managedscheduler", req.NamespacedName)
+	log.Info("Reconciling Scheduler")
 
-	schedObj := &mcpv1alpha1.ManagedScheduler{}
-	if err := r.Get(ctx, req.NamespacedName, schedObj); err != nil {
-		if apierrors.IsNotFound(err) {
-			return ctrl.Result{}, nil
-		}
+	resources := scheduler.Resources(mcp)
+
+	if err := r.ensureSchedulerResources(ctx, mcp, resources, log); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	log.Info("Reconciling ManagedScheduler")
-
-	if err := r.UpdateCondition(ctx, schedObj,
-		controlplane.Conditions{
-			Type:    controlplane.ConditionReconciling,
-			Status:  metav1.ConditionFalse,
-			Reason:  controlplane.ReasonReconciling,
-			Message: controlplane.MessageReconciling,
-		},
-		controlplane.Status{
-			Ready:   false,
-			Message: "reconciling",
-		},
-	); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	resources := scheduler.Resources(schedObj)
-
-	if err := r.ensureResources(ctx, schedObj, resources, log); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	allReady, err := r.checkResourcesReady(ctx, resources, log)
+	allReady, err := r.checkSchedulerResourcesReady(ctx, resources, log)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	if !allReady {
-		_ = r.UpdateCondition(ctx, schedObj,
-			controlplane.Conditions{
-				Type:    controlplane.ConditionWaitingForResource,
-				Status:  metav1.ConditionFalse,
-				Reason:  controlplane.ReasonWaitingForResources,
-				Message: controlplane.MessageWaitingForResources,
-			},
-			controlplane.Status{
-				Ready:   false,
-				Message: "awaiting all ready",
-			},
-		)
-		log.Info("requeueing reconcile for API Server controller")
+		log.Info("requeueing reconcile for Scheduler")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	if err := r.UpdateCondition(ctx, schedObj,
-		controlplane.Conditions{
-			Type:    controlplane.ConditionReady,
-			Status:  metav1.ConditionTrue,
-			Reason:  controlplane.ReasonAllResourcesReady,
-			Message: controlplane.MessageAllResourcesReady,
-		},
-		controlplane.Status{
-			Ready:   true,
-			Message: "all ready",
-		},
-	); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	log.Info("Finished reconciling ManagedScheduler")
+	log.Info("Finished reconciling Scheduler")
 	return ctrl.Result{}, nil
 }
 
-func (r *ManagedSchedulerReconciler) ensureResources(
+func (r *ManagedControlPlaneReconciler) ensureSchedulerResources(
 	ctx context.Context,
-	schedObj *mcpv1alpha1.ManagedScheduler,
+	mcp *mcpv1alpha1.ManagedControlPlane,
 	resources []client.Object,
 	log logr.Logger,
 ) error {
@@ -115,7 +58,7 @@ func (r *ManagedSchedulerReconciler) ensureResources(
 			"name", desired.GetName(),
 		)
 
-		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, schedObj, desired, log, func(obj client.Object) error {
+		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, mcp, desired, log, func(obj client.Object) error {
 			switch o := obj.(type) {
 			case *corev1.ConfigMap:
 				d := desired.(*corev1.ConfigMap)
@@ -135,7 +78,7 @@ func (r *ManagedSchedulerReconciler) ensureResources(
 	return nil
 }
 
-func (r *ManagedSchedulerReconciler) checkResourcesReady(
+func (r *ManagedControlPlaneReconciler) checkSchedulerResourcesReady(
 	ctx context.Context,
 	resources []client.Object,
 	log logr.Logger,
@@ -172,20 +115,4 @@ func (r *ManagedSchedulerReconciler) checkResourcesReady(
 	}
 
 	return allReady, nil
-}
-
-func SetupManagedSchedulerReconciler(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&mcpv1alpha1.ManagedScheduler{}).
-		Owns(&corev1.ConfigMap{}).
-		Owns(&appsv1.Deployment{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
-		Complete(&ManagedSchedulerReconciler{
-			BaseReconciler: controlplane.BaseReconciler{
-				Client:   mgr.GetClient(),
-				Log:      ctrl.Log.WithName("controller").WithName("ManagedScheduler"),
-				Recorder: mgr.GetEventRecorderFor("managedscheduler"),
-				Scheme:   mgr.GetScheme(),
-			},
-		})
 }

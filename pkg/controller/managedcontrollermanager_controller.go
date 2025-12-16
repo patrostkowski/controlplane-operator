@@ -23,98 +23,41 @@ import (
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/controllermanager"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
 
-type ManagedControllerManagerReconciler struct {
-	controlplane.BaseReconciler
-}
+func (r *ManagedControlPlaneReconciler) reconcileControllerManager(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
+	log := r.Log.WithValues("controllermanager", mcp.GetObjectMeta().GetNamespace())
 
-func (r *ManagedControllerManagerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("managedcontrollermanager", req.NamespacedName)
+	log.Info("Reconciling Controller Manager")
 
-	cmObj := &mcpv1alpha1.ManagedControllerManager{}
-	if err := r.Get(ctx, req.NamespacedName, cmObj); err != nil {
-		if apierrors.IsNotFound(err) {
-			return ctrl.Result{}, nil
-		}
+	resources := controllermanager.Resources(mcp)
+
+	if err := r.ensureControllerManagerResources(ctx, mcp, resources, log); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	log.Info("Reconciling ManagedControllerManager")
-
-	if err := r.UpdateCondition(ctx, cmObj,
-		controlplane.Conditions{
-			Type:    controlplane.ConditionReconciling,
-			Status:  metav1.ConditionFalse,
-			Reason:  controlplane.ReasonReconciling,
-			Message: controlplane.MessageReconciling,
-		},
-		controlplane.Status{
-			Ready:   false,
-			Message: "reconciling",
-		},
-	); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	resources := controllermanager.Resources(cmObj)
-
-	if err := r.ensureResources(ctx, cmObj, resources, log); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	allReady, err := r.checkResourcesReady(ctx, resources, log)
+	allReady, err := r.checkControllerManagerResourcesReady(ctx, resources, log)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	if !allReady {
-		_ = r.UpdateCondition(ctx, cmObj,
-			controlplane.Conditions{
-				Type:    controlplane.ConditionWaitingForResource,
-				Status:  metav1.ConditionFalse,
-				Reason:  controlplane.ReasonWaitingForResources,
-				Message: controlplane.MessageWaitingForResources,
-			},
-			controlplane.Status{
-				Ready:   false,
-				Message: "awaiting all ready",
-			},
-		)
-		log.Info("requeueing reconcile for Controller Manager controller")
+		log.Info("requeueing reconcile for Controller Manager")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	if err := r.UpdateCondition(ctx, cmObj,
-		controlplane.Conditions{
-			Type:    controlplane.ConditionReady,
-			Status:  metav1.ConditionTrue,
-			Reason:  controlplane.ReasonAllResourcesReady,
-			Message: controlplane.MessageAllResourcesReady,
-		},
-		controlplane.Status{
-			Ready:   true,
-			Message: "all ready",
-		},
-	); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	log.Info("Finished reconciling ManagedControllerManager")
+	log.Info("Finished reconciling Controller Manager")
 	return ctrl.Result{}, nil
 }
 
-func (r *ManagedControllerManagerReconciler) ensureResources(
+func (r *ManagedControlPlaneReconciler) ensureControllerManagerResources(
 	ctx context.Context,
-	cmObj *mcpv1alpha1.ManagedControllerManager,
+	mcp *mcpv1alpha1.ManagedControlPlane,
 	resources []client.Object,
 	log logr.Logger,
 ) error {
@@ -122,8 +65,8 @@ func (r *ManagedControllerManagerReconciler) ensureResources(
 	for _, desired := range resources {
 		log.Info("Ensuring ControllerManager resource", "kind", desired.GetObjectKind().GroupVersionKind().Kind, "name", desired.GetName())
 
-		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, cmObj, desired, log, func(obj client.Object) error {
-			switch o := obj.(type) {
+		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, mcp, desired, log, func(mcp client.Object) error {
+			switch o := mcp.(type) {
 			case *corev1.ConfigMap:
 				d := desired.(*corev1.ConfigMap)
 				o.Data = d.Data
@@ -142,7 +85,7 @@ func (r *ManagedControllerManagerReconciler) ensureResources(
 	return nil
 }
 
-func (r *ManagedControllerManagerReconciler) checkResourcesReady(
+func (r *ManagedControlPlaneReconciler) checkControllerManagerResourcesReady(
 	ctx context.Context,
 	resources []client.Object,
 	log logr.Logger,
@@ -180,20 +123,4 @@ func (r *ManagedControllerManagerReconciler) checkResourcesReady(
 	}
 
 	return allReady, nil
-}
-
-func SetupManagedControllerManagerReconciler(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&mcpv1alpha1.ManagedControllerManager{}).
-		Owns(&corev1.ConfigMap{}).
-		Owns(&appsv1.Deployment{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
-		Complete(&ManagedControllerManagerReconciler{
-			BaseReconciler: controlplane.BaseReconciler{
-				Client:   mgr.GetClient(),
-				Log:      ctrl.Log.WithName("controller").WithName("ManagedControllerManager"),
-				Recorder: mgr.GetEventRecorderFor("managedcontrollermanager"),
-				Scheme:   mgr.GetScheme(),
-			},
-		})
 }

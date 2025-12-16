@@ -42,6 +42,7 @@ const (
 	ReasonWaitingForResources  Reason = "ResourcesNotReady"
 	ReasonControlPlaneReady    Reason = "ControlPlaneReady"
 	ReasonReconciling          Reason = "ResourcesReconciling"
+	ReasonFailed               Reason = "ReasonFailed"
 
 	MessageDeploymentReady                  Message = "Deployment is ready"
 	MessageDeploymentNotReady               Message = "Deployment is not ready yet"
@@ -52,10 +53,10 @@ const (
 	MessageWaitingForResources              Message = "Waiting for resources to become Ready"
 	MessageControlPlaneAllReady             Message = "All control plane components are Ready"
 	MessageWaitingForPKI                    Message = "Waiting for ManagedPKI to become Ready"
-	MessageWaitingForETCD                   Message = "Waiting for ManagedETCD to become Ready"
-	MessageWaitingForAPIServer              Message = "Waiting for ManagedAPIServer to become Ready"
-	MessageWaitingForControllerMgr          Message = "Waiting for ManagedControllerManager to become Ready"
-	MessageWaitingForScheduler              Message = "Waiting for ManagedScheduler to become Ready"
+	MessageWaitingForETCD                   Message = "Waiting for ManagedControlPlane to become Ready"
+	MessageWaitingForAPIServer              Message = "Waiting for ManagedControlPlane to become Ready"
+	MessageWaitingForControllerMgr          Message = "Waiting for ManagedControlPlane to become Ready"
+	MessageWaitingForScheduler              Message = "Waiting for ManagedControlPlane to become Ready"
 	MessageAPIServerDeploymentReady         Message = "kube-apiserver Deployment is Ready"
 	MessageAPIServerWaitingForDeployment    Message = "Waiting for kube-apiserver Deployment to become Ready"
 	MessageControllerManagerDeploymentReady Message = "kube-controller-manager Deployment is Ready"
@@ -69,6 +70,7 @@ const (
 	MessageMCPAllReady                      Message = "All control plane components are Ready"
 	MessageMCPWaitingResources              Message = "Waiting for control plane components to become Ready"
 	MessageReconciling                      Message = "Awaiting reconciliation of resources"
+	MessageFailed                           Message = "Step failed"
 )
 
 type Condition string
