@@ -36,3 +36,7 @@ metadata:
   namespace: mcp
 spec:
   version: "v1.34.1"
+  networking:
+    serviceCIDR: "10.96.0.0/12"
+    podCIDR: "10.244.0.0/16"
+

@@ -16,6 +16,8 @@ package utils
 
 import (
 	"context"
+	"fmt"
+	"net"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -46,4 +48,39 @@ func EnsureCreatedAndOwned(
 		})
 		return err
 	})
+}
+
+func IPAtOffset(cidr string, offset uint32) (net.IP, error) {
+	ip, ipnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return nil, err
+	}
+
+	ip = ip.To4()
+	if ip == nil {
+		return nil, fmt.Errorf("only IPv4 is supported")
+	}
+
+	network := ipnet.IP.To4()
+
+	base :=
+		uint32(network[0])<<24 |
+			uint32(network[1])<<16 |
+			uint32(network[2])<<8 |
+			uint32(network[3])
+
+	target := base + offset
+
+	out := net.IPv4(
+		byte(target>>24),
+		byte(target>>16),
+		byte(target>>8),
+		byte(target),
+	)
+
+	if !ipnet.Contains(out) {
+		return nil, fmt.Errorf("offset %d out of range for %s", offset, cidr)
+	}
+
+	return out, nil
 }

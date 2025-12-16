@@ -1,7 +1,16 @@
 // Copyright 2025 Patryk Rostkowski
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
-// ...
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package controller
 
@@ -14,52 +23,50 @@ import (
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/scheduler"
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane/utils"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/controllermanager"
+	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (r *ManagedControlPlaneReconciler) reconcileScheduler(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
+func (r *ManagedControlPlaneReconciler) reconcileControllerManager(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
 	log := r.Log.WithValues("controllermanager", mcp.GetObjectMeta().GetNamespace())
 
-	log.Info("Reconciling Scheduler")
+	log.Info("Reconciling Controller Manager")
 
-	resources := scheduler.Resources(mcp)
+	resources := controllermanager.Resources(mcp)
 
-	if err := r.ensureSchedulerResources(ctx, mcp, resources, log); err != nil {
+	if err := r.ensureControllerManagerResources(ctx, mcp, resources, log); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	allReady, err := r.checkSchedulerResourcesReady(ctx, resources, log)
+	allReady, err := r.checkControllerManagerResourcesReady(ctx, resources, log)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	if !allReady {
-		log.Info("requeueing reconcile for Scheduler")
+		log.Info("requeueing reconcile for Controller Manager")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	log.Info("Finished reconciling Scheduler")
+	log.Info("Finished reconciling Controller Manager")
 	return ctrl.Result{}, nil
 }
 
-func (r *ManagedControlPlaneReconciler) ensureSchedulerResources(
+func (r *ManagedControlPlaneReconciler) ensureControllerManagerResources(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
 	resources []client.Object,
 	log logr.Logger,
 ) error {
-	for _, desired := range resources {
-		log.Info("Ensuring Scheduler resource",
-			"kind", desired.GetObjectKind().GroupVersionKind().Kind,
-			"name", desired.GetName(),
-		)
 
-		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, mcp, desired, log, func(obj client.Object) error {
-			switch o := obj.(type) {
+	for _, desired := range resources {
+		log.Info("Ensuring ControllerManager resource", "kind", desired.GetObjectKind().GroupVersionKind().Kind, "name", desired.GetName())
+
+		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, mcp, desired, log, func(mcp client.Object) error {
+			switch o := mcp.(type) {
 			case *corev1.ConfigMap:
 				d := desired.(*corev1.ConfigMap)
 				o.Data = d.Data
@@ -70,7 +77,7 @@ func (r *ManagedControlPlaneReconciler) ensureSchedulerResources(
 			return nil
 		})
 		if err != nil {
-			log.Error(err, "failed to ensure Scheduler resource", "name", desired.GetName())
+			log.Error(err, "failed to ensure ControllerManager resource", "name", desired.GetName())
 			return err
 		}
 	}
@@ -78,11 +85,12 @@ func (r *ManagedControlPlaneReconciler) ensureSchedulerResources(
 	return nil
 }
 
-func (r *ManagedControlPlaneReconciler) checkSchedulerResourcesReady(
+func (r *ManagedControlPlaneReconciler) checkControllerManagerResourcesReady(
 	ctx context.Context,
 	resources []client.Object,
 	log logr.Logger,
 ) (bool, error) {
+
 	allReady := true
 
 	for _, desired := range resources {

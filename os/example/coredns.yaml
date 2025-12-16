@@ -129,7 +129,7 @@ metadata:
     k8s-app: kube-dns
 spec:
   type: ClusterIP
-  clusterIP: 10.200.0.10   # example; must match your cluster DNS IP if set elsewhere
+  clusterIP: 10.96.0.10   # example; must match your cluster DNS IP if set elsewhere
   ports:
     - name: dns
       port: 53

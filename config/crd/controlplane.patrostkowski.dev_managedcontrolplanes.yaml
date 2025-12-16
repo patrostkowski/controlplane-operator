@@ -23,6 +23,9 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Ready")].message
       name: Message
       type: string
+    - jsonPath: .status.address
+      name: Address
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -52,6 +55,13 @@ spec:
           spec:
             description: ManagedControlPlaneSpec defines the desired state of ManagedControlPlane.
             properties:
+              networking:
+                properties:
+                  podCIDR:
+                    type: string
+                  serviceCIDR:
+                    type: string
+                type: object
               version:
                 description: Version is the desired Kubernetes control plane version,
                   e.g. "v1.34.0".
@@ -62,6 +72,8 @@ spec:
           status:
             description: ManagedControlPlaneStatus defines the observed state of ManagedControlPlane.
             properties:
+              address:
+                type: string
               conditions:
                 description: |-
                   Conditions represents the latest available observations of the control plane's state.
