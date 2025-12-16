@@ -16,7 +16,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -30,19 +29,43 @@ import (
 	agentv1alpha1 "github.com/patrostkowski/controlplane-operator/proto/agent/v1alpha1"
 )
 
-func main() {
-	var (
-		node     string
-		endpoint string
-		token    string
-		timeout  time.Duration
-	)
+var (
+	node     string
+	endpoint string
+	token    string
+	timeout  time.Duration
+)
 
-	rootCmd := &cobra.Command{
+func main() {
+	// init cli
+	cli := NewTesseractCommand()
+	cli.SilenceErrors = true
+	cli.SilenceUsage = true
+
+	err := cli.Execute()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func NewTesseractCommand() *cobra.Command {
+	cmd := &cobra.Command{
 		Use:   "tesseractl",
 		Short: "tesseract control CLI",
+		Run: func(cmd *cobra.Command, args []string) {
+			cmd.Help()
+		},
 	}
 
+	cmd.AddCommand(
+		newJoinCommand(),
+	)
+
+	return cmd
+}
+
+func newJoinCommand() *cobra.Command {
 	joinCmd := &cobra.Command{
 		Use:   "join",
 		Short: "Join a node to the control plane",
@@ -50,16 +73,6 @@ func main() {
 			node = strings.TrimSpace(node)
 			endpoint = strings.TrimSpace(endpoint)
 			token = strings.TrimSpace(token)
-
-			if node == "" {
-				return errors.New("--node is required")
-			}
-			if endpoint == "" {
-				return errors.New("--endpoint is required")
-			}
-			if token == "" {
-				return errors.New("--token is required")
-			}
 
 			// Accept either "<ip>" or "<ip>:32137"
 			if !strings.Contains(node, ":") {
@@ -76,7 +89,7 @@ func main() {
 
 			conn, err := grpc.NewClient(node, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
-				return fmt.Errorf("dial %s: %w", node, err)
+				return err
 			}
 			defer conn.Close()
 
@@ -86,7 +99,7 @@ func main() {
 				Token:    token,
 			})
 			if err != nil {
-				return fmt.Errorf("join rpc failed: %w", err)
+				return err
 			}
 
 			// Print a simple result
@@ -104,10 +117,5 @@ func main() {
 	_ = joinCmd.MarkFlagRequired("endpoint")
 	_ = joinCmd.MarkFlagRequired("token")
 
-	rootCmd.AddCommand(joinCmd)
-
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	return joinCmd
 }
