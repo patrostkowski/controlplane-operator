@@ -15,13 +15,17 @@
 package controllermanager
 
 import (
+	"path/filepath"
+
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/apiserver"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
+	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -35,7 +39,13 @@ func Resources(cm *mcpv1alpha1.ManagedControlPlane) []client.Object {
 
 func buildConfigMap(cm *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 	ns := cm.Namespace
-	kcfg := buildControllerManagerKubeconfig(ns)
+	kcfg := utils.BuildComponentKubeconfig(
+		ns,
+		apiserver.KubeAPIServerSvcName,
+		apiserver.KubeAPIServerSecurePort,
+		"cm",
+		pki.SecretCMClient,
+	)
 
 	kubeconfigData, err := clientcmd.Write(*kcfg)
 	if err != nil {
@@ -44,211 +54,111 @@ func buildConfigMap(cm *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "controller-kubeconfig",
+			Name:      cmKubeconfigName,
 			Namespace: ns,
 		},
 		Data: map[string]string{
-			"controller-manager.conf": string(kubeconfigData),
+			cmKubeconfigKey: string(kubeconfigData),
 		},
 	}
-}
-
-func buildControllerManagerKubeconfig(namespace string) *clientcmdapi.Config {
-	serverURL := "https://kube-apiserver." + namespace + ".svc:6443"
-
-	cfg := clientcmdapi.NewConfig()
-
-	// --- Cluster ---
-	cfg.Clusters["local"] = &clientcmdapi.Cluster{
-		Server:               serverURL,
-		CertificateAuthority: "/var/run/k8s/ca/tls.crt",
-	}
-
-	// --- User ---
-	cfg.AuthInfos["cm"] = &clientcmdapi.AuthInfo{
-		ClientCertificate: "/var/run/k8s/cm/tls.crt",
-		ClientKey:         "/var/run/k8s/cm/tls.key",
-	}
-
-	// --- Context ---
-	cfg.Contexts["local"] = &clientcmdapi.Context{
-		Cluster:  "local",
-		AuthInfo: "cm",
-	}
-
-	cfg.CurrentContext = "local"
-
-	return cfg
 }
 
 func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	ns := cm.Namespace
-	labels := map[string]string{"app": "kcm"}
-	replicas := int32(1)
 	version := cm.Spec.Version
+
+	labels := map[string]string{common.LabelKeyApp: labelValApp}
+
+	// PKI secret names (canonical)
+	secretCA := pki.SecretManagedCA
+	secretSA := pki.SecretSASigner
+	secretCMClient := pki.SecretCMClient
+
+	// Mount dirs based on secret names (same pattern as apiserver/etcd)
+	caDir := filepath.Join(common.PKIMountRoot, secretCA)
+	saDir := filepath.Join(common.PKIMountRoot, secretSA)
+	cmClientDir := filepath.Join(common.PKIMountRoot, secretCMClient)
+
+	var replicas int32 = 1
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "kube-controller-manager",
+			Name:      componentName,
 			Namespace: ns,
 			Labels:    labels,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: labels,
-			},
+			Selector: &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
-				},
+				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:            "kcm",
-							Image:           "registry.k8s.io/kube-controller-manager" + ":" + version,
+							Name:            containerName,
+							Image:           "registry.k8s.io/kube-controller-manager:" + version,
 							ImagePullPolicy: corev1.PullIfNotPresent,
-							Command: []string{
-								"kube-controller-manager",
-							},
+							Command:         []string{"kube-controller-manager"},
 							Args: []string{
-								// match kind-style bind address
-								"--bind-address=127.0.0.1",
+								"--bind-address=0.0.0.0",
+
 								"--cluster-name=" + cm.GetObjectMeta().GetName(),
-								"--kubeconfig=/etc/kubernetes/controller-manager.conf",
-								"--authentication-kubeconfig=/etc/kubernetes/controller-manager.conf",
-								"--authorization-kubeconfig=/etc/kubernetes/controller-manager.conf",
+
+								// kubeconfig wiring
+								"--kubeconfig=" + kubeconfigPath,
+								"--authentication-kubeconfig=" + kubeconfigPath,
+								"--authorization-kubeconfig=" + kubeconfigPath,
+
+								// leader election + sa creds
 								"--leader-elect=true",
 								"--use-service-account-credentials=true",
 								"--controllers=*,bootstrapsigner,tokencleaner",
-								"--service-account-private-key-file=/var/run/k8s/sa/tls.key",
-								"--cluster-signing-cert-file=/var/run/k8s/ca/tls.crt",
-								"--cluster-signing-key-file=/var/run/k8s/ca/tls.key",
-								"--client-ca-file=/var/run/k8s/ca/tls.crt",
-								"--root-ca-file=/var/run/k8s/ca/tls.crt",
 
-								// optional but often nice to mirror apiserver:
+								// service account signing key
+								"--service-account-private-key-file=" + filepath.Join(saDir, common.TLSKeyKey),
+
+								// cluster signing
+								"--cluster-signing-cert-file=" + filepath.Join(caDir, common.TLSCrtKey),
+								"--cluster-signing-key-file=" + filepath.Join(caDir, common.TLSKeyKey),
+
+								// CA wiring
+								"--client-ca-file=" + filepath.Join(caDir, common.TLSCrtKey),
+								"--root-ca-file=" + filepath.Join(caDir, common.TLSCrtKey),
+
+								// networking
 								"--cluster-cidr=" + cm.Spec.Networking.PodCIDR,
 								"--allocate-node-cidrs=true",
+
+								"--logging-format=json",
 							},
 							Ports: []corev1.ContainerPort{
-								{
-									Name:          "https",
-									ContainerPort: 10257,
-								},
+								{Name: "https", ContainerPort: securePort},
 							},
-							// kind uses /healthz over HTTPS on port 10257
-							StartupProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Scheme: corev1.URISchemeHTTPS,
-										Host:   "127.0.0.1",
-										Port:   intstr.FromInt(10257),
-										Path:   "/healthz",
-									},
-								},
-								InitialDelaySeconds: 10,
-								PeriodSeconds:       10,
-								TimeoutSeconds:      15,
-								FailureThreshold:    24,
-								SuccessThreshold:    1,
-							},
-							LivenessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Scheme: corev1.URISchemeHTTPS,
-										Host:   "127.0.0.1",
-										Port:   intstr.FromInt(10257),
-										Path:   "/healthz",
-									},
-								},
-								InitialDelaySeconds: 10,
-								PeriodSeconds:       10,
-								TimeoutSeconds:      15,
-								FailureThreshold:    8,
-								SuccessThreshold:    1,
-							},
-							// readiness on the same /healthz endpoint is fine here
-							ReadinessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Scheme: corev1.URISchemeHTTPS,
-										Host:   "127.0.0.1",
-										Port:   intstr.FromInt(10257),
-										Path:   "/healthz",
-									},
-								},
-								InitialDelaySeconds: 5,
-								PeriodSeconds:       5,
-								TimeoutSeconds:      15,
-								FailureThreshold:    3,
-								SuccessThreshold:    1,
-							},
+							StartupProbe:   utils.HttpsHealthProbe(securePort, common.HealthPath, 10, 10, 15, 24),
+							LivenessProbe:  utils.HttpsHealthProbe(securePort, common.HealthPath, 10, 10, 15, 8),
+							ReadinessProbe: utils.HttpsHealthProbe(securePort, common.HealthPath, 5, 5, 15, 3),
 							VolumeMounts: []corev1.VolumeMount{
 								{
-									Name:      "kcfg",
-									MountPath: "/etc/kubernetes",
+									Name:      common.KubeconfigVolumeName,
+									MountPath: kubeconfigMountDir,
 									ReadOnly:  true,
 								},
-								{
-									Name:      "cmcert",
-									MountPath: "/var/run/k8s/cm",
-									ReadOnly:  true,
-								},
-								{
-									Name:      "sa-signer",
-									MountPath: "/var/run/k8s/sa",
-									ReadOnly:  true,
-								},
-								{
-									Name:      "kubernetes-ca",
-									MountPath: "/var/run/k8s/ca",
-									ReadOnly:  true,
-								},
+								utils.SecretMount(secretCMClient, cmClientDir),
+								utils.SecretMount(secretSA, saDir),
+								utils.SecretMount(secretCA, caDir),
 							},
 						},
 					},
 					Volumes: []corev1.Volume{
-						{
-							Name: "kcfg",
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "controller-kubeconfig",
-									},
-									Items: []corev1.KeyToPath{
-										{
-											Key:  "controller-manager.conf",
-											Path: "controller-manager.conf",
-										},
-									},
-								},
-							},
-						},
-						{
-							Name: "cmcert",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "cm-client",
-								},
-							},
-						},
-						{
-							Name: "sa-signer",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "sa-signer",
-								},
-							},
-						},
-						{
-							Name: "kubernetes-ca",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "managed-ca",
-								},
-							},
-						},
+						utils.ConfigMapVolume(
+							common.KubeconfigVolumeName,
+							cmKubeconfigName,
+							cmKubeconfigKey,
+							cmKubeconfigFileName,
+						),
+						utils.SecretVolume(secretCMClient, secretCMClient),
+						utils.SecretVolume(secretSA, secretSA),
+						utils.SecretVolume(secretCA, secretCA),
 					},
 				},
 			},

@@ -15,196 +15,146 @@
 package etcd
 
 import (
+	"path/filepath"
+
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
+	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var EtcdVersion = "3.6.5-0"
 
 // Resources returns the Service + StatefulSet required for etcd.
-func Resources(etcdObj *mcpv1alpha1.ManagedControlPlane) []client.Object {
+func Resources(cp *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	return []client.Object{
-		buildService(etcdObj),
-		buildStatefulSet(etcdObj),
+		buildService(cp),
+		buildStatefulSet(cp),
 	}
 }
 
-func buildService(etcdObj *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
-	labels := map[string]string{
-		"app": "etcd",
-	}
-	name := "etcd"
-	namespace := etcdObj.Namespace
+func buildService(cp *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
+	labels := map[string]string{appLabelKey: appLabelVal}
+	ns := cp.Namespace
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
+			Name:      nameEtcd,
+			Namespace: ns,
 			Labels:    labels,
 		},
 		Spec: corev1.ServiceSpec{
-			ClusterIP: "None", // headless for StatefulSet
+			ClusterIP: "None",
 			Selector:  labels,
 			Ports: []corev1.ServicePort{
-				{
-					Name: "client",
-					Port: 2379,
-				},
-				{
-					Name: "peer",
-					Port: 2380,
-				},
+				{Name: "client", Port: clientPort},
+				{Name: "peer", Port: peerPort},
 			},
 		},
 	}
 }
 
-func buildStatefulSet(etcdObj *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
-	labels := map[string]string{
-		"app": "etcd",
-	}
-	name := "etcd"
-	namespace := etcdObj.Namespace
-	version := EtcdVersion
-
+func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
+	labels := map[string]string{appLabelKey: appLabelVal}
+	ns := cp.Namespace
 	replicas := int32(1)
+
+	secretCA := pki.SecretEtcdCA
+	secretServer := pki.SecretEtcdServerTLS
+	secretPeer := pki.SecretEtcdPeerTLS
+
+	volCA := secretCA
+	volServer := secretServer
+	volPeer := secretPeer
+
+	caPath := filepath.Join(mountRoot, dirCA, caCrt)
+	serverCrt := filepath.Join(mountRoot, dirServer, tlsCrt)
+	serverKey := filepath.Join(mountRoot, dirServer, tlsKey)
+	peerCrt := filepath.Join(mountRoot, dirPeer, tlsCrt)
+	peerKey := filepath.Join(mountRoot, dirPeer, tlsKey)
+
+	podFQDNClient := memberName + "." + nameEtcd + "." + ns + ".svc:" + utils.PortString(clientPort)
+	podFQDNPeer := memberName + "." + nameEtcd + "." + ns + ".svc:" + utils.PortString(peerPort)
 
 	return &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
+			Name:      nameEtcd,
+			Namespace: ns,
 			Labels:    labels,
 		},
 		Spec: appsv1.StatefulSetSpec{
-			ServiceName: "etcd",
+			ServiceName: nameEtcd,
 			Replicas:    &replicas,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: labels,
-			},
+			Selector:    &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
-				},
+				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  name,
-							Image: "registry.k8s.io/etcd" + ":" + version,
+							Name:  nameEtcd,
+							Image: "registry.k8s.io/etcd:" + EtcdVersion,
 							Command: []string{
 								"etcd",
 							},
 							Args: []string{
-								"--name=etcd-0",
-								"--data-dir=/var/lib/etcd",
-								"--listen-client-urls=https://0.0.0.0:2379",
-								"--advertise-client-urls=https://etcd-0." + name + "." + namespace + ".svc:2379",
-								"--listen-peer-urls=https://0.0.0.0:2380",
-								"--initial-advertise-peer-urls=https://etcd-0." + name + "." + namespace + ".svc:2380",
-								"--initial-cluster=etcd-0=https://etcd-0." + name + "." + namespace + ".svc:2380",
+								"--name=" + memberName,
+								"--data-dir=" + dataDir,
+
+								"--listen-client-urls=https://0.0.0.0:" + utils.PortString(clientPort),
+								"--advertise-client-urls=https://" + podFQDNClient,
+
+								"--listen-peer-urls=https://0.0.0.0:" + utils.PortString(peerPort),
+								"--initial-advertise-peer-urls=https://" + podFQDNPeer,
+
+								"--initial-cluster=" + clusterName + "=https://" + podFQDNPeer,
 								"--initial-cluster-state=new",
+
 								"--client-cert-auth=true",
 								"--peer-client-cert-auth=true",
-								"--trusted-ca-file=/etc/etcd/pki/ca/ca.crt",
-								"--cert-file=/etc/etcd/pki/server/tls.crt",
-								"--key-file=/etc/etcd/pki/server/tls.key",
-								"--peer-trusted-ca-file=/etc/etcd/pki/ca/ca.crt",
-								"--peer-cert-file=/etc/etcd/pki/peer/tls.crt",
-								"--peer-key-file=/etc/etcd/pki/peer/tls.key",
+
+								"--trusted-ca-file=" + caPath,
+								"--cert-file=" + serverCrt,
+								"--key-file=" + serverKey,
+
+								"--peer-trusted-ca-file=" + caPath,
+								"--peer-cert-file=" + peerCrt,
+								"--peer-key-file=" + peerKey,
 							},
 							Ports: []corev1.ContainerPort{
-								{Name: "client", ContainerPort: 2379},
-								{Name: "peer", ContainerPort: 2380},
+								{Name: "client", ContainerPort: clientPort},
+								{Name: "peer", ContainerPort: peerPort},
 							},
-							LivenessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									TCPSocket: &corev1.TCPSocketAction{
-										Port: intstr.FromInt(2379),
-									},
-								},
-								InitialDelaySeconds: 10,
-								PeriodSeconds:       10,
-							},
-							ReadinessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									TCPSocket: &corev1.TCPSocketAction{
-										Port: intstr.FromInt(2379),
-									},
-								},
-								InitialDelaySeconds: 5,
-								PeriodSeconds:       5,
-							},
+							LivenessProbe:  utils.TcpProbe(clientPort, 10, 10),
+							ReadinessProbe: utils.TcpProbe(clientPort, 5, 5),
 							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "etcd-data",
-									MountPath: "/var/lib/etcd",
-								},
-								{
-									Name:      "etcd-server-tls",
-									MountPath: "/etc/etcd/pki/server",
-									ReadOnly:  true,
-								},
-								{
-									Name:      "etcd-peer-tls",
-									MountPath: "/etc/etcd/pki/peer",
-									ReadOnly:  true,
-								},
-								{
-									Name:      "etcd-ca",
-									MountPath: "/etc/etcd/pki/ca",
-									ReadOnly:  true,
-								},
+								{Name: "etcd-data", MountPath: dataDir},
+								utils.SecretMount(volServer, filepath.Join(mountRoot, dirServer)),
+								utils.SecretMount(volPeer, filepath.Join(mountRoot, dirPeer)),
+								utils.SecretMount(volCA, filepath.Join(mountRoot, dirCA)),
 							},
 						},
 					},
 					Volumes: []corev1.Volume{
-						{
-							Name: "etcd-server-tls",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "etcd-server-tls",
-								},
-							},
-						},
-						{
-							Name: "etcd-peer-tls",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "etcd-peer-tls",
-								},
-							},
-						},
-						{
-							Name: "etcd-ca",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "etcd-ca",
-								},
-							},
-						},
+						utils.SecretVolume(volServer, secretServer),
+						utils.SecretVolume(volPeer, secretPeer),
+						utils.SecretVolume(volCA, secretCA),
 					},
 				},
 			},
-			// Use PVC for data; default StorageClass will be used when StorageClassName is nil
 			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "etcd-data",
-					},
+					ObjectMeta: metav1.ObjectMeta{Name: "etcd-data"},
 					Spec: corev1.PersistentVolumeClaimSpec{
-						AccessModes: []corev1.PersistentVolumeAccessMode{
-							corev1.ReadWriteOnce,
-						},
+						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 						Resources: corev1.VolumeResourceRequirements{
 							Requests: corev1.ResourceList{
-								corev1.ResourceStorage: resource.MustParse("10Gi"),
+								corev1.ResourceStorage: resource.MustParse(defaultStorage),
 							},
 						},
-						// StorageClassName: nil -> use default StorageClass
 					},
 				},
 			},
