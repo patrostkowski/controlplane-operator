@@ -31,28 +31,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	// Component identity
-	componentName = "kube-controller-manager"
-
-	labelValApp = "kcm"
-
-	containerName = "kcm"
-
-	// Kubeconfig ConfigMap
-	cmKubeconfigName     = "controller-kubeconfig"
-	cmKubeconfigKey      = "controller-manager.conf"
-	cmKubeconfigFileName = "controller-manager.conf"
-
-	// Mounts/paths
-	kubeconfigMountDir = "/etc/kubernetes"
-	kubeconfigPath     = kubeconfigMountDir + "/" + cmKubeconfigFileName
-
-	// Controller-manager secure port
-	securePort int32 = 10257
-	healthPath       = "/healthz"
-)
-
 // Resources returns ConfigMap + Deployment for kube-controller-manager.
 func Resources(cm *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	return []client.Object{

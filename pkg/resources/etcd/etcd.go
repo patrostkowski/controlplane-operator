@@ -28,33 +28,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	appLabelKey = "app"
-	appLabelVal = "etcd"
-
-	nameEtcd = "etcd"
-
-	clientPort int32 = 2379
-	peerPort   int32 = 2380
-
-	dataDir = "/var/lib/etcd"
-
-	mountRoot = "/etc/etcd/pki"
-	dirCA     = "ca"
-	dirServer = "server"
-	dirPeer   = "peer"
-
-	caCrt  = "ca.crt"
-	tlsCrt = "tls.crt"
-	tlsKey = "tls.key"
-
-	defaultStorage = "10Gi"
-
-	// Member config (single node for now)
-	memberName  = "etcd-0"
-	clusterName = "etcd-0"
-)
-
 var EtcdVersion = "3.6.5-0"
 
 // Resources returns the Service + StatefulSet required for etcd.

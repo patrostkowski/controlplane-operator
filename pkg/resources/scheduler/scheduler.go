@@ -31,34 +31,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	// Component identity
-	componentName = "kube-scheduler"
-
-	labelValApp = "ks"
-
-	containerName = "ks"
-
-	// Kubeconfig ConfigMap
-	cmKubeconfigName     = "scheduler-kubeconfig"
-	cmKubeconfigKey      = "scheduler.conf"
-	cmKubeconfigFileName = "scheduler.conf"
-
-	// Paths
-	kubeconfigMountDir = "/etc/kubernetes"
-	kubeconfigPath     = kubeconfigMountDir + "/" + cmKubeconfigFileName
-
-	// Scheduler secure port
-	securePort int32 = 10259
-
-	// Probes
-	livezPath  = "/livez"
-	readyzPath = "/readyz"
-
-	// Volume names
-	volKubeconfig = "kcfg"
-)
-
 // Resources returns ConfigMap + Deployment for kube-scheduler.
 func Resources(ms *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	return []client.Object{
