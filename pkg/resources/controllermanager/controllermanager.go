@@ -25,7 +25,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -159,9 +158,9 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 							Ports: []corev1.ContainerPort{
 								{Name: "https", ContainerPort: securePort},
 							},
-							StartupProbe:   httpsHealthProbe(securePort, healthPath, 10, 10, 15, 24),
-							LivenessProbe:  httpsHealthProbe(securePort, healthPath, 10, 10, 15, 8),
-							ReadinessProbe: httpsHealthProbe(securePort, healthPath, 5, 5, 15, 3),
+							StartupProbe:   utils.HttpsHealthProbe(securePort, common.HealthPath, 10, 10, 15, 24),
+							LivenessProbe:  utils.HttpsHealthProbe(securePort, common.HealthPath, 10, 10, 15, 8),
+							ReadinessProbe: utils.HttpsHealthProbe(securePort, common.HealthPath, 5, 5, 15, 3),
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      volKubeconfig,
@@ -199,23 +198,5 @@ func configMapVolume(name string) corev1.Volume {
 				},
 			},
 		},
-	}
-}
-
-func httpsHealthProbe(port int32, path string, initialDelay, period, timeout, failureThreshold int32) *corev1.Probe {
-	return &corev1.Probe{
-		ProbeHandler: corev1.ProbeHandler{
-			HTTPGet: &corev1.HTTPGetAction{
-				Scheme: corev1.URISchemeHTTPS,
-				Host:   "127.0.0.1",
-				Port:   intstr.FromInt(int(port)),
-				Path:   path,
-			},
-		},
-		InitialDelaySeconds: initialDelay,
-		PeriodSeconds:       period,
-		TimeoutSeconds:      timeout,
-		FailureThreshold:    failureThreshold,
-		SuccessThreshold:    1,
 	}
 }

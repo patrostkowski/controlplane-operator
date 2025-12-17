@@ -33,5 +33,4 @@ const (
 
 	// Controller-manager secure port
 	securePort int32 = 10257
-	healthPath       = "/healthz"
 )

@@ -26,7 +26,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -136,8 +135,8 @@ func buildDeployment(ms *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 							Ports: []corev1.ContainerPort{
 								{Name: "https", ContainerPort: securePort},
 							},
-							LivenessProbe:  httpsProbe(securePort, livezPath, 10, 10),
-							ReadinessProbe: httpsProbe(securePort, readyzPath, 5, 5),
+							LivenessProbe:  utils.HttpsHealthProbe(securePort, common.LivezPath, 10, 10, 10, 10),
+							ReadinessProbe: utils.HttpsHealthProbe(securePort, common.ReadyzPath, 5, 5, 5, 5),
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      volKubeconfig,
@@ -171,20 +170,5 @@ func configMapVolume(name string) corev1.Volume {
 				},
 			},
 		},
-	}
-}
-
-func httpsProbe(port int32, path string, initialDelay, period int32) *corev1.Probe {
-	return &corev1.Probe{
-		ProbeHandler: corev1.ProbeHandler{
-			HTTPGet: &corev1.HTTPGetAction{
-				Scheme: corev1.URISchemeHTTPS,
-				Host:   "127.0.0.1",
-				Port:   intstr.FromInt(int(port)),
-				Path:   path,
-			},
-		},
-		InitialDelaySeconds: initialDelay,
-		PeriodSeconds:       period,
 	}
 }

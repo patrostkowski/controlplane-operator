@@ -162,8 +162,8 @@ func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 							Ports: []corev1.ContainerPort{
 								{Name: "https", ContainerPort: securePort},
 							},
-							LivenessProbe:  probeHTTPS(securePort, "/livez", 10, 10),
-							ReadinessProbe: probeHTTPS(securePort, "/readyz", 5, 5),
+							LivenessProbe:  utils.HttpsHealthProbe(securePort, common.LivezPath, 10, 10, 10, 10),
+							ReadinessProbe: utils.HttpsHealthProbe(securePort, common.ReadyzPath, 5, 5, 5, 5),
 							VolumeMounts: []corev1.VolumeMount{
 								utils.SecretMount(caVol, caDir),
 								utils.SecretMount(apiTLSVol, apiTLSDir),
@@ -189,21 +189,6 @@ func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 				},
 			},
 		},
-	}
-}
-
-func probeHTTPS(port int32, path string, initialDelay, period int32) *corev1.Probe {
-	return &corev1.Probe{
-		ProbeHandler: corev1.ProbeHandler{
-			HTTPGet: &corev1.HTTPGetAction{
-				Scheme: corev1.URISchemeHTTPS,
-				Host:   "127.0.0.1",
-				Port:   intstrFromInt(port),
-				Path:   path,
-			},
-		},
-		InitialDelaySeconds: initialDelay,
-		PeriodSeconds:       period,
 	}
 }
 

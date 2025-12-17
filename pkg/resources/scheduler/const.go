@@ -34,10 +34,6 @@ const (
 	// Scheduler secure port
 	securePort int32 = 10259
 
-	// Probes
-	livezPath  = "/livez"
-	readyzPath = "/readyz"
-
 	// Volume names
 	volKubeconfig = "kcfg"
 )

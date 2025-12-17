@@ -22,4 +22,9 @@ const (
 	PKIMountRoot = "/var/run/k8s"
 
 	LabelKeyApp = "app"
+
+	// Probes
+	LivezPath  = "/livez"
+	ReadyzPath = "/readyz"
+	HealthPath = "/healthz"
 )
