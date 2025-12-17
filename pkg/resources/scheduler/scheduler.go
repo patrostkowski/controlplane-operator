@@ -22,6 +22,7 @@ import (
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/apiserver"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
+	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -143,8 +144,8 @@ func buildDeployment(ms *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 									MountPath: kubeconfigMountDir,
 									ReadOnly:  true,
 								},
-								secretMount(secretSchedulerClient, schedulerClientDir),
-								secretMount(secretCA, caDir),
+								utils.SecretMount(secretSchedulerClient, schedulerClientDir),
+								utils.SecretMount(secretCA, caDir),
 							},
 						},
 					},
@@ -170,14 +171,6 @@ func configMapVolume(name string) corev1.Volume {
 				},
 			},
 		},
-	}
-}
-
-func secretMount(volumeName, mountPath string) corev1.VolumeMount {
-	return corev1.VolumeMount{
-		Name:      volumeName,
-		MountPath: mountPath,
-		ReadOnly:  true,
 	}
 }
 

@@ -168,9 +168,9 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 									MountPath: kubeconfigMountDir,
 									ReadOnly:  true,
 								},
-								secretMount(secretCMClient, cmClientDir),
-								secretMount(secretSA, saDir),
-								secretMount(secretCA, caDir),
+								utils.SecretMount(secretCMClient, cmClientDir),
+								utils.SecretMount(secretSA, saDir),
+								utils.SecretMount(secretCA, caDir),
 							},
 						},
 					},
@@ -199,14 +199,6 @@ func configMapVolume(name string) corev1.Volume {
 				},
 			},
 		},
-	}
-}
-
-func secretMount(volumeName, mountPath string) corev1.VolumeMount {
-	return corev1.VolumeMount{
-		Name:      volumeName,
-		MountPath: mountPath,
-		ReadOnly:  true,
 	}
 }
 

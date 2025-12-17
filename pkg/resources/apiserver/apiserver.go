@@ -20,6 +20,7 @@ import (
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
+	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -85,6 +86,15 @@ func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	saVol := pki.SecretSASigner
 	frontProxyCAVol := pki.SecretFrontProxyCA
 	frontProxyClientVol := pki.SecretFrontProxyClient
+
+	caDir := filepath.Join(common.PKIMountRoot, caVol)
+	apiTLSDir := filepath.Join(common.PKIMountRoot, apiTLSVol)
+	etcdCADir := filepath.Join(common.PKIMountRoot, etcdCAVol)
+	etcdClientDir := filepath.Join(common.PKIMountRoot, etcdClientVol)
+	kubeletClientDir := filepath.Join(common.PKIMountRoot, kubeletClientVol)
+	saDir := filepath.Join(common.PKIMountRoot, saVol)
+	frontProxyCADir := filepath.Join(common.PKIMountRoot, frontProxyCAVol)
+	frontProxyClientDir := filepath.Join(common.PKIMountRoot, frontProxyClientVol)
 
 	// Helper: compute file paths inside mounts
 	certPath := func(vol string) string { return filepath.Join(common.PKIMountRoot, vol, common.TLSCrtKey) }
@@ -155,14 +165,14 @@ func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 							LivenessProbe:  probeHTTPS(securePort, "/livez", 10, 10),
 							ReadinessProbe: probeHTTPS(securePort, "/readyz", 5, 5),
 							VolumeMounts: []corev1.VolumeMount{
-								secretMount(caVol),
-								secretMount(apiTLSVol),
-								secretMount(etcdCAVol),
-								secretMount(etcdClientVol),
-								secretMount(kubeletClientVol),
-								secretMount(saVol),
-								secretMount(frontProxyCAVol),
-								secretMount(frontProxyClientVol),
+								utils.SecretMount(caVol, caDir),
+								utils.SecretMount(apiTLSVol, apiTLSDir),
+								utils.SecretMount(etcdCAVol, etcdCADir),
+								utils.SecretMount(etcdClientVol, etcdClientDir),
+								utils.SecretMount(kubeletClientVol, kubeletClientDir),
+								utils.SecretMount(saVol, saDir),
+								utils.SecretMount(frontProxyCAVol, frontProxyCADir),
+								utils.SecretMount(frontProxyClientVol, frontProxyClientDir),
 							},
 						},
 					},
@@ -199,14 +209,6 @@ func probeHTTPS(port int32, path string, initialDelay, period int32) *corev1.Pro
 
 func intstrFromInt(port int32) intstr.IntOrString {
 	return intstr.IntOrString{Type: intstr.Int, IntVal: port}
-}
-
-func secretMount(secretName string) corev1.VolumeMount {
-	return corev1.VolumeMount{
-		Name:      secretName,
-		MountPath: filepath.Join(common.PKIMountRoot, secretName),
-		ReadOnly:  true,
-	}
 }
 
 func secretVol(secretName string) corev1.Volume {

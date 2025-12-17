@@ -20,6 +20,7 @@ import (
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
+	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -133,9 +134,9 @@ func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
 							ReadinessProbe: tcpProbe(clientPort, 5, 5),
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "etcd-data", MountPath: dataDir},
-								secretMount(volServer, filepath.Join(mountRoot, dirServer)),
-								secretMount(volPeer, filepath.Join(mountRoot, dirPeer)),
-								secretMount(volCA, filepath.Join(mountRoot, dirCA)),
+								utils.SecretMount(volServer, filepath.Join(mountRoot, dirServer)),
+								utils.SecretMount(volPeer, filepath.Join(mountRoot, dirPeer)),
+								utils.SecretMount(volCA, filepath.Join(mountRoot, dirCA)),
 							},
 						},
 					},
@@ -172,14 +173,6 @@ func tcpProbe(port int32, initialDelay, period int32) *corev1.Probe {
 		},
 		InitialDelaySeconds: initialDelay,
 		PeriodSeconds:       period,
-	}
-}
-
-func secretMount(volumeName, mountPath string) corev1.VolumeMount {
-	return corev1.VolumeMount{
-		Name:      volumeName,
-		MountPath: mountPath,
-		ReadOnly:  true,
 	}
 }
 
