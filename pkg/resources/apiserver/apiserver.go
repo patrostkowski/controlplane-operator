@@ -24,7 +24,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -62,7 +61,7 @@ func buildService(api *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 				{
 					Name:       "https",
 					Port:       securePort,
-					TargetPort: intstrFromInt(securePort),
+					TargetPort: utils.IntstrFromInt(securePort),
 				},
 			},
 			Type: corev1.ServiceTypeLoadBalancer,
@@ -190,8 +189,4 @@ func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			},
 		},
 	}
-}
-
-func intstrFromInt(port int32) intstr.IntOrString {
-	return intstr.IntOrString{Type: intstr.Int, IntVal: port}
 }

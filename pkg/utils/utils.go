@@ -22,6 +22,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -101,4 +102,8 @@ func MergeStringMap(dst, src map[string]string) map[string]string {
 
 func PortString(p int32) string {
 	return strconv.Itoa(int(p))
+}
+
+func IntstrFromInt(port int32) intstr.IntOrString {
+	return intstr.IntOrString{Type: intstr.Int, IntVal: port}
 }
