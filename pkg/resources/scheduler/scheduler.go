@@ -16,7 +16,6 @@ package scheduler
 
 import (
 	"path/filepath"
-	"strconv"
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/apiserver"
@@ -27,7 +26,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -41,7 +39,13 @@ func Resources(ms *mcpv1alpha1.ManagedControlPlane) []client.Object {
 
 func buildConfigMap(ms *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 	ns := ms.Namespace
-	kcfg := buildSchedulerKubeconfig(ns)
+	kcfg := utils.BuildComponentKubeconfig(
+		ns,
+		apiserver.KubeAPIServerSvcName,
+		apiserver.KubeAPIServerSecurePort,
+		"scheduler",
+		pki.SecretSchedulerClient,
+	)
 
 	kubeconfigData, err := clientcmd.Write(*kcfg)
 	if err != nil {
@@ -57,39 +61,6 @@ func buildConfigMap(ms *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 			cmKubeconfigKey: string(kubeconfigData),
 		},
 	}
-}
-
-func buildSchedulerKubeconfig(namespace string) *clientcmdapi.Config {
-	serverURL := "https://" + apiserver.KubeAPIServerSvcName + "." + namespace + ".svc:" + strconv.Itoa(int(apiserver.KubeAPIServerSecurePort))
-
-	cfg := clientcmdapi.NewConfig()
-
-	secretCA := pki.SecretManagedCA
-	secretSchedulerClient := pki.SecretSchedulerClient
-
-	caDir := filepath.Join(common.PKIMountRoot, secretCA)
-	schedulerClientDir := filepath.Join(common.PKIMountRoot, secretSchedulerClient)
-
-	// --- Cluster ---
-	cfg.Clusters["local"] = &clientcmdapi.Cluster{
-		Server:               serverURL,
-		CertificateAuthority: filepath.Join(caDir, common.TLSCrtKey),
-	}
-
-	// --- User ---
-	cfg.AuthInfos["scheduler"] = &clientcmdapi.AuthInfo{
-		ClientCertificate: filepath.Join(schedulerClientDir, common.TLSCrtKey),
-		ClientKey:         filepath.Join(schedulerClientDir, common.TLSKeyKey),
-	}
-
-	// --- Context ---
-	cfg.Contexts["local"] = &clientcmdapi.Context{
-		Cluster:  "local",
-		AuthInfo: "scheduler",
-	}
-	cfg.CurrentContext = "local"
-
-	return cfg
 }
 
 func buildDeployment(ms *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {

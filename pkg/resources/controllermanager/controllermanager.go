@@ -26,7 +26,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -40,7 +39,13 @@ func Resources(cm *mcpv1alpha1.ManagedControlPlane) []client.Object {
 
 func buildConfigMap(cm *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 	ns := cm.Namespace
-	kcfg := buildControllerManagerKubeconfig(ns)
+	kcfg := utils.BuildComponentKubeconfig(
+		ns,
+		apiserver.KubeAPIServerSvcName,
+		apiserver.KubeAPIServerSecurePort,
+		"cm",
+		pki.SecretCMClient,
+	)
 
 	kubeconfigData, err := clientcmd.Write(*kcfg)
 	if err != nil {
@@ -56,37 +61,6 @@ func buildConfigMap(cm *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 			cmKubeconfigKey: string(kubeconfigData),
 		},
 	}
-}
-
-func buildControllerManagerKubeconfig(namespace string) *clientcmdapi.Config {
-	serverURL := "https://" + apiserver.KubeAPIServerSvcName + "." + namespace + ".svc:" + utils.PortString(apiserver.KubeAPIServerSecurePort)
-
-	cfg := clientcmdapi.NewConfig()
-
-	// Reuse PKI secret names as mount directory names.
-	caDir := filepath.Join(common.PKIMountRoot, pki.SecretManagedCA)
-	cmClientDir := filepath.Join(common.PKIMountRoot, pki.SecretCMClient)
-
-	// --- Cluster ---
-	cfg.Clusters["local"] = &clientcmdapi.Cluster{
-		Server:               serverURL,
-		CertificateAuthority: filepath.Join(caDir, common.TLSCrtKey),
-	}
-
-	// --- User ---
-	cfg.AuthInfos["cm"] = &clientcmdapi.AuthInfo{
-		ClientCertificate: filepath.Join(cmClientDir, common.TLSCrtKey),
-		ClientKey:         filepath.Join(cmClientDir, common.TLSKeyKey),
-	}
-
-	// --- Context ---
-	cfg.Contexts["local"] = &clientcmdapi.Context{
-		Cluster:  "local",
-		AuthInfo: "cm",
-	}
-	cfg.CurrentContext = "local"
-
-	return cfg
 }
 
 func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {

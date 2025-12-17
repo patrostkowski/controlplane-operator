@@ -1,8 +1,14 @@
 package utils
 
 import (
+	"path/filepath"
+	"strconv"
+
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/tools/clientcmd/api"
 )
 
 func SecretMount(volumeName, mountPath string) corev1.VolumeMount {
@@ -64,4 +70,45 @@ func ConfigMapVolume(mountName, cmName, cmKey, path string) corev1.Volume {
 			},
 		},
 	}
+}
+
+func BuildComponentKubeconfig(
+	namespace string,
+	apiServerService string,
+	apiServerPort int32,
+	user string,
+	clientSecret string,
+) *api.Config {
+	serverURL :=
+		"https://" +
+			apiServerService +
+			"." + namespace +
+			".svc:" +
+			strconv.Itoa(int(apiServerPort))
+
+	cfg := api.NewConfig()
+
+	caDir := filepath.Join(common.PKIMountRoot, pki.SecretManagedCA)
+	clientDir := filepath.Join(common.PKIMountRoot, clientSecret)
+
+	// --- Cluster ---
+	cfg.Clusters["local"] = &api.Cluster{
+		Server:               serverURL,
+		CertificateAuthority: filepath.Join(caDir, common.TLSCrtKey),
+	}
+
+	// --- User ---
+	cfg.AuthInfos[user] = &api.AuthInfo{
+		ClientCertificate: filepath.Join(clientDir, common.TLSCrtKey),
+		ClientKey:         filepath.Join(clientDir, common.TLSKeyKey),
+	}
+
+	// --- Context ---
+	cfg.Contexts["local"] = &api.Context{
+		Cluster:  "local",
+		AuthInfo: user,
+	}
+	cfg.CurrentContext = "local"
+
+	return cfg
 }
