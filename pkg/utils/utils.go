@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -96,4 +97,8 @@ func MergeStringMap(dst, src map[string]string) map[string]string {
 		dst[k] = v
 	}
 	return dst
+}
+
+func PortString(p int32) string {
+	return strconv.Itoa(int(p))
 }

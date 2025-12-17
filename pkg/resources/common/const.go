@@ -18,4 +18,6 @@ const (
 	// cert-manager Secret keys (your certs are created with tls.crt/tls.key; CA secret also uses tls.crt here)
 	TlsCrt = "tls.crt"
 	TlsKey = "tls.key"
+
+	LabelKeyApp = "app"
 )
