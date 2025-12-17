@@ -127,7 +127,7 @@ func buildDeployment(ms *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 							cmKubeconfigFileName,
 						),
 						utils.SecretVolume(secretSchedulerClient, secretSchedulerClient),
-						utils.SecretVolume(secretCA, secretSchedulerClient),
+						utils.SecretVolume(secretCA, secretCA),
 					},
 				},
 			},
