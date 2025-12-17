@@ -163,7 +163,7 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 							ReadinessProbe: utils.HttpsHealthProbe(securePort, common.HealthPath, 5, 5, 15, 3),
 							VolumeMounts: []corev1.VolumeMount{
 								{
-									Name:      volKubeconfig,
+									Name:      common.KubeconfigVolumeName,
 									MountPath: kubeconfigMountDir,
 									ReadOnly:  true,
 								},
@@ -174,27 +174,16 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 						},
 					},
 					Volumes: []corev1.Volume{
-						configMapVolume(cmKubeconfigName),
+						utils.ConfigMapVolume(
+							common.KubeconfigVolumeName,
+							cmKubeconfigName,
+							cmKubeconfigKey,
+							cmKubeconfigFileName,
+						),
 						utils.SecretVolume(secretCMClient, secretCMClient),
 						utils.SecretVolume(secretSA, secretSA),
 						utils.SecretVolume(secretCA, secretCA),
 					},
-				},
-			},
-		},
-	}
-}
-
-const volKubeconfig = "kcfg"
-
-func configMapVolume(name string) corev1.Volume {
-	return corev1.Volume{
-		Name: volKubeconfig,
-		VolumeSource: corev1.VolumeSource{
-			ConfigMap: &corev1.ConfigMapVolumeSource{
-				LocalObjectReference: corev1.LocalObjectReference{Name: name},
-				Items: []corev1.KeyToPath{
-					{Key: cmKubeconfigKey, Path: cmKubeconfigFileName},
 				},
 			},
 		},

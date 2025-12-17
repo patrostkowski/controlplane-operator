@@ -16,7 +16,6 @@ package etcd
 
 import (
 	"path/filepath"
-	"strconv"
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
@@ -25,7 +24,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -79,8 +77,8 @@ func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
 	peerCrt := filepath.Join(mountRoot, dirPeer, tlsCrt)
 	peerKey := filepath.Join(mountRoot, dirPeer, tlsKey)
 
-	podFQDNClient := memberName + "." + nameEtcd + "." + ns + ".svc:" + portString(clientPort)
-	podFQDNPeer := memberName + "." + nameEtcd + "." + ns + ".svc:" + portString(peerPort)
+	podFQDNClient := memberName + "." + nameEtcd + "." + ns + ".svc:" + utils.PortString(clientPort)
+	podFQDNPeer := memberName + "." + nameEtcd + "." + ns + ".svc:" + utils.PortString(peerPort)
 
 	return &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -106,10 +104,10 @@ func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
 								"--name=" + memberName,
 								"--data-dir=" + dataDir,
 
-								"--listen-client-urls=https://0.0.0.0:" + portString(clientPort),
+								"--listen-client-urls=https://0.0.0.0:" + utils.PortString(clientPort),
 								"--advertise-client-urls=https://" + podFQDNClient,
 
-								"--listen-peer-urls=https://0.0.0.0:" + portString(peerPort),
+								"--listen-peer-urls=https://0.0.0.0:" + utils.PortString(peerPort),
 								"--initial-advertise-peer-urls=https://" + podFQDNPeer,
 
 								"--initial-cluster=" + clusterName + "=https://" + podFQDNPeer,
@@ -130,8 +128,8 @@ func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
 								{Name: "client", ContainerPort: clientPort},
 								{Name: "peer", ContainerPort: peerPort},
 							},
-							LivenessProbe:  tcpProbe(clientPort, 10, 10),
-							ReadinessProbe: tcpProbe(clientPort, 5, 5),
+							LivenessProbe:  utils.TcpProbe(clientPort, 10, 10),
+							ReadinessProbe: utils.TcpProbe(clientPort, 5, 5),
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "etcd-data", MountPath: dataDir},
 								utils.SecretMount(volServer, filepath.Join(mountRoot, dirServer)),
@@ -162,20 +160,4 @@ func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
 			},
 		},
 	}
-}
-
-func tcpProbe(port int32, initialDelay, period int32) *corev1.Probe {
-	return &corev1.Probe{
-		ProbeHandler: corev1.ProbeHandler{
-			TCPSocket: &corev1.TCPSocketAction{
-				Port: intstr.FromInt(int(port)),
-			},
-		},
-		InitialDelaySeconds: initialDelay,
-		PeriodSeconds:       period,
-	}
-}
-
-func portString(p int32) string {
-	return strconv.Itoa(int(p))
 }

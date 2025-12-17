@@ -39,3 +39,29 @@ func HttpsHealthProbe(port int32, path string, initialDelay, period, timeout, fa
 		SuccessThreshold:    1,
 	}
 }
+
+func TcpProbe(port int32, initialDelay, period int32) *corev1.Probe {
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			TCPSocket: &corev1.TCPSocketAction{
+				Port: intstr.FromInt(int(port)),
+			},
+		},
+		InitialDelaySeconds: initialDelay,
+		PeriodSeconds:       period,
+	}
+}
+
+func ConfigMapVolume(mountName, cmName, cmKey, path string) corev1.Volume {
+	return corev1.Volume{
+		Name: mountName,
+		VolumeSource: corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: cmName},
+				Items: []corev1.KeyToPath{
+					{Key: cmKey, Path: path},
+				},
+			},
+		},
+	}
+}

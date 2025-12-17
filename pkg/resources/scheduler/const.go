@@ -33,7 +33,4 @@ const (
 
 	// Scheduler secure port
 	securePort int32 = 10259
-
-	// Volume names
-	volKubeconfig = "kcfg"
 )

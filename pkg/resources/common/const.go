@@ -27,4 +27,6 @@ const (
 	LivezPath  = "/livez"
 	ReadyzPath = "/readyz"
 	HealthPath = "/healthz"
+
+	KubeconfigVolumeName = "kubeconfig"
 )
