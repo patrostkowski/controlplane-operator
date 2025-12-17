@@ -48,8 +48,6 @@ const (
 	kubeconfigMountDir = "/etc/kubernetes"
 	kubeconfigPath     = kubeconfigMountDir + "/" + cmKubeconfigFileName
 
-	pkiMountRoot = "/var/run/k8s"
-
 	// Controller-manager secure port
 	securePort int32 = 10257
 	healthPath       = "/healthz"
@@ -89,19 +87,19 @@ func buildControllerManagerKubeconfig(namespace string) *clientcmdapi.Config {
 	cfg := clientcmdapi.NewConfig()
 
 	// Reuse PKI secret names as mount directory names.
-	caDir := filepath.Join(pkiMountRoot, pki.SecretManagedCA)
-	cmClientDir := filepath.Join(pkiMountRoot, pki.SecretCMClient)
+	caDir := filepath.Join(common.PKIMountRoot, pki.SecretManagedCA)
+	cmClientDir := filepath.Join(common.PKIMountRoot, pki.SecretCMClient)
 
 	// --- Cluster ---
 	cfg.Clusters["local"] = &clientcmdapi.Cluster{
 		Server:               serverURL,
-		CertificateAuthority: filepath.Join(caDir, common.TlsCrt),
+		CertificateAuthority: filepath.Join(caDir, common.TLSCrtKey),
 	}
 
 	// --- User ---
 	cfg.AuthInfos["cm"] = &clientcmdapi.AuthInfo{
-		ClientCertificate: filepath.Join(cmClientDir, common.TlsCrt),
-		ClientKey:         filepath.Join(cmClientDir, common.TlsKey),
+		ClientCertificate: filepath.Join(cmClientDir, common.TLSCrtKey),
+		ClientKey:         filepath.Join(cmClientDir, common.TLSKeyKey),
 	}
 
 	// --- Context ---
@@ -126,9 +124,9 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	secretCMClient := pki.SecretCMClient
 
 	// Mount dirs based on secret names (same pattern as apiserver/etcd)
-	caDir := filepath.Join(pkiMountRoot, secretCA)
-	saDir := filepath.Join(pkiMountRoot, secretSA)
-	cmClientDir := filepath.Join(pkiMountRoot, secretCMClient)
+	caDir := filepath.Join(common.PKIMountRoot, secretCA)
+	saDir := filepath.Join(common.PKIMountRoot, secretSA)
+	cmClientDir := filepath.Join(common.PKIMountRoot, secretCMClient)
 
 	var replicas int32 = 1
 
@@ -166,15 +164,15 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 								"--controllers=*,bootstrapsigner,tokencleaner",
 
 								// service account signing key
-								"--service-account-private-key-file=" + filepath.Join(saDir, common.TlsKey),
+								"--service-account-private-key-file=" + filepath.Join(saDir, common.TLSKeyKey),
 
 								// cluster signing
-								"--cluster-signing-cert-file=" + filepath.Join(caDir, common.TlsCrt),
-								"--cluster-signing-key-file=" + filepath.Join(caDir, common.TlsKey),
+								"--cluster-signing-cert-file=" + filepath.Join(caDir, common.TLSCrtKey),
+								"--cluster-signing-key-file=" + filepath.Join(caDir, common.TLSKeyKey),
 
 								// CA wiring
-								"--client-ca-file=" + filepath.Join(caDir, common.TlsCrt),
-								"--root-ca-file=" + filepath.Join(caDir, common.TlsCrt),
+								"--client-ca-file=" + filepath.Join(caDir, common.TLSCrtKey),
+								"--root-ca-file=" + filepath.Join(caDir, common.TLSCrtKey),
 
 								// networking
 								"--cluster-cidr=" + cm.Spec.Networking.PodCIDR,

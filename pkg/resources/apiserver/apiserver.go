@@ -87,8 +87,8 @@ func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	frontProxyClientVol := pki.SecretFrontProxyClient
 
 	// Helper: compute file paths inside mounts
-	certPath := func(vol string) string { return filepath.Join(mountRoot, vol, common.TlsCrt) }
-	keyPath := func(vol string) string { return filepath.Join(mountRoot, vol, common.TlsKey) }
+	certPath := func(vol string) string { return filepath.Join(common.PKIMountRoot, vol, common.TLSCrtKey) }
+	keyPath := func(vol string) string { return filepath.Join(common.PKIMountRoot, vol, common.TLSKeyKey) }
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -204,7 +204,7 @@ func intstrFromInt(port int32) intstr.IntOrString {
 func secretMount(secretName string) corev1.VolumeMount {
 	return corev1.VolumeMount{
 		Name:      secretName,
-		MountPath: filepath.Join(mountRoot, secretName),
+		MountPath: filepath.Join(common.PKIMountRoot, secretName),
 		ReadOnly:  true,
 	}
 }

@@ -48,8 +48,6 @@ const (
 	kubeconfigMountDir = "/etc/kubernetes"
 	kubeconfigPath     = kubeconfigMountDir + "/" + cmKubeconfigFileName
 
-	pkiMountRoot = "/var/run/k8s"
-
 	// Scheduler secure port
 	securePort int32 = 10259
 
@@ -97,19 +95,19 @@ func buildSchedulerKubeconfig(namespace string) *clientcmdapi.Config {
 	secretCA := pki.SecretManagedCA
 	secretSchedulerClient := pki.SecretSchedulerClient
 
-	caDir := filepath.Join(pkiMountRoot, secretCA)
-	schedulerClientDir := filepath.Join(pkiMountRoot, secretSchedulerClient)
+	caDir := filepath.Join(common.PKIMountRoot, secretCA)
+	schedulerClientDir := filepath.Join(common.PKIMountRoot, secretSchedulerClient)
 
 	// --- Cluster ---
 	cfg.Clusters["local"] = &clientcmdapi.Cluster{
 		Server:               serverURL,
-		CertificateAuthority: filepath.Join(caDir, common.TlsCrt),
+		CertificateAuthority: filepath.Join(caDir, common.TLSCrtKey),
 	}
 
 	// --- User ---
 	cfg.AuthInfos["scheduler"] = &clientcmdapi.AuthInfo{
-		ClientCertificate: filepath.Join(schedulerClientDir, common.TlsCrt),
-		ClientKey:         filepath.Join(schedulerClientDir, common.TlsKey),
+		ClientCertificate: filepath.Join(schedulerClientDir, common.TLSCrtKey),
+		ClientKey:         filepath.Join(schedulerClientDir, common.TLSKeyKey),
 	}
 
 	// --- Context ---
@@ -131,8 +129,8 @@ func buildDeployment(ms *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	secretCA := pki.SecretManagedCA
 	secretSchedulerClient := pki.SecretSchedulerClient
 
-	caDir := filepath.Join(pkiMountRoot, secretCA)
-	schedulerClientDir := filepath.Join(pkiMountRoot, secretSchedulerClient)
+	caDir := filepath.Join(common.PKIMountRoot, secretCA)
+	schedulerClientDir := filepath.Join(common.PKIMountRoot, secretSchedulerClient)
 
 	// Runtime
 	var replicas int32 = 1
