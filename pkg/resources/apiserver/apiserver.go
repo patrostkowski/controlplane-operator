@@ -177,14 +177,14 @@ func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 						},
 					},
 					Volumes: []corev1.Volume{
-						secretVol(caVol),
-						secretVol(apiTLSVol),
-						secretVol(etcdCAVol),
-						secretVol(etcdClientVol),
-						secretVol(kubeletClientVol),
-						secretVol(saVol),
-						secretVol(frontProxyCAVol),
-						secretVol(frontProxyClientVol),
+						utils.SecretVolume(caVol, caVol),
+						utils.SecretVolume(apiTLSVol, apiTLSVol),
+						utils.SecretVolume(etcdCAVol, etcdCAVol),
+						utils.SecretVolume(etcdClientVol, etcdClientVol),
+						utils.SecretVolume(kubeletClientVol, kubeletClientVol),
+						utils.SecretVolume(saVol, saVol),
+						utils.SecretVolume(frontProxyCAVol, frontProxyCAVol),
+						utils.SecretVolume(frontProxyClientVol, frontProxyClientVol),
 					},
 				},
 			},
@@ -209,13 +209,4 @@ func probeHTTPS(port int32, path string, initialDelay, period int32) *corev1.Pro
 
 func intstrFromInt(port int32) intstr.IntOrString {
 	return intstr.IntOrString{Type: intstr.Int, IntVal: port}
-}
-
-func secretVol(secretName string) corev1.Volume {
-	return corev1.Volume{
-		Name: secretName,
-		VolumeSource: corev1.VolumeSource{
-			Secret: &corev1.SecretVolumeSource{SecretName: secretName},
-		},
-	}
 }

@@ -176,9 +176,9 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 					},
 					Volumes: []corev1.Volume{
 						configMapVolume(cmKubeconfigName),
-						secretVolume(secretCMClient),
-						secretVolume(secretSA),
-						secretVolume(secretCA),
+						utils.SecretVolume(secretCMClient, secretCMClient),
+						utils.SecretVolume(secretSA, secretSA),
+						utils.SecretVolume(secretCA, secretCA),
 					},
 				},
 			},
@@ -198,15 +198,6 @@ func configMapVolume(name string) corev1.Volume {
 					{Key: cmKubeconfigKey, Path: cmKubeconfigFileName},
 				},
 			},
-		},
-	}
-}
-
-func secretVolume(secretName string) corev1.Volume {
-	return corev1.Volume{
-		Name: secretName,
-		VolumeSource: corev1.VolumeSource{
-			Secret: &corev1.SecretVolumeSource{SecretName: secretName},
 		},
 	}
 }

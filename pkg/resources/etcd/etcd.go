@@ -141,9 +141,9 @@ func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
 						},
 					},
 					Volumes: []corev1.Volume{
-						secretVol(volServer, secretServer),
-						secretVol(volPeer, secretPeer),
-						secretVol(volCA, secretCA),
+						utils.SecretVolume(volServer, secretServer),
+						utils.SecretVolume(volPeer, secretPeer),
+						utils.SecretVolume(volCA, secretCA),
 					},
 				},
 			},
@@ -173,15 +173,6 @@ func tcpProbe(port int32, initialDelay, period int32) *corev1.Probe {
 		},
 		InitialDelaySeconds: initialDelay,
 		PeriodSeconds:       period,
-	}
-}
-
-func secretVol(volumeName, secretName string) corev1.Volume {
-	return corev1.Volume{
-		Name: volumeName,
-		VolumeSource: corev1.VolumeSource{
-			Secret: &corev1.SecretVolumeSource{SecretName: secretName},
-		},
 	}
 }
 

@@ -11,3 +11,12 @@ func SecretMount(volumeName, mountPath string) corev1.VolumeMount {
 		ReadOnly:  true,
 	}
 }
+
+func SecretVolume(volumeName, secretName string) corev1.Volume {
+	return corev1.Volume{
+		Name: volumeName,
+		VolumeSource: corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{SecretName: secretName},
+		},
+	}
+}
