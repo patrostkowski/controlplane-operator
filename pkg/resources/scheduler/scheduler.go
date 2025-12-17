@@ -15,7 +15,13 @@
 package scheduler
 
 import (
+	"path/filepath"
+	"strconv"
+
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/apiserver"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,6 +29,36 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+const (
+	// Component identity
+	componentName = "kube-scheduler"
+
+	labelValApp = "ks"
+
+	containerName = "ks"
+
+	// Kubeconfig ConfigMap
+	cmKubeconfigName     = "scheduler-kubeconfig"
+	cmKubeconfigKey      = "scheduler.conf"
+	cmKubeconfigFileName = "scheduler.conf"
+
+	// Paths
+	kubeconfigMountDir = "/etc/kubernetes"
+	kubeconfigPath     = kubeconfigMountDir + "/" + cmKubeconfigFileName
+
+	pkiMountRoot = "/var/run/k8s"
+
+	// Scheduler secure port
+	securePort int32 = 10259
+
+	// Probes
+	livezPath  = "/livez"
+	readyzPath = "/readyz"
+
+	// Volume names
+	volKubeconfig = "kcfg"
 )
 
 // Resources returns ConfigMap + Deployment for kube-scheduler.
@@ -37,39 +73,43 @@ func buildConfigMap(ms *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 	ns := ms.Namespace
 	kcfg := buildSchedulerKubeconfig(ns)
 
-	// marshal kubeconfig to YAML
 	kubeconfigData, err := clientcmd.Write(*kcfg)
 	if err != nil {
-		// should never happen with in-memory cfg
 		panic(err)
 	}
 
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scheduler-kubeconfig",
+			Name:      cmKubeconfigName,
 			Namespace: ns,
 		},
 		Data: map[string]string{
-			"scheduler.conf": string(kubeconfigData),
+			cmKubeconfigKey: string(kubeconfigData),
 		},
 	}
 }
 
 func buildSchedulerKubeconfig(namespace string) *clientcmdapi.Config {
-	serverURL := "https://kube-apiserver." + namespace + ".svc:6443"
+	serverURL := "https://" + apiserver.KubeAPIServerSvcName + "." + namespace + ".svc:" + strconv.Itoa(int(apiserver.KubeAPIServerSecurePort))
 
 	cfg := clientcmdapi.NewConfig()
+
+	secretCA := pki.SecretManagedCA
+	secretSchedulerClient := pki.SecretSchedulerClient
+
+	caDir := filepath.Join(pkiMountRoot, secretCA)
+	schedulerClientDir := filepath.Join(pkiMountRoot, secretSchedulerClient)
 
 	// --- Cluster ---
 	cfg.Clusters["local"] = &clientcmdapi.Cluster{
 		Server:               serverURL,
-		CertificateAuthority: "/var/run/k8s/ca/tls.crt",
+		CertificateAuthority: filepath.Join(caDir, common.TlsCrt),
 	}
 
 	// --- User ---
 	cfg.AuthInfos["scheduler"] = &clientcmdapi.AuthInfo{
-		ClientCertificate: "/var/run/k8s/scheduler/tls.crt",
-		ClientKey:         "/var/run/k8s/scheduler/tls.key",
+		ClientCertificate: filepath.Join(schedulerClientDir, common.TlsCrt),
+		ClientKey:         filepath.Join(schedulerClientDir, common.TlsKey),
 	}
 
 	// --- Context ---
@@ -77,7 +117,6 @@ func buildSchedulerKubeconfig(namespace string) *clientcmdapi.Config {
 		Cluster:  "local",
 		AuthInfo: "scheduler",
 	}
-
 	cfg.CurrentContext = "local"
 
 	return cfg
@@ -85,126 +124,113 @@ func buildSchedulerKubeconfig(namespace string) *clientcmdapi.Config {
 
 func buildDeployment(ms *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	ns := ms.Namespace
-	labels := map[string]string{"app": "ks"}
-	replicas := int32(1)
 	version := ms.Spec.Version
+
+	labels := map[string]string{common.LabelKeyApp: labelValApp}
+
+	secretCA := pki.SecretManagedCA
+	secretSchedulerClient := pki.SecretSchedulerClient
+
+	caDir := filepath.Join(pkiMountRoot, secretCA)
+	schedulerClientDir := filepath.Join(pkiMountRoot, secretSchedulerClient)
+
+	// Runtime
+	var replicas int32 = 1
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "kube-scheduler",
+			Name:      componentName,
 			Namespace: ns,
 			Labels:    labels,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: labels,
-			},
+			Selector: &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
-				},
+				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:            "ks",
-							Image:           "registry.k8s.io/kube-scheduler" + ":" + version,
+							Name:            containerName,
+							Image:           "registry.k8s.io/kube-scheduler:" + version,
 							ImagePullPolicy: corev1.PullIfNotPresent,
-							Command: []string{
-								"kube-scheduler",
-							},
+							Command:         []string{"kube-scheduler"},
 							Args: []string{
 								"--bind-address=0.0.0.0",
-								"--kubeconfig=/etc/kubernetes/scheduler.conf",
-								"--authentication-kubeconfig=/etc/kubernetes/scheduler.conf",
-								"--authorization-kubeconfig=/etc/kubernetes/scheduler.conf",
+								"--kubeconfig=" + kubeconfigPath,
+								"--authentication-kubeconfig=" + kubeconfigPath,
+								"--authorization-kubeconfig=" + kubeconfigPath,
 								"--leader-elect=true",
 							},
 							Ports: []corev1.ContainerPort{
-								{
-									Name:          "https",
-									ContainerPort: 10259,
-								},
+								{Name: "https", ContainerPort: securePort},
 							},
-							LivenessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Scheme: corev1.URISchemeHTTPS,
-										Host:   "127.0.0.1",
-										Port:   intstr.FromInt(10259),
-										Path:   "/livez",
-									},
-								},
-								InitialDelaySeconds: 10,
-								PeriodSeconds:       10,
-							},
-							ReadinessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Scheme: corev1.URISchemeHTTPS,
-										Host:   "127.0.0.1",
-										Port:   intstr.FromInt(10259),
-										Path:   "/readyz",
-									},
-								},
-								InitialDelaySeconds: 5,
-								PeriodSeconds:       5,
-							},
+							LivenessProbe:  httpsProbe(securePort, livezPath, 10, 10),
+							ReadinessProbe: httpsProbe(securePort, readyzPath, 5, 5),
 							VolumeMounts: []corev1.VolumeMount{
 								{
-									Name:      "kcfg",
-									MountPath: "/etc/kubernetes",
+									Name:      volKubeconfig,
+									MountPath: kubeconfigMountDir,
 									ReadOnly:  true,
 								},
-								{
-									Name:      "schcert",
-									MountPath: "/var/run/k8s/scheduler",
-									ReadOnly:  true,
-								},
-								{
-									Name:      "kubernetes-ca",
-									MountPath: "/var/run/k8s/ca",
-									ReadOnly:  true,
-								},
+								secretMount(secretSchedulerClient, schedulerClientDir),
+								secretMount(secretCA, caDir),
 							},
 						},
 					},
 					Volumes: []corev1.Volume{
-						{
-							Name: "kcfg",
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "scheduler-kubeconfig",
-									},
-									Items: []corev1.KeyToPath{
-										{
-											Key:  "scheduler.conf",
-											Path: "scheduler.conf",
-										},
-									},
-								},
-							},
-						},
-						{
-							Name: "schcert",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "scheduler-client",
-								},
-							},
-						},
-						{
-							Name: "kubernetes-ca",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "managed-ca",
-								},
-							},
-						},
+						configMapVolume(cmKubeconfigName),
+						secretVolume(secretSchedulerClient),
+						secretVolume(secretCA),
 					},
 				},
 			},
 		},
+	}
+}
+
+func configMapVolume(name string) corev1.Volume {
+	return corev1.Volume{
+		Name: volKubeconfig,
+		VolumeSource: corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: name},
+				Items: []corev1.KeyToPath{
+					{Key: cmKubeconfigKey, Path: cmKubeconfigFileName},
+				},
+			},
+		},
+	}
+}
+
+func secretMount(volumeName, mountPath string) corev1.VolumeMount {
+	return corev1.VolumeMount{
+		Name:      volumeName,
+		MountPath: mountPath,
+		ReadOnly:  true,
+	}
+}
+
+func secretVolume(secretName string) corev1.Volume {
+	return corev1.Volume{
+		Name: secretName,
+		VolumeSource: corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{SecretName: secretName},
+		},
+	}
+}
+
+func httpsProbe(port int32, path string, initialDelay, period int32) *corev1.Probe {
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			HTTPGet: &corev1.HTTPGetAction{
+				Scheme: corev1.URISchemeHTTPS,
+				Host:   "127.0.0.1",
+				Port:   intstr.FromInt(int(port)),
+				Path:   path,
+			},
+		},
+		InitialDelaySeconds: initialDelay,
+		PeriodSeconds:       period,
 	}
 }
