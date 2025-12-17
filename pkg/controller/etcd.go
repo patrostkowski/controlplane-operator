@@ -32,7 +32,7 @@ import (
 func (r *ManagedControlPlaneReconciler) reconcileETCD(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
 	log := r.Log.WithValues("etcd", mcp.GetObjectMeta().GetNamespace())
 
-	log.Info("Reconciling ETCD")
+	log.Info("Reconciling etcd")
 
 	resources := etcd.Resources(mcp)
 
@@ -46,7 +46,7 @@ func (r *ManagedControlPlaneReconciler) reconcileETCD(ctx context.Context, mcp *
 	}
 
 	if !allReady {
-		log.Info("requeueing reconcile for ETCD")
+		log.Info("requeueing reconcile for etcd")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
@@ -77,8 +77,8 @@ func (r *ManagedControlPlaneReconciler) ensureETCDResources(
 				d := desired.(*appsv1.StatefulSet)
 				// Keep existing status, only spec/labels/annotations etc.
 				o.Spec = d.Spec
-				o.Labels = mergeStringMap(o.Labels, d.Labels)
-				o.Annotations = mergeStringMap(o.Annotations, d.Annotations)
+				o.Labels = utils.MergeStringMap(o.Labels, d.Labels)
+				o.Annotations = utils.MergeStringMap(o.Annotations, d.Annotations)
 			}
 			return nil
 		})
@@ -129,17 +129,4 @@ func (r *ManagedControlPlaneReconciler) checkETCDResourcesReady(
 	}
 
 	return allReady, nil
-}
-
-func mergeStringMap(dst, src map[string]string) map[string]string {
-	if dst == nil && src == nil {
-		return nil
-	}
-	if dst == nil {
-		dst = map[string]string{}
-	}
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
 }

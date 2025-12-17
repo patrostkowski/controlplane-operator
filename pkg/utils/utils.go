@@ -84,3 +84,16 @@ func IPAtOffset(cidr string, offset uint32) (net.IP, error) {
 
 	return out, nil
 }
+
+func MergeStringMap(dst, src map[string]string) map[string]string {
+	if dst == nil && src == nil {
+		return nil
+	}
+	if dst == nil {
+		dst = map[string]string{}
+	}
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
