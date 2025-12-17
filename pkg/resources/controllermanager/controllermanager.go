@@ -128,6 +128,8 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 								// networking
 								"--cluster-cidr=" + cm.Spec.Networking.PodCIDR,
 								"--allocate-node-cidrs=true",
+
+								"--logging-format=json",
 							},
 							Ports: []corev1.ContainerPort{
 								{Name: "https", ContainerPort: securePort},

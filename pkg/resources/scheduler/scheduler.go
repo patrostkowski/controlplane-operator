@@ -102,6 +102,7 @@ func buildDeployment(ms *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 								"--authentication-kubeconfig=" + kubeconfigPath,
 								"--authorization-kubeconfig=" + kubeconfigPath,
 								"--leader-elect=true",
+								"--logging-format=json",
 							},
 							Ports: []corev1.ContainerPort{
 								{Name: "https", ContainerPort: securePort},

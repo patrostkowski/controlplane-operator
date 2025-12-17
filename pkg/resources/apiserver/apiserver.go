@@ -157,6 +157,8 @@ func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 								"--requestheader-username-headers=X-Remote-User",
 								"--proxy-client-cert-file=" + certPath(frontProxyClientVol),
 								"--proxy-client-key-file=" + keyPath(frontProxyClientVol),
+
+								"--logging-format=json",
 							},
 							Ports: []corev1.ContainerPort{
 								{Name: "https", ContainerPort: securePort},
