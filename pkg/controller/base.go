@@ -19,10 +19,9 @@ import (
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/state"
 	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
+	meta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -74,52 +73,6 @@ func (r *BaseReconciler) IsDeploymentReady(dep *appsv1.Deployment) bool {
 	return true
 }
 
-func (r *BaseReconciler) UpdateCondition(
-	ctx context.Context,
-	obj ObjectHelper,
-	conditions mcpv1alpha1.Conditions,
-	status mcpv1alpha1.Status,
-) error {
-	key := client.ObjectKeyFromObject(obj)
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		latest := obj.DeepCopyObject().(ObjectHelper)
-		if err := r.Get(ctx, key, latest); err != nil {
-			return err
-		}
-
-		cond := metav1.Condition{
-			Message:            string(conditions.Message),
-			Reason:             string(conditions.Reason),
-			Status:             conditions.Status,
-			Type:               string(conditions.Type),
-			ObservedGeneration: latest.GetGeneration(),
-		}
-
-		conds := latest.GetConditions()
-		if !meta.SetStatusCondition(conds, cond) {
-			return nil
-		}
-
-		if st := latest.GetStatus(); st != nil {
-			st.Message = string(conditions.Message)
-
-			if conditions.Type == state.ConditionReady {
-				st.Ready = (conditions.Status == metav1.ConditionTrue)
-			}
-		}
-
-		r.Log.Info("Updating status condition",
-			"kind", latest.GetObjectKind().GroupVersionKind().Kind,
-			"name", latest.GetName(),
-			"type", conditions.Type,
-			"status", conditions.Status,
-			"reason", conditions.Reason,
-			"message", conditions.Message,
-		)
-		return r.Status().Update(ctx, latest)
-	})
-}
-
 func (r *BaseReconciler) UpdateMCPAddress(
 	ctx context.Context,
 	obj ObjectHelper,
@@ -138,28 +91,78 @@ func (r *BaseReconciler) UpdateMCPAddress(
 	})
 }
 
-// func (r *BaseReconciler) UpdateStatus(
-// 	ctx context.Context,
-// 	obj ObjectHelper,
-// 	status Status,
-// ) error {
-// 	key := client.ObjectKeyFromObject(obj)
-// 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-// 		latest := obj.DeepCopyObject().(ObjectHelper)
-// 		if err := r.Get(ctx, key, latest); err != nil {
-// 			return err
-// 		}
+// UpdateCondition is kept for compatibility with your existing call sites.
+// It is now idempotent and only patches status when something actually changed.
+func (r *BaseReconciler) UpdateCondition(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+	cond mcpv1alpha1.Conditions,
+	st mcpv1alpha1.Status,
+) error {
+	_, err := r.SetConditionIfChanged(ctx, mcp, cond, st)
+	return err
+}
 
-// 		st := latest.GetStatus()
-// 		st.Message = status.Message
-// 		st.Ready = status.Ready
+// SetConditionIfChanged patches status only if the condition or inline status fields differ.
+// Returns changed=true if it performed a status patch.
+func (r *BaseReconciler) SetConditionIfChanged(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+	cond mcpv1alpha1.Conditions,
+	st mcpv1alpha1.Status,
+) (bool, error) {
 
-// 		r.Log.Info("Updating resource status",
-// 			"kind", latest.GetObjectKind().GroupVersionKind().Kind,
-// 			"name", latest.GetName(),
-// 			"message", st.Message,
-// 			"ready", st.Ready,
-// 		)
-// 		return r.Status().Update(ctx, latest)
-// 	})
-// }
+	before := mcp.DeepCopy()
+
+	// Build the new metav1.Condition
+	newC := metav1.Condition{
+		Type:               string(cond.Type),
+		Status:             cond.Status,
+		Reason:             string(cond.Reason),
+		Message:            string(cond.Message),
+		ObservedGeneration: mcp.GetGeneration(),
+	}
+
+	// Find existing condition of the same type
+	oldC := meta.FindStatusCondition(mcp.Status.Conditions, newC.Type)
+
+	condChanged := false
+	if oldC == nil {
+		condChanged = true
+	} else if oldC.Status != newC.Status ||
+		oldC.Reason != newC.Reason ||
+		oldC.Message != newC.Message ||
+		oldC.ObservedGeneration != newC.ObservedGeneration {
+		condChanged = true
+	}
+
+	if condChanged {
+		meta.SetStatusCondition(&mcp.Status.Conditions, newC)
+	}
+
+	// Inline status fields (your embedded Status struct)
+	statusChanged := false
+	if mcp.Status.Ready != st.Ready {
+		mcp.Status.Ready = st.Ready
+		statusChanged = true
+	}
+	if mcp.Status.Message != st.Message {
+		mcp.Status.Message = st.Message
+		statusChanged = true
+	}
+
+	// Nothing changed -> don’t write status
+	if !condChanged && !statusChanged {
+		return false, nil
+	}
+
+	// Patch status only (subresource)
+	if err := r.Status().Patch(ctx, mcp, client.MergeFrom(before)); err != nil {
+		// If the object disappeared between get and patch, treat as done.
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
