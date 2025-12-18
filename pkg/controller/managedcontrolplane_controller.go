@@ -294,12 +294,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	// 	return res, err
 	// }
 
-	cp, err := controlplane.NewFromKubeconfigSecret(
-		ctx,
-		r.Client,
-		r.Scheme,
-		mcpObj.GetNamespace(),
-	)
+	cp, err := r.controlPlaneClient(ctx, mcpObj)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -325,6 +320,36 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		"type", svc.Spec.Type,
 	)
 
+	if res, err := r.reconcileKubeletJoinResources(ctx, mcpObj, cp); err != nil {
+		_ = r.UpdateCondition(ctx, mcpObj,
+			mcpv1alpha1.Conditions{
+				Type:    state.ConditionReady,
+				Status:  metav1.ConditionFalse,
+				Reason:  state.ReasonFailed,
+				Message: state.MessageFailed,
+			},
+			mcpv1alpha1.Status{
+				Ready:   false,
+				Message: "failed Kubernetes resources",
+			},
+		)
+		return res, err
+	} else if !res.IsZero() {
+		_ = r.UpdateCondition(ctx, mcpObj,
+			mcpv1alpha1.Conditions{
+				Type:    state.ConditionReady,
+				Status:  metav1.ConditionFalse,
+				Reason:  state.ReasonWaitingForResources,
+				Message: state.MessageWaitingForResources,
+			},
+			mcpv1alpha1.Status{
+				Ready:   false,
+				Message: "waiting for resources",
+			},
+		)
+		return res, nil
+	}
+
 	if err := r.UpdateCondition(ctx, mcpObj,
 		mcpv1alpha1.Conditions{
 			Type:    state.ConditionReady,
@@ -342,6 +367,13 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	log.Info("Finished reconciling ManagedControlPlane")
 	return ctrl.Result{}, nil
+}
+
+func (r *ManagedControlPlaneReconciler) controlPlaneClient(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+) (*controlplane.ControlPlaneClient, error) {
+	return controlplane.NewFromKubeconfigSecret(ctx, r.Client, r.Scheme, mcp.Namespace)
 }
 
 func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
