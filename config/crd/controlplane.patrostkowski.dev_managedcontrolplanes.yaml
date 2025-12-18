@@ -17,16 +17,20 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+    - description: Control plane ready
+      jsonPath: .status.ready
       name: Ready
-      type: string
-    - jsonPath: .status.conditions[?(@.type=="Ready")].message
+      type: boolean
+    - description: Last status message
+      jsonPath: .status.message
       name: Message
       type: string
-    - jsonPath: .status.address
+    - description: API server address
+      jsonPath: .status.address
       name: Address
       type: string
-    - jsonPath: .metadata.creationTimestamp
+    - description: Age
+      jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
     name: v1alpha1

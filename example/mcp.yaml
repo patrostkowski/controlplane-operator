@@ -39,4 +39,47 @@ spec:
   networking:
     serviceCIDR: "10.96.0.0/12"
     podCIDR: "10.244.0.0/16"
-
+---
+apiVersion: controlplane.patrostkowski.dev/v1alpha1
+kind: ManagedControlPlane
+metadata:
+  name: example-mcp-b
+  namespace: b
+spec:
+  version: "v1.34.1"
+  networking:
+    serviceCIDR: "10.96.0.0/12"
+    podCIDR: "10.244.0.0/16"
+---
+apiVersion: controlplane.patrostkowski.dev/v1alpha1
+kind: ManagedControlPlane
+metadata:
+  name: example-mcp-c
+  namespace: c
+spec:
+  version: "v1.34.1"
+  networking:
+    serviceCIDR: "10.96.0.0/12"
+    podCIDR: "10.244.0.0/16"
+---
+apiVersion: controlplane.patrostkowski.dev/v1alpha1
+kind: ManagedControlPlane
+metadata:
+  name: example-mcp-d
+  namespace: d
+spec:
+  version: "v1.34.1"
+  networking:
+    serviceCIDR: "10.96.0.0/12"
+    podCIDR: "10.244.0.0/16"
+---
+apiVersion: controlplane.patrostkowski.dev/v1alpha1
+kind: ManagedControlPlane
+metadata:
+  name: example-mcp-e
+  namespace: e
+spec:
+  version: "v1.34.1"
+  networking:
+    serviceCIDR: "10.96.0.0/12"
+    podCIDR: "10.244.0.0/16"

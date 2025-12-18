@@ -16,6 +16,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
@@ -24,12 +25,17 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
+
+const RequeueAfterFailure = 10 * time.Second
 
 const ManagedControlPlaneFinalizer = "controlplane.patrostkowski.dev/finalizer"
 
@@ -46,25 +52,11 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 			// MCP already gone
 			return ctrl.Result{}, nil
 		}
-		return ctrl.Result{}, err
+		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
 	log.Info("Reconciling ManagedControlPlane", "version", mcpObj.Spec.Version)
-
-	if err := r.UpdateCondition(ctx, mcpObj,
-		mcpv1alpha1.Conditions{
-			Type:    state.ConditionReconciling,
-			Status:  metav1.ConditionTrue,
-			Reason:  state.ReasonReconciling,
-			Message: state.MessageReconciling,
-		},
-		mcpv1alpha1.Status{
-			Ready:   false,
-			Message: "reconciling",
-		},
-	); err != nil {
-		return ctrl.Result{}, err
-	}
 
 	if !mcpObj.ObjectMeta.DeletionTimestamp.IsZero() {
 		// If finalizer not present, nothing to do
@@ -77,7 +69,8 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		// Actively delete child CRs
 		// stillExists, err := r.deleteChildren(ctx, req)
 		// if err != nil {
-		// 	return ctrl.Result{}, err
+		// 	log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
+		// return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 		// }
 
 		// if stillExists {
@@ -90,8 +83,11 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 
 		controllerutil.RemoveFinalizer(mcpObj, ManagedControlPlaneFinalizer)
 		if err := r.Update(ctx, mcpObj); err != nil {
-			return ctrl.Result{}, err
+			log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
+			return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 		}
+
+		log.Info("Reconcile finished with deleted resources", "resource", mcpObj.GetName())
 		return ctrl.Result{}, nil
 	}
 
@@ -99,209 +95,82 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		log.Info("Adding finalizer to ManagedControlPlane")
 		controllerutil.AddFinalizer(mcpObj, ManagedControlPlaneFinalizer)
 		if err := r.Update(ctx, mcpObj); err != nil {
-			return ctrl.Result{}, err
+			log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
+			return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 		}
-		// Finalizer updated → requeue so we don't continue in same reconcile
-		return ctrl.Result{}, nil
+		return ctrl.Result{Requeue: true}, nil
 	}
 
+	// API Server Service
 	if res, err := r.reconcileAPIServiceSvc(ctx, mcpObj); err != nil {
-		_ = r.UpdateCondition(ctx, mcpObj,
-			mcpv1alpha1.Conditions{
-				Type:    state.ConditionReady,
-				Status:  metav1.ConditionFalse,
-				Reason:  state.ReasonFailed,
-				Message: state.MessageFailed,
-			},
-			mcpv1alpha1.Status{
-				Ready:   false,
-				Message: "failed API Service address",
-			},
-		)
-		return res, err
+		_ = r.statusFailed(ctx, mcpObj, state.MessageAPIServerSvcFailed)
+		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	} else if !res.IsZero() {
-		_ = r.UpdateCondition(ctx, mcpObj,
-			mcpv1alpha1.Conditions{
-				Type:    state.ConditionReady,
-				Status:  metav1.ConditionFalse,
-				Reason:  state.ReasonWaitingForResources,
-				Message: state.MessageWaitingForResources,
-			},
-			mcpv1alpha1.Status{
-				Ready:   false,
-				Message: "waiting for API Service address",
-			},
-		)
-		return res, nil
+		_ = r.statusWaiting(ctx, mcpObj, state.MessageAPIServerSvcWaiting)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
 	// PKI
 	if res, err := r.reconcilePKI(ctx, mcpObj); err != nil {
-		_ = r.UpdateCondition(ctx, mcpObj,
-			mcpv1alpha1.Conditions{
-				Type:    state.ConditionReady,
-				Status:  metav1.ConditionFalse,
-				Reason:  state.ReasonFailed,
-				Message: state.MessageFailed,
-			},
-			mcpv1alpha1.Status{
-				Ready:   false,
-				Message: "failed PKI",
-			},
-		)
-		return res, err
+		_ = r.statusFailed(ctx, mcpObj, state.MessagePKIFailed)
+		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	} else if !res.IsZero() {
-		_ = r.UpdateCondition(ctx, mcpObj,
-			mcpv1alpha1.Conditions{
-				Type:    state.ConditionReady,
-				Status:  metav1.ConditionFalse,
-				Reason:  state.ReasonWaitingForResources,
-				Message: state.MessageWaitingForResources,
-			},
-			mcpv1alpha1.Status{
-				Ready:   false,
-				Message: "waiting for PKI",
-			},
-		)
-		return res, nil
+		_ = r.statusWaiting(ctx, mcpObj, state.MessagePKIWaiting)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
 	// ETCD
 	if res, err := r.reconcileETCD(ctx, mcpObj); err != nil {
-		_ = r.UpdateCondition(ctx, mcpObj,
-			mcpv1alpha1.Conditions{
-				Type:    state.ConditionReady,
-				Status:  metav1.ConditionFalse,
-				Reason:  state.ReasonFailed,
-				Message: state.MessageFailed,
-			},
-			mcpv1alpha1.Status{
-				Ready:   false,
-				Message: "failed ETCD",
-			},
-		)
-		return res, err
+		_ = r.statusFailed(ctx, mcpObj, state.MessageETCDFailed)
+		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	} else if !res.IsZero() {
-		_ = r.UpdateCondition(ctx, mcpObj,
-			mcpv1alpha1.Conditions{
-				Type:    state.ConditionReady,
-				Status:  metav1.ConditionFalse,
-				Reason:  state.ReasonWaitingForResources,
-				Message: state.MessageWaitingForResources,
-			},
-			mcpv1alpha1.Status{
-				Ready:   false,
-				Message: "waiting for ETCD",
-			},
-		)
-		return res, nil
+		_ = r.statusWaiting(ctx, mcpObj, state.MessageETCDWaiting)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
 	// APIServer
 	if res, err := r.reconcileAPIServer(ctx, mcpObj); err != nil {
-		_ = r.UpdateCondition(ctx, mcpObj,
-			mcpv1alpha1.Conditions{
-				Type:    state.ConditionReady,
-				Status:  metav1.ConditionFalse,
-				Reason:  state.ReasonFailed,
-				Message: state.MessageFailed,
-			},
-			mcpv1alpha1.Status{
-				Ready:   false,
-				Message: "failed APIServer",
-			},
-		)
-		return res, err
+		_ = r.statusFailed(ctx, mcpObj, state.MessageAPIServerFailed)
+		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	} else if !res.IsZero() {
-		_ = r.UpdateCondition(ctx, mcpObj,
-			mcpv1alpha1.Conditions{
-				Type:    state.ConditionReady,
-				Status:  metav1.ConditionFalse,
-				Reason:  state.ReasonWaitingForResources,
-				Message: state.MessageWaitingForResources,
-			},
-			mcpv1alpha1.Status{
-				Ready:   false,
-				Message: "waiting for APIServer",
-			},
-		)
-		return res, nil
+		_ = r.statusWaiting(ctx, mcpObj, state.MessageAPIServerWaiting)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
 	// ControllerManager
 	if res, err := r.reconcileControllerManager(ctx, mcpObj); err != nil {
-		_ = r.UpdateCondition(ctx, mcpObj,
-			mcpv1alpha1.Conditions{
-				Type:    state.ConditionReady,
-				Status:  metav1.ConditionFalse,
-				Reason:  state.ReasonFailed,
-				Message: state.MessageFailed,
-			},
-			mcpv1alpha1.Status{
-				Ready:   false,
-				Message: "failed ControllerManager",
-			},
-		)
-		return res, err
+		_ = r.statusFailed(ctx, mcpObj, state.MessageControllerManagerFailed)
+		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	} else if !res.IsZero() {
-		_ = r.UpdateCondition(ctx, mcpObj,
-			mcpv1alpha1.Conditions{
-				Type:    state.ConditionReady,
-				Status:  metav1.ConditionFalse,
-				Reason:  state.ReasonWaitingForResources,
-				Message: state.MessageWaitingForResources,
-			},
-			mcpv1alpha1.Status{
-				Ready:   false,
-				Message: "waiting for ControllerManager",
-			},
-		)
-		return res, nil
+		_ = r.statusWaiting(ctx, mcpObj, state.MessageControllerManagerWaiting)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
 	// Scheduler
 	if res, err := r.reconcileScheduler(ctx, mcpObj); err != nil {
-		_ = r.UpdateCondition(ctx, mcpObj,
-			mcpv1alpha1.Conditions{
-				Type:    state.ConditionReady,
-				Status:  metav1.ConditionFalse,
-				Reason:  state.ReasonFailed,
-				Message: state.MessageFailed,
-			},
-			mcpv1alpha1.Status{
-				Ready:   false,
-				Message: "failed Scheduler",
-			},
-		)
-		return res, err
+		_ = r.statusFailed(ctx, mcpObj, state.MessageSchedulerFailed)
+		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	} else if !res.IsZero() {
-		_ = r.UpdateCondition(ctx, mcpObj,
-			mcpv1alpha1.Conditions{
-				Type:    state.ConditionReady,
-				Status:  metav1.ConditionFalse,
-				Reason:  state.ReasonWaitingForResources,
-				Message: state.MessageWaitingForResources,
-			},
-			mcpv1alpha1.Status{
-				Ready:   false,
-				Message: "waiting for Scheduler",
-			},
-		)
-		return res, nil
+		_ = r.statusWaiting(ctx, mcpObj, state.MessageSchedulerWaiting)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
-
-	// if res, err := r.reconcileAddon(ctx, mcpObj); !res.IsZero() || err != nil {
-	// 	return res, err
-	// }
 
 	cp, err := r.controlPlaneClient(ctx, mcpObj)
 	if err != nil {
-		return ctrl.Result{}, err
+		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
 	v, err := cp.Discovery.ServerVersion()
 	if err != nil {
-		return ctrl.Result{}, err
+		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
 	log.Info("Obtained child cluster config", "version", v)
@@ -312,7 +181,8 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		Name:      "kubernetes",
 	}, svc)
 	if err != nil {
-		return ctrl.Result{}, err
+		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
 	log.Info("Got kubernetes service",
@@ -321,50 +191,15 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	)
 
 	if res, err := r.reconcileKubeletJoinResources(ctx, mcpObj, cp); err != nil {
-		_ = r.UpdateCondition(ctx, mcpObj,
-			mcpv1alpha1.Conditions{
-				Type:    state.ConditionReady,
-				Status:  metav1.ConditionFalse,
-				Reason:  state.ReasonFailed,
-				Message: state.MessageFailed,
-			},
-			mcpv1alpha1.Status{
-				Ready:   false,
-				Message: "failed Kubernetes resources",
-			},
-		)
-		return res, err
+		_ = r.statusFailed(ctx, mcpObj, state.MessageKubeResourcesFailed)
+		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	} else if !res.IsZero() {
-		_ = r.UpdateCondition(ctx, mcpObj,
-			mcpv1alpha1.Conditions{
-				Type:    state.ConditionReady,
-				Status:  metav1.ConditionFalse,
-				Reason:  state.ReasonWaitingForResources,
-				Message: state.MessageWaitingForResources,
-			},
-			mcpv1alpha1.Status{
-				Ready:   false,
-				Message: "waiting for resources",
-			},
-		)
-		return res, nil
+		_ = r.statusWaiting(ctx, mcpObj, state.MessageKubeResourcesWaiting)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
-	if err := r.UpdateCondition(ctx, mcpObj,
-		mcpv1alpha1.Conditions{
-			Type:    state.ConditionReady,
-			Status:  metav1.ConditionTrue,
-			Reason:  state.ReasonAllResourcesReady,
-			Message: state.MessageAllResourcesReady,
-		},
-		mcpv1alpha1.Status{
-			Ready:   true,
-			Message: "all ready",
-		},
-	); err != nil {
-		return ctrl.Result{}, err
-	}
-
+	_ = r.statusReady(ctx, mcpObj)
 	log.Info("Finished reconciling ManagedControlPlane")
 	return ctrl.Result{}, nil
 }
@@ -377,15 +212,25 @@ func (r *ManagedControlPlaneReconciler) controlPlaneClient(
 }
 
 func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
+	certPred := predicate.GenerationChangedPredicate{} // drops status-only updates
+	issuerPred := predicate.GenerationChangedPredicate{}
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&mcpv1alpha1.ManagedControlPlane{}).
+		For(&mcpv1alpha1.ManagedControlPlane{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&corev1.Service{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&appsv1.StatefulSet{}).
-		Owns(&certmanagerv1.Issuer{}).
-		Owns(&certmanagerv1.Certificate{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
+		Owns(&certmanagerv1.Certificate{}, builder.WithPredicates(certPred)).
+		Owns(&certmanagerv1.Issuer{}, builder.WithPredicates(issuerPred)).
+		WithOptions(
+			controller.Options{
+				MaxConcurrentReconciles: 1,
+				RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](
+					5*time.Second,
+					60*time.Second,
+				),
+			},
+		).
 		Complete(&ManagedControlPlaneReconciler{
 			BaseReconciler: BaseReconciler{
 				Client:   mgr.GetClient(),

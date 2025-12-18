@@ -39,10 +39,10 @@ type ManagedControlPlaneStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=managedcontrolplanes,scope=Namespaced,shortName=mcp
-// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
-// +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].message`
-// +kubebuilder:printcolumn:name="Address",type=string,JSONPath=`.status.address`
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+// +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=".status.ready",description="Control plane ready"
+// +kubebuilder:printcolumn:name="Message",type="string",JSONPath=".status.message",description="Last status message"
+// +kubebuilder:printcolumn:name="Address",type="string",JSONPath=".status.address",description="API server address"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Age"
 type ManagedControlPlane struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
