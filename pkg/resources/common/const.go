@@ -29,4 +29,7 @@ const (
 	HealthPath = "/healthz"
 
 	KubeconfigVolumeName = "kubeconfig"
+
+	AdminConfigName          = "admin-config"
+	AdminConfigKubeconfigKey = "config"
 )
