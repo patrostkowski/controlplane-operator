@@ -71,8 +71,8 @@ type NetworkingSpec struct {
 }
 
 type Status struct {
-	Message string `json:"message,omitempty"`
-	Ready   bool   `json:"ready,omitempty"`
+	Message string `json:"message"`
+	Ready   *bool  `json:"ready"`
 }
 
 type Condition string
