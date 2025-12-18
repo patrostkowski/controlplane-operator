@@ -15,6 +15,7 @@
 package addons
 
 import (
+	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -36,15 +37,20 @@ const (
 	FlannelBackendType            = "vxlan"
 )
 
-func buildFlannel() []client.Object {
+func buildFlannel(ma *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	return []client.Object{
 		buildFlannelNamespace(),
 		buildFlannelServiceAccount(),
 		buildFlannelClusterRole(),
 		buildFLannelClusterRoleBinding(),
-		buildFlannelConfigMap(),
+		buildFlannelConfigMap(ma),
 		buildFlannelDaemonSet(),
 	}
+}
+
+var FlannelLabels = map[string]string{
+	"app":     "flannel",
+	"k8s-app": "flannel",
 }
 
 func buildFlannelNamespace() *corev1.Namespace {
@@ -70,10 +76,8 @@ func buildFlannelClusterRole() *rbacv1.ClusterRole {
 			Kind:       "ClusterRole",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: FlannelClusterRoleName,
-			Labels: map[string]string{
-				"k8s-app": "flannel",
-			},
+			Name:   FlannelClusterRoleName,
+			Labels: FlannelLabels,
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -102,10 +106,8 @@ func buildFLannelClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 			Kind:       "ClusterRoleBinding",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: FlannelClusterRoleBindingName,
-			Labels: map[string]string{
-				"k8s-app": "flannel",
-			},
+			Name:   FlannelClusterRoleBindingName,
+			Labels: FlannelLabels,
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
@@ -131,14 +133,12 @@ func buildFlannelServiceAccount() *corev1.ServiceAccount {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      FlannelServiceAccountName,
 			Namespace: FlannelNamespaceName,
-			Labels: map[string]string{
-				"k8s-app": "flannel",
-			},
+			Labels:    FlannelLabels,
 		},
 	}
 }
 
-func buildFlannelConfigMap() *corev1.ConfigMap {
+func buildFlannelConfigMap(ma *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 	cniConf := `{
   "name": "cbr0",
   "cniVersion": "0.3.1",
@@ -160,7 +160,8 @@ func buildFlannelConfigMap() *corev1.ConfigMap {
 }`
 
 	netConf := `{
-  "Network": "` + ClusterCIDR + `",
+  "Network": "` + ma.Spec.Networking.PodCIDR + `",
+  "EnableNFTables": false,
   "Backend": {
     "Type": "` + FlannelBackendType + `"
   }
@@ -174,11 +175,7 @@ func buildFlannelConfigMap() *corev1.ConfigMap {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      FlannelConfigMapName,
 			Namespace: FlannelNamespaceName,
-			Labels: map[string]string{
-				"tier":    "node",
-				"k8s-app": "flannel",
-				"app":     "flannel",
-			},
+			Labels:    FlannelLabels,
 		},
 		Data: map[string]string{
 			"cni-conf.json": cniConf,
@@ -188,12 +185,6 @@ func buildFlannelConfigMap() *corev1.ConfigMap {
 }
 
 func buildFlannelDaemonSet() *appsv1.DaemonSet {
-	labels := map[string]string{
-		"tier":    "node",
-		"app":     "flannel",
-		"k8s-app": "flannel",
-	}
-
 	fileOrCreate := corev1.HostPathFileOrCreate
 
 	return &appsv1.DaemonSet{
@@ -204,14 +195,14 @@ func buildFlannelDaemonSet() *appsv1.DaemonSet {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      FlannelDaemonSetName,
 			Namespace: FlannelNamespaceName,
-			Labels:    labels,
+			Labels:    FlannelLabels,
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{"app": "flannel"},
+				MatchLabels: FlannelLabels,
 			},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"tier": "node", "app": "flannel"}},
+				ObjectMeta: metav1.ObjectMeta{Labels: FlannelLabels},
 				Spec: corev1.PodSpec{
 					HostNetwork:        true,
 					PriorityClassName:  "system-node-critical",

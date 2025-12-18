@@ -29,20 +29,20 @@ func buildKubeproxy(ma *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	return []client.Object{
 		buildKubeproxyServiceAccount(),
 		buildKubeproxyClusterRoleBinding(),
-		buildKubeproxyConfigMap(),
+		buildKubeproxyConfigMap(ma),
 		buildKubeproxyDaemonSet(ma),
 	}
 }
 
 func buildKubeproxyServiceAccount() *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "ServiceAccount",
-		},
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "ServiceAccount"},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "kube-proxy",
 			Namespace: "kube-system",
+			Labels: map[string]string{
+				"k8s-app": "kube-proxy",
+			},
 		},
 	}
 }
@@ -74,11 +74,12 @@ func buildKubeproxyClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 // for now hardcode clusterCIDR
 // TODO: make it configurable depends
 // on CNI that was set
-func buildKubeproxyConfigMap() *corev1.ConfigMap {
+func buildKubeproxyConfigMap(ma *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
+	server := "https://" + ma.Status.Address + ":6443"
 	configConf := `apiVersion: kubeproxy.config.k8s.io/v1alpha1
 kind: KubeProxyConfiguration
 mode: "iptables"
-clusterCIDR: "` + ClusterCIDR + `"
+clusterCIDR: "` + ma.Spec.Networking.ServiceCIDR + `"
 bindAddress: "0.0.0.0"
 metricsBindAddress: "127.0.0.1:10249"
 healthzBindAddress: "0.0.0.0:10256"
@@ -94,21 +95,20 @@ conntrack:
 	kubeconfigConf := `apiVersion: v1
 kind: Config
 clusters:
-- cluster:
+- name: default
+  cluster:
+    server: ` + server + `
     certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-    server: https://kubernetes.default.svc
-  name: cluster
-contexts:
-- context:
-    cluster: cluster
-    namespace: kube-system
-    user: kube-proxy
-  name: kube-proxy@cluster
-current-context: kube-proxy@cluster
 users:
 - name: kube-proxy
   user:
     tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+contexts:
+- name: default
+  context:
+    cluster: default
+    user: kube-proxy
+current-context: default
 `
 
 	return &corev1.ConfigMap{
@@ -167,6 +167,18 @@ func buildKubeproxyDaemonSet(ma *mcpv1alpha1.ManagedControlPlane) *appsv1.Daemon
 							Command: []string{
 								"/usr/local/bin/kube-proxy",
 								"--config=/var/lib/kube-proxy/config.conf",
+								"--hostname-override=$(NODE_NAME)",
+							},
+							Env: []corev1.EnvVar{
+								{
+									Name: "NODE_NAME",
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											APIVersion: "v1",
+											FieldPath:  "spec.nodeName",
+										},
+									},
+								},
 							},
 							SecurityContext: &corev1.SecurityContext{
 								Privileged: &priv,

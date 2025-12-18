@@ -37,7 +37,7 @@ func bootstrapTokenSecret(token BootstrapToken) *corev1.Secret {
 			Kind:       "Secret",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      BootstrapTokenMgmtSecretName,
+			Name:      BootstrapTokenMgmtSecretName + "-" + token.ID,
 			Namespace: KubeSystemNamespace,
 		},
 		Type: corev1.SecretTypeBootstrapToken,
