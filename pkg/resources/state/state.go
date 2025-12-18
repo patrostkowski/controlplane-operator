@@ -57,4 +57,7 @@ const (
 
 	MessageKubeResourcesFailed  mcpv1alpha1.Message = "Failed to reconcile Kubernetes resources"
 	MessageKubeResourcesWaiting mcpv1alpha1.Message = "Waiting for Kubernetes resources"
+
+	MessageAddonsFailed  mcpv1alpha1.Message = "Failed to reconcile Addons"
+	MessageAddonsWaiting mcpv1alpha1.Message = "Waiting for Addons"
 )

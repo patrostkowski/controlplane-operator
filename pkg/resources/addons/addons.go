@@ -19,10 +19,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	ClusterCIDR = "10.244.0.0/16"
-)
-
 type AddonsBuilder func() []client.Object
 
 func buildDefaultAddons(builders ...AddonsBuilder) []client.Object {
@@ -37,8 +33,8 @@ func buildDefaultAddons(builders ...AddonsBuilder) []client.Object {
 func Resources(ma *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	return buildDefaultAddons(
 		func() []client.Object { return buildKubeproxy(ma) },
-		func() []client.Object { return buildFlannel() },
-		func() []client.Object { return buildCoreDNS() },
+		func() []client.Object { return buildFlannel(ma) },
+		func() []client.Object { return buildCoreDNS(ma) },
 		func() []client.Object { return buildCSI() },
 	)
 }

@@ -53,7 +53,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{}, nil
 		}
 		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 	}
 
 	log.Info("Reconciling ManagedControlPlane", "version", mcpObj.Spec.Version)
@@ -84,7 +84,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		controllerutil.RemoveFinalizer(mcpObj, ManagedControlPlaneFinalizer)
 		if err := r.Update(ctx, mcpObj); err != nil {
 			log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-			return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+			return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 		}
 
 		log.Info("Reconcile finished with deleted resources", "resource", mcpObj.GetName())
@@ -96,7 +96,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		controllerutil.AddFinalizer(mcpObj, ManagedControlPlaneFinalizer)
 		if err := r.Update(ctx, mcpObj); err != nil {
 			log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-			return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+			return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
 	}
@@ -105,7 +105,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	if res, err := r.reconcileAPIServiceSvc(ctx, mcpObj); err != nil {
 		_ = r.statusFailed(ctx, mcpObj, state.MessageAPIServerSvcFailed)
 		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 	} else if !res.IsZero() {
 		_ = r.statusWaiting(ctx, mcpObj, state.MessageAPIServerSvcWaiting)
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
@@ -115,7 +115,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	if res, err := r.reconcilePKI(ctx, mcpObj); err != nil {
 		_ = r.statusFailed(ctx, mcpObj, state.MessagePKIFailed)
 		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 	} else if !res.IsZero() {
 		_ = r.statusWaiting(ctx, mcpObj, state.MessagePKIWaiting)
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
@@ -125,7 +125,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	if res, err := r.reconcileETCD(ctx, mcpObj); err != nil {
 		_ = r.statusFailed(ctx, mcpObj, state.MessageETCDFailed)
 		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 	} else if !res.IsZero() {
 		_ = r.statusWaiting(ctx, mcpObj, state.MessageETCDWaiting)
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
@@ -135,7 +135,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	if res, err := r.reconcileAPIServer(ctx, mcpObj); err != nil {
 		_ = r.statusFailed(ctx, mcpObj, state.MessageAPIServerFailed)
 		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 	} else if !res.IsZero() {
 		_ = r.statusWaiting(ctx, mcpObj, state.MessageAPIServerWaiting)
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
@@ -145,7 +145,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	if res, err := r.reconcileControllerManager(ctx, mcpObj); err != nil {
 		_ = r.statusFailed(ctx, mcpObj, state.MessageControllerManagerFailed)
 		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 	} else if !res.IsZero() {
 		_ = r.statusWaiting(ctx, mcpObj, state.MessageControllerManagerWaiting)
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
@@ -155,7 +155,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	if res, err := r.reconcileScheduler(ctx, mcpObj); err != nil {
 		_ = r.statusFailed(ctx, mcpObj, state.MessageSchedulerFailed)
 		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 	} else if !res.IsZero() {
 		_ = r.statusWaiting(ctx, mcpObj, state.MessageSchedulerWaiting)
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
@@ -164,13 +164,13 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	cp, err := r.controlPlaneClient(ctx, mcpObj)
 	if err != nil {
 		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 	}
 
 	v, err := cp.Discovery.ServerVersion()
 	if err != nil {
 		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 	}
 
 	log.Info("Obtained child cluster config", "version", v)
@@ -182,7 +182,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	}, svc)
 	if err != nil {
 		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 	}
 
 	log.Info("Got kubernetes service",
@@ -193,10 +193,18 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	if res, err := r.reconcileKubeletJoinResources(ctx, mcpObj, cp); err != nil {
 		_ = r.statusFailed(ctx, mcpObj, state.MessageKubeResourcesFailed)
 		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 	} else if !res.IsZero() {
 		_ = r.statusWaiting(ctx, mcpObj, state.MessageKubeResourcesWaiting)
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+	}
+
+	if res, err := r.reconcileAddon(ctx, mcpObj, cp); err != nil {
+		_ = r.statusFailed(ctx, mcpObj, state.MessageAddonsFailed)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
+	} else if !res.IsZero() {
+		_ = r.statusWaiting(ctx, mcpObj, state.MessageAddonsWaiting)
+		return res, nil
 	}
 
 	_ = r.statusReady(ctx, mcpObj)

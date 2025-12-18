@@ -17,7 +17,7 @@ package rbac
 const (
 	KubeSystemNamespace = "kube-system"
 
-	BootstrapTokenMgmtSecretName = "kubelet-bootstrap-token"
+	BootstrapTokenMgmtSecretName = "bootstrap-token"
 	BootstrapTokenIDKey          = "token-id"
 	BootstrapTokenSecretKey      = "token-secret"
 	BootstrapTokenDescription    = "Bootstrap token for kubelet workers"
