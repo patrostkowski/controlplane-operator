@@ -19,12 +19,14 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/state"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -291,6 +293,37 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	// if res, err := r.reconcileAddon(ctx, mcpObj); !res.IsZero() || err != nil {
 	// 	return res, err
 	// }
+
+	cp, err := controlplane.NewFromKubeconfigSecret(
+		ctx,
+		r.Client,
+		r.Scheme,
+		mcpObj.GetNamespace(),
+	)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	v, err := cp.Discovery.ServerVersion()
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	log.Info("Obtained child cluster config", "version", v)
+
+	svc := &corev1.Service{}
+	err = cp.Get(ctx, client.ObjectKey{
+		Namespace: "default",
+		Name:      "kubernetes",
+	}, svc)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	log.Info("Got kubernetes service",
+		"clusterIPs", svc.Spec.ClusterIPs,
+		"type", svc.Spec.Type,
+	)
 
 	if err := r.UpdateCondition(ctx, mcpObj,
 		mcpv1alpha1.Conditions{
