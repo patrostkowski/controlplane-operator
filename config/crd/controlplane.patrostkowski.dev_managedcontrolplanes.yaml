@@ -141,6 +141,9 @@ spec:
                 type: string
               ready:
                 type: boolean
+            required:
+            - message
+            - ready
             type: object
         type: object
     served: true

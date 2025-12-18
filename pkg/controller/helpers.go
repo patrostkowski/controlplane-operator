@@ -21,6 +21,7 @@ import (
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/state"
 	meta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -35,7 +36,7 @@ func (r *ManagedControlPlaneReconciler) setStatus(
 ) error {
 	before := mcp.DeepCopy()
 
-	mcp.Status.Ready = ready
+	mcp.Status.Ready = ptr.To(ready)
 	mcp.Status.Message = string(message)
 
 	newC := metav1.Condition{
