@@ -105,19 +105,16 @@ func BuildComponentKubeconfig(
 	caDir := filepath.Join(common.PKIMountRoot, pki.SecretManagedCA)
 	clientDir := filepath.Join(common.PKIMountRoot, clientSecret)
 
-	// --- Cluster ---
 	cfg.Clusters["local"] = &api.Cluster{
 		Server:               serverURL,
 		CertificateAuthority: filepath.Join(caDir, common.TLSCrtKey),
 	}
 
-	// --- User ---
 	cfg.AuthInfos[user] = &api.AuthInfo{
 		ClientCertificate: filepath.Join(clientDir, common.TLSCrtKey),
 		ClientKey:         filepath.Join(clientDir, common.TLSKeyKey),
 	}
 
-	// --- Context ---
 	cfg.Contexts["local"] = &api.Context{
 		Cluster:  "local",
 		AuthInfo: user,

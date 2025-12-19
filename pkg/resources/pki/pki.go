@@ -19,37 +19,11 @@ import (
 	"time"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
-	certmanagermeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-type PKIIssuerSpec struct {
-	Name      string
-	Namespace string
-
-	SelfSigned bool
-	CASecret   string
-}
-
-type PKICertificateSpec struct {
-	Name      string
-	Namespace string
-
-	SecretName string
-	CommonName string
-	IsCA       bool
-
-	IssuerName string
-
-	Duration      *metav1.Duration
-	RenewBefore   *metav1.Duration
-	Usages        []certmanagerv1.KeyUsage
-	DNSNames      []string
-	IPAddresses   []string
-	Organizations []string
-}
 
 type durations struct {
 	tenYears   metav1.Duration
@@ -61,13 +35,8 @@ func Resources(mcp *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	d := defaultDurations()
 
 	objs := make([]client.Object, 0, 32)
-
-	for _, is := range issuerSpecs(ns) {
-		objs = append(objs, BuildIssuer(is))
-	}
-	for _, cs := range certificateSpecs(mcp, ns, d) {
-		objs = append(objs, BuildCertificate(cs))
-	}
+	objs = append(objs, issuerResources(ns)...)
+	objs = append(objs, certificateResources(mcp, ns, d)...)
 	return objs
 }
 
@@ -78,256 +47,232 @@ func defaultDurations() durations {
 	}
 }
 
-func issuerSpecs(ns string) []PKIIssuerSpec {
-	return []PKIIssuerSpec{
-		{Name: issuerSelfSigned, Namespace: ns, SelfSigned: true},
-		{Name: issuerCA, Namespace: ns, CASecret: secretManagedCA},
+func issuerResources(ns string) []client.Object {
+	return []client.Object{
+		// managed
+		builders.NewIssuer(ns, issuerSelfSigned).SelfSigned().Build(),
+		builders.NewIssuer(ns, issuerCA).CA(secretManagedCA).Build(),
 
-		{Name: issuerEtcdSelfSigned, Namespace: ns, SelfSigned: true},
-		{Name: issuerEtcdCA, Namespace: ns, CASecret: secretEtcdCA},
+		// etcd
+		builders.NewIssuer(ns, issuerEtcdSelfSigned).SelfSigned().Build(),
+		builders.NewIssuer(ns, issuerEtcdCA).CA(secretEtcdCA).Build(),
 
-		{Name: issuerFrontProxySelf, Namespace: ns, SelfSigned: true},
-		{Name: issuerFrontProxyCA, Namespace: ns, CASecret: secretFrontProxyCA},
+		// front-proxy
+		builders.NewIssuer(ns, issuerFrontProxySelf).SelfSigned().Build(),
+		builders.NewIssuer(ns, issuerFrontProxyCA).CA(secretFrontProxyCA).Build(),
 	}
 }
 
-func certificateSpecs(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d durations) []PKICertificateSpec {
-	specs := make([]PKICertificateSpec, 0, 32)
-	specs = append(specs, rootCASpecs(ns)...)
-	specs = append(specs, saSignerSpec(ns, d))
-	specs = append(specs, apiserverServingSpec(mcp, ns, d))
-	specs = append(specs, apiserverKubeletClientSpec(ns, d))
-	specs = append(specs, etcdLeafSpecs(ns, d)...)
-	specs = append(specs, frontProxySpecs(ns, d))
-	specs = append(specs, componentClientSpecs(ns, d)...)
-	specs = append(specs, adminClientSpec(ns, d))
-	return specs
-}
+func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d durations) []client.Object {
+	objs := make([]client.Object, 0, 32)
 
-func rootCASpecs(ns string) []PKICertificateSpec {
-	return []PKICertificateSpec{
-		{
-			Name:       secretManagedCA,
-			Namespace:  ns,
-			SecretName: secretManagedCA,
-			CommonName: cnManagedCA,
-			IsCA:       true,
-			IssuerName: issuerSelfSigned,
-		},
-		{
-			Name:       secretEtcdCA,
-			Namespace:  ns,
-			SecretName: secretEtcdCA,
-			CommonName: cnEtcdCA,
-			IsCA:       true,
-			IssuerName: issuerEtcdSelfSigned,
-		},
-		{
-			Name:       secretFrontProxyCA,
-			Namespace:  ns,
-			SecretName: secretFrontProxyCA,
-			CommonName: cnFrontProxyCA,
-			IsCA:       true,
-			IssuerName: issuerFrontProxySelf,
-		},
-	}
-}
+	// root CAs
+	objs = append(objs,
+		builders.NewCertificate(ns, secretManagedCA).
+			WithSecretName(secretManagedCA).
+			WithCommonName(cnManagedCA).
+			IsCA(true).
+			Issuer(issuerSelfSigned).
+			Build(),
 
-func saSignerSpec(ns string, d durations) PKICertificateSpec {
-	return PKICertificateSpec{
-		Name:        secretSASigner,
-		Namespace:   ns,
-		SecretName:  secretSASigner,
-		CommonName:  cnSASigner,
-		IssuerName:  issuerCA,
-		Duration:    &d.tenYears,
-		RenewBefore: &d.thirtyDays,
-		Usages: []certmanagerv1.KeyUsage{
-			certmanagerv1.UsageDigitalSignature,
-			certmanagerv1.UsageKeyEncipherment,
-		},
-	}
-}
+		builders.NewCertificate(ns, secretEtcdCA).
+			WithSecretName(secretEtcdCA).
+			WithCommonName(cnEtcdCA).
+			IsCA(true).
+			Issuer(issuerEtcdSelfSigned).
+			Build(),
 
-func apiserverServingSpec(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d durations) PKICertificateSpec {
+		builders.NewCertificate(ns, secretFrontProxyCA).
+			WithSecretName(secretFrontProxyCA).
+			WithCommonName(cnFrontProxyCA).
+			IsCA(true).
+			Issuer(issuerFrontProxySelf).
+			Build(),
+	)
+
+	// service account signer
+	objs = append(objs,
+		builders.NewCertificate(ns, secretSASigner).
+			WithSecretName(secretSASigner).
+			WithCommonName(cnSASigner).
+			Issuer(issuerCA).
+			WithDuration(&d.tenYears).
+			WithRenewBefore(&d.thirtyDays).
+			WithUsages(
+				certmanagerv1.UsageDigitalSignature,
+				certmanagerv1.UsageKeyEncipherment,
+			).
+			Build(),
+	)
+
+	// apiserver serving cert
 	dns, ips := apiserverSANs(mcp, ns)
+	objs = append(objs,
+		builders.NewCertificate(ns, secretAPIServerTLS).
+			WithSecretName(secretAPIServerTLS).
+			WithCommonName(cnAPIServer).
+			Issuer(issuerCA).
+			WithDuration(&d.tenYears).
+			WithRenewBefore(&d.thirtyDays).
+			WithUsages(
+				certmanagerv1.UsageDigitalSignature,
+				certmanagerv1.UsageKeyEncipherment,
+				certmanagerv1.UsageServerAuth,
+			).
+			WithDNSNames(dns...).
+			WithIPAddresses(ips...).
+			Build(),
+	)
 
-	return PKICertificateSpec{
-		Name:        secretAPIServerTLS,
-		Namespace:   ns,
-		SecretName:  secretAPIServerTLS,
-		CommonName:  cnAPIServer,
-		IssuerName:  issuerCA,
-		Duration:    &d.tenYears,
-		RenewBefore: &d.thirtyDays,
-		Usages: []certmanagerv1.KeyUsage{
-			certmanagerv1.UsageDigitalSignature,
-			certmanagerv1.UsageKeyEncipherment,
-			certmanagerv1.UsageServerAuth,
-		},
-		DNSNames:    dns,
-		IPAddresses: ips,
-	}
-}
+	// apiserver -> kubelet client
+	objs = append(objs,
+		builders.NewCertificate(ns, secretAPIServerKubelet).
+			WithSecretName(secretAPIServerKubelet).
+			WithCommonName(cnAPIServerKubelet).
+			Issuer(issuerCA).
+			WithDuration(&d.tenYears).
+			WithRenewBefore(&d.thirtyDays).
+			WithUsages(
+				certmanagerv1.UsageDigitalSignature,
+				certmanagerv1.UsageKeyEncipherment,
+				certmanagerv1.UsageClientAuth,
+			).
+			WithOrganizations(orgSystemMasters).
+			Build(),
+	)
 
-func apiserverKubeletClientSpec(ns string, d durations) PKICertificateSpec {
-	return PKICertificateSpec{
-		Name:          secretAPIServerKubelet,
-		Namespace:     ns,
-		SecretName:    secretAPIServerKubelet,
-		CommonName:    cnAPIServerKubelet,
-		IssuerName:    issuerCA,
-		Duration:      &d.tenYears,
-		RenewBefore:   &d.thirtyDays,
-		Usages:        []certmanagerv1.KeyUsage{certmanagerv1.UsageDigitalSignature, certmanagerv1.UsageKeyEncipherment, certmanagerv1.UsageClientAuth},
-		Organizations: []string{orgSystemMasters},
-	}
-}
-
-func etcdLeafSpecs(ns string, d durations) []PKICertificateSpec {
+	// etcd leaf certs
 	etcd0 := "etcd-0.etcd." + ns + ".svc"
 	etcdSvc := "etcd." + ns + ".svc"
 
-	return []PKICertificateSpec{
+	objs = append(objs,
 		// etcd server cert
-		{
-			Name:        "etcd-server",
-			Namespace:   ns,
-			SecretName:  secretEtcdServerTLS,
-			CommonName:  etcd0,
-			IssuerName:  issuerEtcdCA,
-			Duration:    &d.tenYears,
-			RenewBefore: &d.thirtyDays,
-			Usages: []certmanagerv1.KeyUsage{
+		builders.NewCertificate(ns, "etcd-server").
+			WithSecretName(secretEtcdServerTLS).
+			WithCommonName(etcd0).
+			Issuer(issuerEtcdCA).
+			WithDuration(&d.tenYears).
+			WithRenewBefore(&d.thirtyDays).
+			WithUsages(
 				certmanagerv1.UsageDigitalSignature,
 				certmanagerv1.UsageKeyEncipherment,
 				certmanagerv1.UsageServerAuth,
 				certmanagerv1.UsageClientAuth,
-			},
-			DNSNames: []string{etcd0, etcdSvc, "localhost"},
-		},
+			).
+			WithDNSNames(etcd0, etcdSvc, "localhost").
+			Build(),
+
 		// etcd peer cert
-		{
-			Name:        "etcd-peer",
-			Namespace:   ns,
-			SecretName:  secretEtcdPeerTLS,
-			CommonName:  etcd0,
-			IssuerName:  issuerEtcdCA,
-			Duration:    &d.tenYears,
-			RenewBefore: &d.thirtyDays,
-			Usages: []certmanagerv1.KeyUsage{
+		builders.NewCertificate(ns, "etcd-peer").
+			WithSecretName(secretEtcdPeerTLS).
+			WithCommonName(etcd0).
+			Issuer(issuerEtcdCA).
+			WithDuration(&d.tenYears).
+			WithRenewBefore(&d.thirtyDays).
+			WithUsages(
 				certmanagerv1.UsageDigitalSignature,
 				certmanagerv1.UsageKeyEncipherment,
 				certmanagerv1.UsageServerAuth,
 				certmanagerv1.UsageClientAuth,
-			},
-			DNSNames: []string{etcd0, "localhost"},
-		},
+			).
+			WithDNSNames(etcd0, "localhost").
+			Build(),
+
 		// etcd healthcheck client
-		{
-			Name:        secretEtcdHealthClient,
-			Namespace:   ns,
-			SecretName:  secretEtcdHealthClient,
-			CommonName:  cnEtcdHealth,
-			IssuerName:  issuerEtcdCA,
-			Duration:    &d.tenYears,
-			RenewBefore: &d.thirtyDays,
-			Usages: []certmanagerv1.KeyUsage{
+		builders.NewCertificate(ns, secretEtcdHealthClient).
+			WithSecretName(secretEtcdHealthClient).
+			WithCommonName(cnEtcdHealth).
+			Issuer(issuerEtcdCA).
+			WithDuration(&d.tenYears).
+			WithRenewBefore(&d.thirtyDays).
+			WithUsages(
 				certmanagerv1.UsageDigitalSignature,
 				certmanagerv1.UsageKeyEncipherment,
 				certmanagerv1.UsageClientAuth,
-			},
-		},
+			).
+			Build(),
+
 		// apiserver -> etcd client
-		{
-			Name:        secretAPIServerEtcd,
-			Namespace:   ns,
-			SecretName:  secretAPIServerEtcd,
-			CommonName:  cnAPIServerEtcd,
-			IssuerName:  issuerEtcdCA,
-			Duration:    &d.tenYears,
-			RenewBefore: &d.thirtyDays,
-			Usages: []certmanagerv1.KeyUsage{
+		builders.NewCertificate(ns, secretAPIServerEtcd).
+			WithSecretName(secretAPIServerEtcd).
+			WithCommonName(cnAPIServerEtcd).
+			Issuer(issuerEtcdCA).
+			WithDuration(&d.tenYears).
+			WithRenewBefore(&d.thirtyDays).
+			WithUsages(
 				certmanagerv1.UsageDigitalSignature,
 				certmanagerv1.UsageKeyEncipherment,
 				certmanagerv1.UsageClientAuth,
-			},
-		},
-	}
-}
+			).
+			Build(),
+	)
 
-func frontProxySpecs(ns string, d durations) PKICertificateSpec {
-	return PKICertificateSpec{
-		Name:        secretFrontProxyClient,
-		Namespace:   ns,
-		SecretName:  secretFrontProxyClient,
-		CommonName:  cnFrontProxyClient,
-		IssuerName:  issuerFrontProxyCA,
-		Duration:    &d.tenYears,
-		RenewBefore: &d.thirtyDays,
-		Usages: []certmanagerv1.KeyUsage{
-			certmanagerv1.UsageDigitalSignature,
-			certmanagerv1.UsageKeyEncipherment,
-			certmanagerv1.UsageClientAuth,
-		},
-	}
-}
-
-func componentClientSpecs(ns string, d durations) []PKICertificateSpec {
-	return []PKICertificateSpec{
-		{
-			Name:        secretCMClient,
-			Namespace:   ns,
-			SecretName:  secretCMClient,
-			CommonName:  cnCMClient,
-			IssuerName:  issuerCA,
-			Duration:    &d.tenYears,
-			RenewBefore: &d.thirtyDays,
-			Usages: []certmanagerv1.KeyUsage{
+	// front-proxy client
+	objs = append(objs,
+		builders.NewCertificate(ns, secretFrontProxyClient).
+			WithSecretName(secretFrontProxyClient).
+			WithCommonName(cnFrontProxyClient).
+			Issuer(issuerFrontProxyCA).
+			WithDuration(&d.tenYears).
+			WithRenewBefore(&d.thirtyDays).
+			WithUsages(
 				certmanagerv1.UsageDigitalSignature,
 				certmanagerv1.UsageKeyEncipherment,
 				certmanagerv1.UsageClientAuth,
-			},
-		},
-		{
-			Name:        secretSchedulerClient,
-			Namespace:   ns,
-			SecretName:  secretSchedulerClient,
-			CommonName:  cnSchedulerClient,
-			IssuerName:  issuerCA,
-			Duration:    &d.tenYears,
-			RenewBefore: &d.thirtyDays,
-			Usages: []certmanagerv1.KeyUsage{
+			).
+			Build(),
+	)
+
+	// controller-manager & scheduler clients
+	objs = append(objs,
+		builders.NewCertificate(ns, secretCMClient).
+			WithSecretName(secretCMClient).
+			WithCommonName(cnCMClient).
+			Issuer(issuerCA).
+			WithDuration(&d.tenYears).
+			WithRenewBefore(&d.thirtyDays).
+			WithUsages(
 				certmanagerv1.UsageDigitalSignature,
 				certmanagerv1.UsageKeyEncipherment,
 				certmanagerv1.UsageClientAuth,
-			},
-		},
-	}
-}
+			).
+			Build(),
 
-func adminClientSpec(ns string, d durations) PKICertificateSpec {
-	return PKICertificateSpec{
-		Name:       secretAdminClient,
-		Namespace:  ns,
-		SecretName: secretAdminClient,
-		CommonName: cnAdminClient,
-		IssuerName: issuerCA,
-		Organizations: []string{
-			orgSystemMasters,
-		},
-		Duration:    &d.tenYears,
-		RenewBefore: &d.thirtyDays,
-		Usages: []certmanagerv1.KeyUsage{
-			certmanagerv1.UsageDigitalSignature,
-			certmanagerv1.UsageKeyEncipherment,
-			certmanagerv1.UsageClientAuth,
-		},
-	}
+		builders.NewCertificate(ns, secretSchedulerClient).
+			WithSecretName(secretSchedulerClient).
+			WithCommonName(cnSchedulerClient).
+			Issuer(issuerCA).
+			WithDuration(&d.tenYears).
+			WithRenewBefore(&d.thirtyDays).
+			WithUsages(
+				certmanagerv1.UsageDigitalSignature,
+				certmanagerv1.UsageKeyEncipherment,
+				certmanagerv1.UsageClientAuth,
+			).
+			Build(),
+	)
+
+	// admin client (system:masters)
+	objs = append(objs,
+		builders.NewCertificate(ns, secretAdminClient).
+			WithSecretName(secretAdminClient).
+			WithCommonName(cnAdminClient).
+			Issuer(issuerCA).
+			WithOrganizations(orgSystemMasters).
+			WithDuration(&d.tenYears).
+			WithRenewBefore(&d.thirtyDays).
+			WithUsages(
+				certmanagerv1.UsageDigitalSignature,
+				certmanagerv1.UsageKeyEncipherment,
+				certmanagerv1.UsageClientAuth,
+			).
+			Build(),
+	)
+
+	return objs
 }
 
 func apiserverSANs(mcp *mcpv1alpha1.ManagedControlPlane, ns string) (dns []string, ips []string) {
-	// Stable DNS SANs
 	dns = []string{
 		"kube-apiserver." + ns + ".svc",
 		"kube-apiserver." + ns + ".svc.cluster.local",
@@ -338,12 +283,12 @@ func apiserverSANs(mcp *mcpv1alpha1.ManagedControlPlane, ns string) (dns []strin
 		"localhost",
 	}
 
-	// Service CIDR -> kubernetes.default service IP (typically first usable)
-	if svcIP, ok := firstServiceIP(mcp.Spec.Networking.ServiceCIDR); ok {
-		ips = append(ips, svcIP)
+	if mcp.Spec.Networking != nil {
+		if svcIP, ok := firstServiceIP(mcp.Spec.Networking.ServiceCIDR); ok {
+			ips = append(ips, svcIP)
+		}
 	}
 
-	// LB address in status (might be IP or hostname)
 	addr := mcp.Status.Address
 	if addr != "" {
 		if net.ParseIP(addr) != nil {
@@ -353,7 +298,6 @@ func apiserverSANs(mcp *mcpv1alpha1.ManagedControlPlane, ns string) (dns []strin
 		}
 	}
 
-	// Optional: local loopback
 	ips = append(ips, "127.0.0.1")
 	return dns, ips
 }
@@ -367,17 +311,14 @@ func firstServiceIP(cidr string) (string, bool) {
 	ip := make(net.IP, len(n.IP))
 	copy(ip, n.IP)
 
-	// first usable is network + 1
 	ip = addIP(ip, 1)
 	return ip.String(), true
 }
 
 func addIP(ip net.IP, add uint) net.IP {
-	// Work on a copy
 	out := make(net.IP, len(ip))
 	copy(out, ip)
 
-	// Ensure we operate on 16-byte form for IPv4 too
 	out16 := out.To16()
 	if out16 == nil {
 		return out
@@ -390,84 +331,8 @@ func addIP(ip net.IP, add uint) net.IP {
 		add = (add >> 8) + (sum >> 8)
 	}
 
-	// If original was IPv4, return in 4-byte form
 	if v4 := ip.To4(); v4 != nil {
 		return out.To4()
 	}
 	return out
-}
-
-func BuildIssuer(spec PKIIssuerSpec) *certmanagerv1.Issuer {
-	issuer := &certmanagerv1.Issuer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      spec.Name,
-			Namespace: spec.Namespace,
-		},
-	}
-
-	switch {
-	case spec.SelfSigned:
-		issuer.Spec = certmanagerv1.IssuerSpec{
-			IssuerConfig: certmanagerv1.IssuerConfig{
-				SelfSigned: &certmanagerv1.SelfSignedIssuer{},
-			},
-		}
-	case spec.CASecret != "":
-		issuer.Spec = certmanagerv1.IssuerSpec{
-			IssuerConfig: certmanagerv1.IssuerConfig{
-				CA: &certmanagerv1.CAIssuer{
-					SecretName: spec.CASecret,
-				},
-			},
-		}
-	}
-
-	return issuer
-}
-
-func BuildCertificate(spec PKICertificateSpec) *certmanagerv1.Certificate {
-	c := &certmanagerv1.Certificate{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      spec.Name,
-			Namespace: spec.Namespace,
-		},
-	}
-
-	certSpec := certmanagerv1.CertificateSpec{
-		SecretName: spec.SecretName,
-		CommonName: spec.CommonName,
-		IsCA:       spec.IsCA,
-		IssuerRef: certmanagermeta.IssuerReference{
-			Name: spec.IssuerName,
-			Kind: kindIssuer,
-		},
-		PrivateKey: &certmanagerv1.CertificatePrivateKey{
-			Algorithm: certmanagerv1.RSAKeyAlgorithm,
-			Size:      2048,
-		},
-	}
-
-	if spec.Duration != nil {
-		certSpec.Duration = spec.Duration
-	}
-	if spec.RenewBefore != nil {
-		certSpec.RenewBefore = spec.RenewBefore
-	}
-	if len(spec.Usages) > 0 {
-		certSpec.Usages = spec.Usages
-	}
-	if len(spec.DNSNames) > 0 {
-		certSpec.DNSNames = spec.DNSNames
-	}
-	if len(spec.IPAddresses) > 0 {
-		certSpec.IPAddresses = spec.IPAddresses
-	}
-	if len(spec.Organizations) > 0 {
-		certSpec.Subject = &certmanagerv1.X509Subject{
-			Organizations: spec.Organizations,
-		}
-	}
-
-	c.Spec = certSpec
-	return c
 }

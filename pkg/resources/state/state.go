@@ -40,6 +40,9 @@ const (
 	MessagePKIFailed  mcpv1alpha1.Message = "Failed to reconcile PKI"
 	MessagePKIWaiting mcpv1alpha1.Message = "Waiting for PKI"
 
+	MessageAdminKubeconfigFailed  mcpv1alpha1.Message = "Failed to reconcile admin kubeconfig"
+	MessageAdminKubeconfigWaiting mcpv1alpha1.Message = "Waiting for admin kubeconfig"
+
 	MessageETCDFailed  mcpv1alpha1.Message = "Failed to reconcile ETCD"
 	MessageETCDWaiting mcpv1alpha1.Message = "Waiting for ETCD"
 

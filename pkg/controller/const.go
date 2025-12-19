@@ -12,23 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package common
+package controller
 
 const (
-	TLSCrtKey = "tls.crt"
-	TLSKeyKey = "tls.key"
-
-	PKIMountRoot = "/var/run/k8s"
-
-	LabelKeyApp = "app"
-
-	// Probes
-	LivezPath  = "/livez"
-	ReadyzPath = "/readyz"
-	HealthPath = "/healthz"
-
-	KubeconfigVolumeName = "kubeconfig"
-
-	AdminConfigName          = "admin-config"
-	AdminConfigKubeconfigKey = "config"
+	operatorName  = "controlplane-operator"
+	componentName = "controlplane-system"
+	fieldOwner    = operatorName + "/" + componentName
 )
