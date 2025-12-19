@@ -40,12 +40,12 @@ func buildService(cp *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 	labels := map[string]string{appLabelKey: appLabelVal}
 	ns := cp.Namespace
 
-	return builders.NewService(ns, "etcd").
+	return builders.NewService(ns, nameEtcd).
 		Headless().
 		WithLabels(labels).
 		WithSelector(map[string]string(labels)).
-		AddPort("client", 2379, 2379, corev1.ProtocolTCP).
-		AddPort("peer", 2380, 2380, corev1.ProtocolTCP).
+		AddPort("client", clientPort, clientPort, corev1.ProtocolTCP).
+		AddPort("peer", peerPort, peerPort, corev1.ProtocolTCP).
 		Build()
 }
 
@@ -59,77 +59,65 @@ func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
 	podFQDNClient := memberName + "." + nameEtcd + "." + ns + ".svc:" + utils.PortString(clientPort)
 	podFQDNPeer := memberName + "." + nameEtcd + "." + ns + ".svc:" + utils.PortString(peerPort)
 
-	return &appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      nameEtcd,
-			Namespace: ns,
-			Labels:    labels,
+	etcdContainer := corev1.Container{
+		Name:  nameEtcd,
+		Image: "registry.k8s.io/etcd:" + EtcdVersion,
+		Command: []string{
+			"etcd",
 		},
-		Spec: appsv1.StatefulSetSpec{
-			ServiceName: nameEtcd,
-			Replicas:    &replicas,
-			Selector:    &metav1.LabelSelector{MatchLabels: labels},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: labels},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:  nameEtcd,
-							Image: "registry.k8s.io/etcd:" + EtcdVersion,
-							Command: []string{
-								"etcd",
-							},
-							Args: []string{
-								"--name=" + memberName,
-								"--data-dir=" + dataDir,
+		Args: []string{
+			"--name=" + memberName,
+			"--data-dir=" + dataDir,
 
-								"--listen-client-urls=https://0.0.0.0:" + utils.PortString(clientPort),
-								"--advertise-client-urls=https://" + podFQDNClient,
+			"--listen-client-urls=https://0.0.0.0:" + utils.PortString(clientPort),
+			"--advertise-client-urls=https://" + podFQDNClient,
 
-								"--listen-peer-urls=https://0.0.0.0:" + utils.PortString(peerPort),
-								"--initial-advertise-peer-urls=https://" + podFQDNPeer,
+			"--listen-peer-urls=https://0.0.0.0:" + utils.PortString(peerPort),
+			"--initial-advertise-peer-urls=https://" + podFQDNPeer,
 
-								"--initial-cluster=" + clusterName + "=https://" + podFQDNPeer,
-								"--initial-cluster-state=new",
+			"--initial-cluster=" + clusterName + "=https://" + podFQDNPeer,
+			"--initial-cluster-state=new",
 
-								"--client-cert-auth=true",
-								"--peer-client-cert-auth=true",
+			"--client-cert-auth=true",
+			"--peer-client-cert-auth=true",
 
-								"--trusted-ca-file=" + p.CA.CAPath(),
-								"--cert-file=" + p.Server.CertPath(),
-								"--key-file=" + p.Server.KeyPath(),
+			"--trusted-ca-file=" + p.CA.CAPath(),
+			"--cert-file=" + p.Server.CertPath(),
+			"--key-file=" + p.Server.KeyPath(),
 
-								"--peer-trusted-ca-file=" + p.CA.CAPath(),
-								"--peer-cert-file=" + p.Peer.CertPath(),
-								"--peer-key-file=" + p.Peer.KeyPath(),
-							},
-							Ports: []corev1.ContainerPort{
-								{Name: "client", ContainerPort: clientPort},
-								{Name: "peer", ContainerPort: peerPort},
-							},
-							LivenessProbe:  utils.TcpProbe(clientPort, 10, 10),
-							ReadinessProbe: utils.TcpProbe(clientPort, 5, 5),
-							VolumeMounts: append([]corev1.VolumeMount{
-								{Name: "etcd-data", MountPath: dataDir},
-							}, p.Mounts(true)...),
-						},
-					},
-					Volumes: p.Volumes(),
-				},
+			"--peer-trusted-ca-file=" + p.CA.CAPath(),
+			"--peer-cert-file=" + p.Peer.CertPath(),
+			"--peer-key-file=" + p.Peer.KeyPath(),
+		},
+		Ports: []corev1.ContainerPort{
+			{Name: "client", ContainerPort: clientPort},
+			{Name: "peer", ContainerPort: peerPort},
+		},
+		LivenessProbe:  utils.TcpProbe(clientPort, 10, 10),
+		ReadinessProbe: utils.TcpProbe(clientPort, 5, 5),
+		VolumeMounts: append(
+			[]corev1.VolumeMount{
+				{Name: "etcd-data", MountPath: dataDir},
 			},
-			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "etcd-data"},
-					Spec: corev1.PersistentVolumeClaimSpec{
-						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-						Resources: corev1.VolumeResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceStorage: resource.MustParse(defaultStorage),
-							},
-						},
-					},
+			p.Mounts(true)...,
+		),
+	}
+
+	claim := corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "etcd-data"},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse(defaultStorage),
 				},
 			},
 		},
 	}
+
+	return builders.NewStatefulSet(ns, nameEtcd, labels, replicas, nameEtcd).
+		WithContainer(etcdContainer).
+		AddVolumes(p.Volumes()...).
+		WithVolumeClaims(claim).
+		Build()
 }
