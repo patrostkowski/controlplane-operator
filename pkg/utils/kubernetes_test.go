@@ -15,11 +15,9 @@
 package utils
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
@@ -174,9 +172,23 @@ func TestBuildComponentKubeconfig(t *testing.T) {
 	svc := "apiserver"
 	port := int32(6443)
 	user := "kube-controller-manager"
-	clientSecret := "kcm-client"
 
-	cfg := BuildComponentKubeconfig(ns, svc, port, user, clientSecret)
+	ca := common.SecretMount{
+		SecretName: "cluster-ca",
+		MountDir:   "/pki/cluster-ca",
+		CertFile:   "tls.crt",
+		KeyFile:    "tls.key",
+		CAFile:     "ca.crt",
+	}
+	client := common.SecretMount{
+		SecretName: "cm-client",
+		MountDir:   "/pki/cm-client",
+		CertFile:   "tls.crt",
+		KeyFile:    "tls.key",
+		CAFile:     "ca.crt",
+	}
+
+	cfg := BuildComponentKubeconfig(ns, svc, port, user, ca, client)
 	if cfg == nil {
 		t.Fatalf("expected config, got nil")
 	}
@@ -205,11 +217,12 @@ func TestBuildComponentKubeconfig(t *testing.T) {
 	if cluster.Server != wantServer {
 		t.Fatalf("Clusters[local].Server=%q want %q", cluster.Server, wantServer)
 	}
-
-	caDir := filepath.Join(common.PKIMountRoot, pki.SecretManagedCA)
-	wantCA := filepath.Join(caDir, common.TLSCrtKey)
-	if cluster.CertificateAuthority != wantCA {
-		t.Fatalf("Clusters[local].CertificateAuthority=%q want %q", cluster.CertificateAuthority, wantCA)
+	if cluster.CertificateAuthority != ca.CertPath() {
+		t.Fatalf(
+			"Clusters[local].CertificateAuthority=%q want %q",
+			cluster.CertificateAuthority,
+			ca.CertPath(),
+		)
 	}
 
 	// User auth info
@@ -217,14 +230,46 @@ func TestBuildComponentKubeconfig(t *testing.T) {
 	if !ok || auth == nil {
 		t.Fatalf("expected AuthInfos[%s] to exist", user)
 	}
-	clientDir := filepath.Join(common.PKIMountRoot, clientSecret)
-	wantCert := filepath.Join(clientDir, common.TLSCrtKey)
-	wantKey := filepath.Join(clientDir, common.TLSKeyKey)
-
-	if auth.ClientCertificate != wantCert {
-		t.Fatalf("AuthInfos[%s].ClientCertificate=%q want %q", user, auth.ClientCertificate, wantCert)
+	if auth.ClientCertificate != client.CertPath() {
+		t.Fatalf(
+			"AuthInfos[%s].ClientCertificate=%q want %q",
+			user,
+			auth.ClientCertificate,
+			client.CertPath(),
+		)
 	}
-	if auth.ClientKey != wantKey {
-		t.Fatalf("AuthInfos[%s].ClientKey=%q want %q", user, auth.ClientKey, wantKey)
+	if auth.ClientKey != client.KeyPath() {
+		t.Fatalf(
+			"AuthInfos[%s].ClientKey=%q want %q",
+			user,
+			auth.ClientKey,
+			client.KeyPath(),
+		)
+	}
+}
+
+func TestBuildKubeconfigWithCertData(t *testing.T) {
+	t.Parallel()
+
+	cfg := BuildKubeconfigWithCertData(
+		"https://1.2.3.4:6443",
+		"local",
+		[]byte("ca"),
+		[]byte("crt"),
+		[]byte("key"),
+	)
+
+	if cfg.CurrentContext != DefaultContextName {
+		t.Fatalf("CurrentContext=%q want %q", cfg.CurrentContext, DefaultContextName)
+	}
+
+	c := cfg.Clusters[DefaultContextName]
+	if c == nil || c.Server != "https://1.2.3.4:6443" {
+		t.Fatalf("cluster server wrong: %#v", c)
+	}
+
+	a := cfg.AuthInfos["local"]
+	if a == nil || string(a.ClientCertificateData) != "crt" || string(a.ClientKeyData) != "key" {
+		t.Fatalf("auth wrong: %#v", a)
 	}
 }

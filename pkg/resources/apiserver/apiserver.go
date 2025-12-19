@@ -15,8 +15,6 @@
 package apiserver
 
 import (
-	"path/filepath"
-
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
@@ -28,25 +26,25 @@ import (
 )
 
 // Resources returns Service + Deployment for the kube-apiserver.
-func Resources(api *mcpv1alpha1.ManagedControlPlane) []client.Object {
+func Resources(mcp *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	return []client.Object{
-		buildService(api),
-		buildDeployment(api),
+		buildService(mcp),
+		buildDeployment(mcp),
 	}
 }
 
 // EndpointResources returns only the Service (LB) for kube-apiserver.
-func EndpointResources(api *mcpv1alpha1.ManagedControlPlane) []client.Object {
-	return []client.Object{buildService(api)}
+func EndpointResources(mcp *mcpv1alpha1.ManagedControlPlane) []client.Object {
+	return []client.Object{buildService(mcp)}
 }
 
 // WorkloadResources returns only the Deployment for kube-apiserver.
-func WorkloadResources(api *mcpv1alpha1.ManagedControlPlane) []client.Object {
-	return []client.Object{buildDeployment(api)}
+func WorkloadResources(mcp *mcpv1alpha1.ManagedControlPlane) []client.Object {
+	return []client.Object{buildDeployment(mcp)}
 }
 
-func buildService(api *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
-	ns := api.Namespace
+func buildService(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
+	ns := mcp.Namespace
 	labels := map[string]string{appLabelKey: appLabelVal}
 
 	return builders.NewService(ns, KubeAPIServerSvcName).
@@ -57,36 +55,14 @@ func buildService(api *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 		Build()
 }
 
-func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
-	ns := api.Namespace
+func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
+	p := pki.New(mcp).APIServer()
+
+	ns := mcp.Namespace
 	labels := map[string]string{appLabelKey: appLabelVal}
 	replicas := int32(1)
 
-	version := api.Spec.Version
-
-	// Volume names == mounted directory names under mountRoot
-	caVol := pki.SecretManagedCA
-	apiTLSVol := pki.SecretAPIServerTLS
-	etcdCAVol := pki.SecretEtcdCA
-	etcdClientVol := pki.SecretAPIServerEtcd
-	kubeletClientVol := pki.SecretAPIServerKubelet
-	saVol := pki.SecretSASigner
-	frontProxyCAVol := pki.SecretFrontProxyCA
-	frontProxyClientVol := pki.SecretFrontProxyClient
-
-	// Helper: compute file paths inside mounts
-	certPath := func(vol string) string { return filepath.Join(common.PKIMountRoot, vol, common.TLSCrtKey) }
-	keyPath := func(vol string) string { return filepath.Join(common.PKIMountRoot, vol, common.TLSKeyKey) }
-
-	// Mount dirs
-	caDir := filepath.Join(common.PKIMountRoot, caVol)
-	apiTLSDir := filepath.Join(common.PKIMountRoot, apiTLSVol)
-	etcdCADir := filepath.Join(common.PKIMountRoot, etcdCAVol)
-	etcdClientDir := filepath.Join(common.PKIMountRoot, etcdClientVol)
-	kubeletClientDir := filepath.Join(common.PKIMountRoot, kubeletClientVol)
-	saDir := filepath.Join(common.PKIMountRoot, saVol)
-	frontProxyCADir := filepath.Join(common.PKIMountRoot, frontProxyCAVol)
-	frontProxyClientDir := filepath.Join(common.PKIMountRoot, frontProxyClientVol)
+	version := mcp.Spec.Version
 
 	c := corev1.Container{
 		Name:            "apiserver",
@@ -94,25 +70,25 @@ func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Command:         []string{"kube-apiserver"},
 		Args: []string{
-			"--advertise-address=" + api.Status.Address,
+			"--advertise-address=" + mcp.Status.Address,
 			"--bind-address=0.0.0.0",
 			"--secure-port=6443",
-			"--service-cluster-ip-range=" + api.Spec.Networking.ServiceCIDR,
+			"--service-cluster-ip-range=" + mcp.Spec.Networking.ServiceCIDR,
 
 			// etcd
 			"--etcd-servers=https://etcd-0.etcd." + ns + ".svc:2379",
-			"--etcd-cafile=" + certPath(etcdCAVol),
-			"--etcd-certfile=" + certPath(etcdClientVol),
-			"--etcd-keyfile=" + keyPath(etcdClientVol),
+			"--etcd-cafile=" + p.EtcdCA.CertPath(),
+			"--etcd-certfile=" + p.EtcdClient.CertPath(),
+			"--etcd-keyfile=" + p.EtcdClient.KeyPath(),
 
 			// serving + client-ca
-			"--client-ca-file=" + certPath(caVol),
-			"--tls-cert-file=" + certPath(apiTLSVol),
-			"--tls-private-key-file=" + keyPath(apiTLSVol),
+			"--client-ca-file=" + p.ClientCA.CertPath(),
+			"--tls-cert-file=" + p.Serving.CertPath(),
+			"--tls-private-key-file=" + p.Serving.KeyPath(),
 
 			// kubelet client
-			"--kubelet-client-certificate=" + certPath(kubeletClientVol),
-			"--kubelet-client-key=" + keyPath(kubeletClientVol),
+			"--kubelet-client-certificate=" + p.KubeletClient.CertPath(),
+			"--kubelet-client-key=" + p.KubeletClient.KeyPath(),
 			"--kubelet-preferred-address-types=InternalIP,Hostname,InternalDNS,ExternalIP,ExternalDNS",
 
 			"--authorization-mode=Node,RBAC",
@@ -120,19 +96,19 @@ func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 
 			// service account signing
 			"--service-account-issuer=https://kubernetes.default.svc.cluster.local",
-			"--service-account-key-file=" + certPath(saVol),
-			"--service-account-signing-key-file=" + keyPath(saVol),
+			"--service-account-key-file=" + p.ServiceAccountSigner.CertPath(),
+			"--service-account-signing-key-file=" + p.ServiceAccountSigner.KeyPath(),
 
 			"--allow-privileged=true",
 
 			// front-proxy
-			"--requestheader-client-ca-file=" + certPath(frontProxyCAVol),
-			"--requestheader-allowed-names=" + pki.CNFrontProxyClient,
-			"--requestheader-extra-headers-prefix=X-Remote-Extra-",
-			"--requestheader-group-headers=X-Remote-Group",
-			"--requestheader-username-headers=X-Remote-User",
-			"--proxy-client-cert-file=" + certPath(frontProxyClientVol),
-			"--proxy-client-key-file=" + keyPath(frontProxyClientVol),
+			// "--proxy-client-cert-file=" + p.FrontProxyClient.CertPath(),
+			// "--proxy-client-key-file=" + p.FrontProxyClient.KeyPath(),
+			// "--requestheader-allowed-names=" + pki.CNFrontProxyClient,
+			// "--requestheader-client-ca-file=" + p.FrontProxyCA.CertPath(),
+			// "--requestheader-extra-headers-prefix=X-Remote-Extra-",
+			// "--requestheader-group-headers=X-Remote-Group",
+			// "--requestheader-username-headers=X-Remote-User",
 
 			"--logging-format=json",
 		},
@@ -146,24 +122,24 @@ func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	return builders.NewDeployment(ns, apiServerName, labels, replicas).
 		WithContainer(c).
 		AddVolumes(
-			utils.SecretVolume(caVol, caVol),
-			utils.SecretVolume(apiTLSVol, apiTLSVol),
-			utils.SecretVolume(etcdCAVol, etcdCAVol),
-			utils.SecretVolume(etcdClientVol, etcdClientVol),
-			utils.SecretVolume(kubeletClientVol, kubeletClientVol),
-			utils.SecretVolume(saVol, saVol),
-			utils.SecretVolume(frontProxyCAVol, frontProxyCAVol),
-			utils.SecretVolume(frontProxyClientVol, frontProxyClientVol),
+			p.ClientCA.Volume(),
+			p.Serving.Volume(),
+			p.EtcdClient.Volume(),
+			p.KubeletClient.Volume(),
+			p.ServiceAccountSigner.Volume(),
+			p.EtcdCA.Volume(),
+			p.FrontProxyCA.Volume(),
+			p.FrontProxyClient.Volume(),
 		).
 		AddVolumeMounts(c.Name,
-			utils.SecretMount(caVol, caDir),
-			utils.SecretMount(apiTLSVol, apiTLSDir),
-			utils.SecretMount(etcdCAVol, etcdCADir),
-			utils.SecretMount(etcdClientVol, etcdClientDir),
-			utils.SecretMount(kubeletClientVol, kubeletClientDir),
-			utils.SecretMount(saVol, saDir),
-			utils.SecretMount(frontProxyCAVol, frontProxyCADir),
-			utils.SecretMount(frontProxyClientVol, frontProxyClientDir),
+			p.ClientCA.Mount(true),
+			p.Serving.Mount(true),
+			p.EtcdClient.Mount(true),
+			p.KubeletClient.Mount(true),
+			p.ServiceAccountSigner.Mount(true),
+			p.EtcdCA.Mount(true),
+			p.FrontProxyCA.Mount(true),
+			p.FrontProxyClient.Mount(true),
 		).
 		Build()
 }

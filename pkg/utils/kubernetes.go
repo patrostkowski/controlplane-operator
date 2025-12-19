@@ -15,11 +15,9 @@
 package utils
 
 import (
-	"path/filepath"
 	"strconv"
 
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/clientcmd/api"
@@ -91,7 +89,8 @@ func BuildComponentKubeconfig(
 	apiServerService string,
 	apiServerPort int32,
 	user string,
-	clientSecret string,
+	ca common.SecretMount,
+	client common.SecretMount,
 ) *api.Config {
 	serverURL :=
 		"https://" +
@@ -102,24 +101,46 @@ func BuildComponentKubeconfig(
 
 	cfg := api.NewConfig()
 
-	caDir := filepath.Join(common.PKIMountRoot, pki.SecretManagedCA)
-	clientDir := filepath.Join(common.PKIMountRoot, clientSecret)
-
-	cfg.Clusters["local"] = &api.Cluster{
+	cfg.Clusters[DefaultContextName] = &api.Cluster{
 		Server:               serverURL,
-		CertificateAuthority: filepath.Join(caDir, common.TLSCrtKey),
+		CertificateAuthority: ca.CertPath(),
 	}
 
 	cfg.AuthInfos[user] = &api.AuthInfo{
-		ClientCertificate: filepath.Join(clientDir, common.TLSCrtKey),
-		ClientKey:         filepath.Join(clientDir, common.TLSKeyKey),
+		ClientCertificate: client.CertPath(),
+		ClientKey:         client.KeyPath(),
 	}
 
-	cfg.Contexts["local"] = &api.Context{
-		Cluster:  "local",
+	cfg.Contexts[DefaultContextName] = &api.Context{
+		Cluster:  DefaultContextName,
 		AuthInfo: user,
 	}
-	cfg.CurrentContext = "local"
+	cfg.CurrentContext = DefaultContextName
+
+	return cfg
+}
+
+const DefaultContextName = "local"
+
+// BuildKubeconfigWithCertData builds kubeconfig that embeds cert material inlined (Data fields).
+func BuildKubeconfigWithCertData(serverURL, user string, ca, crt, key []byte) *api.Config {
+	cfg := api.NewConfig()
+
+	cfg.Clusters[DefaultContextName] = &api.Cluster{
+		Server:                   serverURL,
+		CertificateAuthorityData: ca,
+	}
+
+	cfg.AuthInfos[user] = &api.AuthInfo{
+		ClientCertificateData: crt,
+		ClientKeyData:         key,
+	}
+
+	cfg.Contexts[DefaultContextName] = &api.Context{
+		Cluster:  DefaultContextName,
+		AuthInfo: user,
+	}
+	cfg.CurrentContext = DefaultContextName
 
 	return cfg
 }

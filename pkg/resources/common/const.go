@@ -17,6 +17,7 @@ package common
 const (
 	TLSCrtKey = "tls.crt"
 	TLSKeyKey = "tls.key"
+	CACrtKey  = "ca.crt"
 
 	PKIMountRoot = "/var/run/k8s"
 

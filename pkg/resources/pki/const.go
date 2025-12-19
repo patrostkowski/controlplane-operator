@@ -15,8 +15,6 @@
 package pki
 
 const (
-	kindIssuer = "Issuer"
-
 	// Issuers
 	issuerSelfSigned     = "selfsigned"
 	issuerCA             = "ca-issuer"
@@ -56,36 +54,4 @@ const (
 	cnAdminClient      = "kubernetes-admin"
 
 	orgSystemMasters = "system:masters"
-
-	// Secrets / cert names
-	SecretManagedCA        = secretManagedCA
-	SecretEtcdCA           = secretEtcdCA
-	SecretFrontProxyCA     = secretFrontProxyCA
-	SecretSASigner         = secretSASigner
-	SecretAPIServerTLS     = secretAPIServerTLS
-	SecretAPIServerKubelet = secretAPIServerKubelet
-	SecretEtcdServerTLS    = secretEtcdServerTLS
-	SecretEtcdPeerTLS      = secretEtcdPeerTLS
-	SecretEtcdHealthClient = secretEtcdHealthClient
-	SecretAPIServerEtcd    = secretAPIServerEtcd
-	SecretFrontProxyClient = secretFrontProxyClient
-	SecretCMClient         = secretCMClient
-	SecretSchedulerClient  = secretSchedulerClient
-	SecretAdminClient      = secretAdminClient
-
-	// CommonNames
-	CNManagedCA        = cnManagedCA
-	CNEtcdCA           = cnEtcdCA
-	CNFrontProxyCA     = cnFrontProxyCA
-	CNSASigner         = cnSASigner
-	CNAPIServer        = cnAPIServer
-	CNAPIServerKubelet = cnAPIServerKubelet
-	CNEtcdHealth       = cnEtcdHealth
-	CNAPIServerEtcd    = cnAPIServerEtcd
-	CNFrontProxyClient = cnFrontProxyClient
-	CNCMClient         = cnCMClient
-	CNSchedulerClient  = cnSchedulerClient
-	CNAdminClient      = cnAdminClient
-
-	OrgSystemMasters = orgSystemMasters
 )
