@@ -21,6 +21,7 @@ import (
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/controller"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
@@ -44,6 +45,9 @@ func main() {
 		panic(err)
 	}
 	if err := certmanagerv1.AddToScheme(mgr.GetScheme()); err != nil {
+		panic(err)
+	}
+	if err := clientgoscheme.AddToScheme(mgr.GetScheme()); err != nil {
 		panic(err)
 	}
 

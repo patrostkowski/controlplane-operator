@@ -21,6 +21,9 @@ import (
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/controllermanager"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/etcd"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/scheduler"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/state"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -78,7 +81,6 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		// 	return ctrl.Result{Requeue: true}, nil
 		// }
 
-		// All child CRs are gone → safe to drop finalizer
 		log.Info("All child resources deleted, removing finalizer")
 
 		controllerutil.RemoveFinalizer(mcpObj, ManagedControlPlaneFinalizer)
@@ -219,8 +221,98 @@ func (r *ManagedControlPlaneReconciler) controlPlaneClient(
 	return controlplane.NewFromKubeconfigSecret(ctx, r.Client, r.Scheme, mcp.Namespace)
 }
 
+func (r *ManagedControlPlaneReconciler) reconcileAPIServiceSvc(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+) (ctrl.Result, error) {
+
+	log := r.Log.WithValues("api-endpoint", mcp.Namespace)
+	api := NewAPIServer(mcp, r.Client, r.Scheme, log)
+
+	if err := api.Ensure(ctx, api.endpointManifests()); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	addr, err := api.tryEndpointAddress(ctx)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		log.Error(err, "failed to read API Service address (best-effort)")
+		return ctrl.Result{}, err
+	}
+	if addr != "" && mcp.Status.Address != addr {
+		if err := r.UpdateMCPAddress(ctx, mcp, addr); err != nil {
+			log.Error(err, "failed to update address")
+			return ctrl.Result{}, err
+		}
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *ManagedControlPlaneReconciler) reconcileAPIServer(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+) (ctrl.Result, error) {
+
+	log := r.Log.WithValues("apiserver", mcp.Namespace)
+	api := NewAPIServer(mcp, r.Client, r.Scheme, log)
+
+	if err := api.Ensure(ctx, api.workloadManifests()); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *ManagedControlPlaneReconciler) reconcileETCD(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+) (ctrl.Result, error) {
+	log := r.Log.WithValues("etcd", mcp.GetObjectMeta().GetNamespace())
+	e := NewETCD(mcp, r.Client, r.Scheme, log)
+
+	resources := etcd.Resources(mcp)
+
+	if err := e.Ensure(ctx, resources); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *ManagedControlPlaneReconciler) reconcileControllerManager(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+) (ctrl.Result, error) {
+	log := r.Log.WithValues("controllermanager", mcp.GetObjectMeta().GetNamespace())
+	cm := NewControllerManager(mcp, r.Client, r.Scheme, log)
+
+	resources := controllermanager.Resources(mcp)
+
+	if err := cm.Ensure(ctx, resources); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *ManagedControlPlaneReconciler) reconcileScheduler(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
+	log := r.Log.WithValues("scheduler", mcp.GetObjectMeta().GetNamespace())
+	s := NewScheduler(mcp, r.Client, r.Scheme, log)
+
+	resources := scheduler.Resources(mcp)
+
+	if err := s.Ensure(ctx, resources); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
 func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
-	certPred := predicate.GenerationChangedPredicate{} // drops status-only updates
+	certPred := predicate.GenerationChangedPredicate{}
 	issuerPred := predicate.GenerationChangedPredicate{}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&mcpv1alpha1.ManagedControlPlane{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
@@ -232,7 +324,7 @@ func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
 		Owns(&certmanagerv1.Issuer{}, builder.WithPredicates(issuerPred)).
 		WithOptions(
 			controller.Options{
-				MaxConcurrentReconciles: 1,
+				// MaxConcurrentReconciles: 1,
 				RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](
 					5*time.Second,
 					60*time.Second,

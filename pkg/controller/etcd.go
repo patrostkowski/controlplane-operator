@@ -16,117 +16,27 @@ package controller
 
 import (
 	"context"
-	"time"
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/etcd"
-	"github.com/patrostkowski/controlplane-operator/pkg/utils"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	ctrl "sigs.k8s.io/controller-runtime"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (r *ManagedControlPlaneReconciler) reconcileETCD(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
-	log := r.Log.WithValues("etcd", mcp.GetObjectMeta().GetNamespace())
-
-	log.Info("Reconciling etcd")
-
-	resources := etcd.Resources(mcp)
-
-	if err := r.ensureETCDResources(ctx, mcp, resources, log); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	allReady, err := r.checkETCDResourcesReady(ctx, resources, log)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	if !allReady {
-		log.Info("requeueing reconcile for etcd")
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
-	}
-
-	log.Info("Finished reconciling ETCD")
-	return ctrl.Result{}, nil
+type ETCD struct {
+	*Applier
+	mcp *mcpv1alpha1.ManagedControlPlane
+	log logr.Logger
 }
 
-func (r *ManagedControlPlaneReconciler) ensureETCDResources(
-	ctx context.Context,
-	mcp *mcpv1alpha1.ManagedControlPlane,
-	resources []client.Object,
-	log logr.Logger,
-) error {
-	for _, desired := range resources {
-		log.Info("Ensuring etcd resource", "kind", desired.GetObjectKind().GroupVersionKind().Kind, "name", desired.GetName())
-
-		err := utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, mcp, desired, log, func(obj client.Object) error {
-			switch o := obj.(type) {
-			case *corev1.Service:
-				d := desired.(*corev1.Service)
-				// Preserve clusterIP on updates
-				clusterIP := o.Spec.ClusterIP
-				o.Spec = d.Spec
-				if clusterIP != "" {
-					o.Spec.ClusterIP = clusterIP
-				}
-			case *appsv1.StatefulSet:
-				d := desired.(*appsv1.StatefulSet)
-				// Keep existing status, only spec/labels/annotations etc.
-				o.Spec = d.Spec
-				o.Labels = utils.MergeStringMap(o.Labels, d.Labels)
-				o.Annotations = utils.MergeStringMap(o.Annotations, d.Annotations)
-			}
-			return nil
-		})
-		if err != nil {
-			log.Error(err, "failed to ensure etcd resource", "name", desired.GetName())
-			return err
-		}
+func NewETCD(mcp *mcpv1alpha1.ManagedControlPlane, k8s client.Client, scheme *runtime.Scheme, log logr.Logger) *ETCD {
+	return &ETCD{
+		Applier: NewApplier(k8s, scheme, log, fieldOwner),
+		mcp:     mcp,
+		log:     log.WithName("etcd"),
 	}
-	return nil
 }
 
-func (r *ManagedControlPlaneReconciler) checkETCDResourcesReady(
-	ctx context.Context,
-	resources []client.Object,
-	log logr.Logger,
-) (bool, error) {
-	allReady := true
-
-	for _, desired := range resources {
-		switch desired.(type) {
-
-		case *appsv1.StatefulSet:
-			key := client.ObjectKey{Namespace: desired.GetNamespace(), Name: desired.GetName()}
-
-			sts := &appsv1.StatefulSet{}
-			if err := r.Get(ctx, key, sts); err != nil {
-				if !apierrors.IsNotFound(err) {
-					log.Error(err, "failed to get StatefulSet", "name", key.Name)
-					return false, err
-				}
-				log.Info("StatefulSet not found yet", "name", key.Name)
-				allReady = false
-				continue
-			}
-
-			desiredReplicas := int32(1)
-			if sts.Spec.Replicas != nil {
-				desiredReplicas = *sts.Spec.Replicas
-			}
-
-			if sts.Status.ReadyReplicas < desiredReplicas {
-				log.Info("StatefulSet not ready", "name", sts.Name, "readyReplicas", sts.Status.ReadyReplicas, "desiredReplicas", desiredReplicas)
-				allReady = false
-			} else {
-				log.Info("StatefulSet ready", "name", sts.Name)
-			}
-		}
-	}
-
-	return allReady, nil
+func (a *ETCD) Ensure(ctx context.Context, resources []client.Object) error {
+	return a.Apply(ctx, a.mcp, resources...)
 }

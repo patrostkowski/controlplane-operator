@@ -43,6 +43,11 @@ tasks:
     cmds:
       - go test ./pkg/... -v
 
+  dev:lint:
+    desc: "Run golangci-lint"
+    cmds:
+      - golangci-lint run ./...
+
   dev:codegen:
     desc: "Run all code generation scripts (client + CRDs) inside hack/"
     cmds:

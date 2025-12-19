@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// todo: match how other things reconcile
 func (r *ManagedControlPlaneReconciler) reconcileAddon(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
