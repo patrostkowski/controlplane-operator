@@ -22,6 +22,7 @@ import (
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/controllermanager"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/etcd"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
@@ -33,7 +34,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -345,49 +345,42 @@ func (r *ManagedControlPlaneReconciler) reconcileAdminConfig(
 	mcpObj *mcpv1alpha1.ManagedControlPlane,
 	ns string,
 ) (ctrl.Result, error) {
-	serverURL := "https://" + mcpObj.Status.Address + ":6443"
-
 	if mcpObj.Status.Address == "" {
 		r.Log.Info("API address not set yet")
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
+	serverURL := "https://" + mcpObj.Status.Address + ":6443"
+
+	p := pki.New(mcpObj).Admin()
+
 	// get admin-client secret
 	adminClient := &corev1.Secret{}
-	if err := r.Get(ctx, client.ObjectKey{Name: "admin-client", Namespace: ns}, adminClient); err != nil {
+	if err := r.Get(ctx, client.ObjectKey{Name: p.Client.SecretName, Namespace: ns}, adminClient); err != nil {
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, client.IgnoreNotFound(err)
 	}
 
-	ca := adminClient.Data["ca.crt"]
-	crt := adminClient.Data["tls.crt"]
-	key := adminClient.Data["tls.key"]
+	ca := adminClient.Data[common.CACrtKey]
+	crt := adminClient.Data[common.TLSCrtKey]
+	key := adminClient.Data[common.TLSKeyKey]
 
 	if len(ca) == 0 || len(crt) == 0 || len(key) == 0 {
 		r.Log.Info("admin config secret not ready yet")
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
-	// build kubecfg
-	cfg := clientcmdapi.NewConfig()
-	cfg.Clusters["local"] = &clientcmdapi.Cluster{
-		Server:                   serverURL,
-		CertificateAuthorityData: ca,
-	}
-	cfg.AuthInfos["local"] = &clientcmdapi.AuthInfo{
-		ClientCertificateData: crt,
-		ClientKeyData:         key,
-	}
-	cfg.Contexts["local"] = &clientcmdapi.Context{Cluster: "local", AuthInfo: "local"}
-	cfg.CurrentContext = "local"
+	// build kubeconfig (data-embedded)
+	cfg := utils.BuildKubeconfigWithCertData(serverURL, "local", ca, crt, key)
 
 	kubeconfigBytes, err := clientcmd.Write(*cfg)
 	if err != nil {
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 	}
 
+	// ensure admin-config secret
 	s := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "admin-config",
+			Name:      common.AdminConfigName,
 			Namespace: ns,
 		},
 		Type: corev1.SecretTypeOpaque,
@@ -398,10 +391,10 @@ func (r *ManagedControlPlaneReconciler) reconcileAdminConfig(
 		if sec.Data == nil {
 			sec.Data = map[string][]byte{}
 		}
-		if bytes.Equal(sec.Data["config"], kubeconfigBytes) {
+		if bytes.Equal(sec.Data[common.AdminConfigKubeconfigKey], kubeconfigBytes) {
 			return nil
 		}
-		sec.Data["config"] = kubeconfigBytes
+		sec.Data[common.AdminConfigKubeconfigKey] = kubeconfigBytes
 		return nil
 	})
 	if err != nil {

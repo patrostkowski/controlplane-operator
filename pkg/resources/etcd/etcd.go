@@ -15,8 +15,6 @@
 package etcd
 
 import (
-	"path/filepath"
-
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
@@ -52,23 +50,11 @@ func buildService(cp *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 }
 
 func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
+	p := pki.New(cp).ETCD()
+
 	labels := map[string]string{appLabelKey: appLabelVal}
 	ns := cp.Namespace
 	replicas := int32(1)
-
-	secretCA := pki.SecretEtcdCA
-	secretServer := pki.SecretEtcdServerTLS
-	secretPeer := pki.SecretEtcdPeerTLS
-
-	volCA := secretCA
-	volServer := secretServer
-	volPeer := secretPeer
-
-	caPath := filepath.Join(mountRoot, dirCA, caCrt)
-	serverCrt := filepath.Join(mountRoot, dirServer, tlsCrt)
-	serverKey := filepath.Join(mountRoot, dirServer, tlsKey)
-	peerCrt := filepath.Join(mountRoot, dirPeer, tlsCrt)
-	peerKey := filepath.Join(mountRoot, dirPeer, tlsKey)
 
 	podFQDNClient := memberName + "." + nameEtcd + "." + ns + ".svc:" + utils.PortString(clientPort)
 	podFQDNPeer := memberName + "." + nameEtcd + "." + ns + ".svc:" + utils.PortString(peerPort)
@@ -109,13 +95,13 @@ func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
 								"--client-cert-auth=true",
 								"--peer-client-cert-auth=true",
 
-								"--trusted-ca-file=" + caPath,
-								"--cert-file=" + serverCrt,
-								"--key-file=" + serverKey,
+								"--trusted-ca-file=" + p.CA.CAPath(),
+								"--cert-file=" + p.Server.CertPath(),
+								"--key-file=" + p.Server.KeyPath(),
 
-								"--peer-trusted-ca-file=" + caPath,
-								"--peer-cert-file=" + peerCrt,
-								"--peer-key-file=" + peerKey,
+								"--peer-trusted-ca-file=" + p.CA.CAPath(),
+								"--peer-cert-file=" + p.Peer.CertPath(),
+								"--peer-key-file=" + p.Peer.KeyPath(),
 							},
 							Ports: []corev1.ContainerPort{
 								{Name: "client", ContainerPort: clientPort},
@@ -123,19 +109,12 @@ func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
 							},
 							LivenessProbe:  utils.TcpProbe(clientPort, 10, 10),
 							ReadinessProbe: utils.TcpProbe(clientPort, 5, 5),
-							VolumeMounts: []corev1.VolumeMount{
+							VolumeMounts: append([]corev1.VolumeMount{
 								{Name: "etcd-data", MountPath: dataDir},
-								utils.SecretMount(volServer, filepath.Join(mountRoot, dirServer)),
-								utils.SecretMount(volPeer, filepath.Join(mountRoot, dirPeer)),
-								utils.SecretMount(volCA, filepath.Join(mountRoot, dirCA)),
-							},
+							}, p.Mounts(true)...),
 						},
 					},
-					Volumes: []corev1.Volume{
-						utils.SecretVolume(volServer, secretServer),
-						utils.SecretVolume(volPeer, secretPeer),
-						utils.SecretVolume(volCA, secretCA),
-					},
+					Volumes: p.Volumes(),
 				},
 			},
 			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{

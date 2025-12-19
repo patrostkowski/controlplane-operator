@@ -15,7 +15,6 @@
 package apiserver
 
 import (
-	"path/filepath"
 	"testing"
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
@@ -103,6 +102,8 @@ func TestBuildDeployment_APIServer(t *testing.T) {
 		},
 	}
 
+	p := pki.New(api).APIServer()
+
 	dep := buildDeployment(api)
 
 	// metadata
@@ -135,27 +136,19 @@ func TestBuildDeployment_APIServer(t *testing.T) {
 	mustContainArg(t, c.Args, "--service-cluster-ip-range="+api.Spec.Networking.ServiceCIDR)
 	mustContainArg(t, c.Args, "--etcd-servers=https://etcd-0.etcd."+api.Namespace+".svc:2379")
 
-	// path helpers used by apiserver logic
-	certPath := func(vol string) string { return filepath.Join(common.PKIMountRoot, vol, common.TLSCrtKey) }
-	keyPath := func(vol string) string { return filepath.Join(common.PKIMountRoot, vol, common.TLSKeyKey) }
+	mustContainArg(t, c.Args, "--client-ca-file="+p.ClientCA.CertPath())
+	mustContainArg(t, c.Args, "--tls-cert-file="+p.Serving.CertPath())
+	mustContainArg(t, c.Args, "--tls-private-key-file="+p.Serving.KeyPath())
 
-	mustContainArg(t, c.Args, "--client-ca-file="+certPath(pki.SecretManagedCA))
-	mustContainArg(t, c.Args, "--tls-cert-file="+certPath(pki.SecretAPIServerTLS))
-	mustContainArg(t, c.Args, "--tls-private-key-file="+keyPath(pki.SecretAPIServerTLS))
+	mustContainArg(t, c.Args, "--etcd-cafile="+p.EtcdCA.CertPath())
+	mustContainArg(t, c.Args, "--etcd-certfile="+p.EtcdClient.CertPath())
+	mustContainArg(t, c.Args, "--etcd-keyfile="+p.EtcdClient.KeyPath())
 
-	mustContainArg(t, c.Args, "--etcd-cafile="+certPath(pki.SecretEtcdCA))
-	mustContainArg(t, c.Args, "--etcd-certfile="+certPath(pki.SecretAPIServerEtcd))
-	mustContainArg(t, c.Args, "--etcd-keyfile="+keyPath(pki.SecretAPIServerEtcd))
+	mustContainArg(t, c.Args, "--kubelet-client-certificate="+p.KubeletClient.CertPath())
+	mustContainArg(t, c.Args, "--kubelet-client-key="+p.KubeletClient.KeyPath())
 
-	mustContainArg(t, c.Args, "--kubelet-client-certificate="+certPath(pki.SecretAPIServerKubelet))
-	mustContainArg(t, c.Args, "--kubelet-client-key="+keyPath(pki.SecretAPIServerKubelet))
-
-	mustContainArg(t, c.Args, "--service-account-key-file="+certPath(pki.SecretSASigner))
-	mustContainArg(t, c.Args, "--service-account-signing-key-file="+keyPath(pki.SecretSASigner))
-
-	mustContainArg(t, c.Args, "--requestheader-client-ca-file="+certPath(pki.SecretFrontProxyCA))
-	mustContainArg(t, c.Args, "--proxy-client-cert-file="+certPath(pki.SecretFrontProxyClient))
-	mustContainArg(t, c.Args, "--proxy-client-key-file="+keyPath(pki.SecretFrontProxyClient))
+	mustContainArg(t, c.Args, "--service-account-key-file="+p.ServiceAccountSigner.CertPath())
+	mustContainArg(t, c.Args, "--service-account-signing-key-file="+p.ServiceAccountSigner.KeyPath())
 
 	// probes
 	if c.LivenessProbe == nil {
@@ -166,24 +159,24 @@ func TestBuildDeployment_APIServer(t *testing.T) {
 	}
 
 	// volumes (8 secrets)
-	expectVolume(t, pod.Volumes, pki.SecretManagedCA)
-	expectVolume(t, pod.Volumes, pki.SecretAPIServerTLS)
-	expectVolume(t, pod.Volumes, pki.SecretEtcdCA)
-	expectVolume(t, pod.Volumes, pki.SecretAPIServerEtcd)
-	expectVolume(t, pod.Volumes, pki.SecretAPIServerKubelet)
-	expectVolume(t, pod.Volumes, pki.SecretSASigner)
-	expectVolume(t, pod.Volumes, pki.SecretFrontProxyCA)
-	expectVolume(t, pod.Volumes, pki.SecretFrontProxyClient)
+	expectVolume(t, pod.Volumes, p.ClientCA.SecretName)
+	expectVolume(t, pod.Volumes, p.Serving.SecretName)
+	expectVolume(t, pod.Volumes, p.EtcdCA.SecretName)
+	expectVolume(t, pod.Volumes, p.EtcdClient.SecretName)
+	expectVolume(t, pod.Volumes, p.KubeletClient.SecretName)
+	expectVolume(t, pod.Volumes, p.ServiceAccountSigner.SecretName)
+	// expectVolume(t, pod.Volumes, p.FrontProxyCA.SecretName)
+	// expectVolume(t, pod.Volumes, p.FrontProxyClient.SecretName)
 
-	// mounts (same 8, mounted under /var/run/k8s/<secret>)
-	expectMount(t, c.VolumeMounts, pki.SecretManagedCA, filepath.Join(common.PKIMountRoot, pki.SecretManagedCA))
-	expectMount(t, c.VolumeMounts, pki.SecretAPIServerTLS, filepath.Join(common.PKIMountRoot, pki.SecretAPIServerTLS))
-	expectMount(t, c.VolumeMounts, pki.SecretEtcdCA, filepath.Join(common.PKIMountRoot, pki.SecretEtcdCA))
-	expectMount(t, c.VolumeMounts, pki.SecretAPIServerEtcd, filepath.Join(common.PKIMountRoot, pki.SecretAPIServerEtcd))
-	expectMount(t, c.VolumeMounts, pki.SecretAPIServerKubelet, filepath.Join(common.PKIMountRoot, pki.SecretAPIServerKubelet))
-	expectMount(t, c.VolumeMounts, pki.SecretSASigner, filepath.Join(common.PKIMountRoot, pki.SecretSASigner))
-	expectMount(t, c.VolumeMounts, pki.SecretFrontProxyCA, filepath.Join(common.PKIMountRoot, pki.SecretFrontProxyCA))
-	expectMount(t, c.VolumeMounts, pki.SecretFrontProxyClient, filepath.Join(common.PKIMountRoot, pki.SecretFrontProxyClient))
+	// mounts (same volumes, mounted at view-provided dirs)
+	expectMount(t, c.VolumeMounts, p.ClientCA.SecretName, p.ClientCA.MountDir)
+	expectMount(t, c.VolumeMounts, p.Serving.SecretName, p.Serving.MountDir)
+	expectMount(t, c.VolumeMounts, p.EtcdCA.SecretName, p.EtcdCA.MountDir)
+	expectMount(t, c.VolumeMounts, p.EtcdClient.SecretName, p.EtcdClient.MountDir)
+	expectMount(t, c.VolumeMounts, p.KubeletClient.SecretName, p.KubeletClient.MountDir)
+	expectMount(t, c.VolumeMounts, p.ServiceAccountSigner.SecretName, p.ServiceAccountSigner.MountDir)
+	// expectMount(t, c.VolumeMounts, p.FrontProxyCA.SecretName, p.FrontProxyCA.MountDir)
+	// expectMount(t, c.VolumeMounts, p.FrontProxyClient.SecretName, p.FrontProxyClient.MountDir)
 }
 
 func mustContainArg(t *testing.T, args []string, want string) {

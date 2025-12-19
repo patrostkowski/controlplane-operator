@@ -15,7 +15,6 @@
 package controllermanager
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -87,6 +86,8 @@ func TestBuildDeployment_ControllerManager(t *testing.T) {
 		},
 	}
 
+	p := pki.New(cm).ControllerManager()
+
 	// Act
 	dep := buildDeployment(cm)
 
@@ -140,15 +141,11 @@ func TestBuildDeployment_ControllerManager(t *testing.T) {
 	mustContainArg(t, c.Args, "--use-service-account-credentials=true")
 	mustContainArg(t, c.Args, "--controllers=*,bootstrapsigner,tokencleaner")
 
-	// CA + SA signer paths (these are derived from secret-name-based mount dirs)
-	caDir := filepath.Join(common.PKIMountRoot, pki.SecretManagedCA)
-	saDir := filepath.Join(common.PKIMountRoot, pki.SecretSASigner)
-
-	mustContainArg(t, c.Args, "--service-account-private-key-file="+filepath.Join(saDir, common.TLSKeyKey))
-	mustContainArg(t, c.Args, "--cluster-signing-cert-file="+filepath.Join(caDir, common.TLSCrtKey))
-	mustContainArg(t, c.Args, "--cluster-signing-key-file="+filepath.Join(caDir, common.TLSKeyKey))
-	mustContainArg(t, c.Args, "--client-ca-file="+filepath.Join(caDir, common.TLSCrtKey))
-	mustContainArg(t, c.Args, "--root-ca-file="+filepath.Join(caDir, common.TLSCrtKey))
+	mustContainArg(t, c.Args, "--service-account-private-key-file="+p.ServiceAccountSigner.KeyPath())
+	mustContainArg(t, c.Args, "--cluster-signing-cert-file="+p.ClientCA.CertPath())
+	mustContainArg(t, c.Args, "--cluster-signing-key-file="+p.ClientCA.KeyPath())
+	mustContainArg(t, c.Args, "--client-ca-file="+p.ClientCA.CertPath())
+	mustContainArg(t, c.Args, "--root-ca-file="+p.ClientCA.CertPath())
 
 	// networking
 	mustContainArg(t, c.Args, "--cluster-cidr="+cm.Spec.Networking.PodCIDR)
@@ -169,10 +166,9 @@ func TestBuildDeployment_ControllerManager(t *testing.T) {
 	expectMount(t, c.VolumeMounts, common.KubeconfigVolumeName, kubeconfigMountDir, true)
 
 	// secret mounts (name + path)
-	cmClientDir := filepath.Join(common.PKIMountRoot, pki.SecretCMClient)
-	expectMount(t, c.VolumeMounts, pki.SecretCMClient, cmClientDir, true)
-	expectMount(t, c.VolumeMounts, pki.SecretSASigner, saDir, true)
-	expectMount(t, c.VolumeMounts, pki.SecretManagedCA, caDir, true)
+	expectMount(t, c.VolumeMounts, p.Client.SecretName, p.Client.MountDir, true)
+	expectMount(t, c.VolumeMounts, p.ServiceAccountSigner.SecretName, p.ServiceAccountSigner.MountDir, true)
+	expectMount(t, c.VolumeMounts, p.ClientCA.SecretName, p.ClientCA.MountDir, true)
 
 	// Assert: volumes
 	expectVolume(t, pod.Volumes, common.KubeconfigVolumeName, func(v corev1.Volume) {
@@ -183,19 +179,19 @@ func TestBuildDeployment_ControllerManager(t *testing.T) {
 			t.Fatalf("expected kubeconfig volume CM name %q, got %q", cmKubeconfigName, v.ConfigMap.Name)
 		}
 	})
-	expectVolume(t, pod.Volumes, pki.SecretCMClient, func(v corev1.Volume) {
-		if v.Secret == nil || v.Secret.SecretName != pki.SecretCMClient {
-			t.Fatalf("expected secret volume %q -> secretName %q, got %#v", pki.SecretCMClient, pki.SecretCMClient, v)
+	expectVolume(t, pod.Volumes, p.Client.SecretName, func(v corev1.Volume) {
+		if v.Secret == nil || v.Secret.SecretName != p.Client.SecretName {
+			t.Fatalf("expected secret volume %q -> secretName %q, got %#v", p.Client.SecretName, p.Client.SecretName, v)
 		}
 	})
-	expectVolume(t, pod.Volumes, pki.SecretSASigner, func(v corev1.Volume) {
-		if v.Secret == nil || v.Secret.SecretName != pki.SecretSASigner {
-			t.Fatalf("expected secret volume %q -> secretName %q, got %#v", pki.SecretSASigner, pki.SecretSASigner, v)
+	expectVolume(t, pod.Volumes, p.ServiceAccountSigner.SecretName, func(v corev1.Volume) {
+		if v.Secret == nil || v.Secret.SecretName != p.ServiceAccountSigner.SecretName {
+			t.Fatalf("expected secret volume %q -> secretName %q, got %#v", p.ServiceAccountSigner.SecretName, p.ServiceAccountSigner.SecretName, v)
 		}
 	})
-	expectVolume(t, pod.Volumes, pki.SecretManagedCA, func(v corev1.Volume) {
-		if v.Secret == nil || v.Secret.SecretName != pki.SecretManagedCA {
-			t.Fatalf("expected secret volume %q -> secretName %q, got %#v", pki.SecretManagedCA, pki.SecretManagedCA, v)
+	expectVolume(t, pod.Volumes, p.ClientCA.SecretName, func(v corev1.Volume) {
+		if v.Secret == nil || v.Secret.SecretName != p.ClientCA.SecretName {
+			t.Fatalf("expected secret volume %q -> secretName %q, got %#v", p.ClientCA.SecretName, p.ClientCA.SecretName, v)
 		}
 	})
 }

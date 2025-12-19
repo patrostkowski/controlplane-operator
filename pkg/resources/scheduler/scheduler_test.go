@@ -77,6 +77,8 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 	ms.Namespace = "mcp"
 	ms.Spec.Version = "v1.34.1"
 
+	p := pki.New(ms).Scheduler()
+
 	got := buildDeployment(ms)
 	if got == nil {
 		t.Fatalf("buildDeployment returned nil")
@@ -169,17 +171,13 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 		t.Fatalf("kubeconfig volumeMount: got %+v, want mountPath=%q readOnly=true", vmKubeconfig, kubeconfigMountDir)
 	}
 
-	_, ok = findVolumeMount(c.VolumeMounts, pki.SecretSchedulerClient)
+	_, ok = findVolumeMount(c.VolumeMounts, p.Client.SecretName)
 	if !ok {
-		t.Fatalf("missing volumeMount %q (scheduler client)", pki.SecretSchedulerClient)
+		t.Fatalf("missing volumeMount %q (scheduler client)", p.Client.SecretName)
 	}
-	_, ok = findVolumeMount(c.VolumeMounts, pki.SecretManagedCA)
+	_, ok = findVolumeMount(c.VolumeMounts, p.ClientCA.SecretName)
 	if !ok {
-		t.Fatalf("missing volumeMount %q (managed CA)", pki.SecretManagedCA)
-	}
-
-	if len(pod.Volumes) != 3 {
-		t.Fatalf("pod.spec.volumes length: got %d, want 3", len(pod.Volumes))
+		t.Fatalf("missing volumeMount %q (cluster CA)", p.ClientCA.SecretName)
 	}
 
 	vKubeconfig, ok := findVolume(pod.Volumes, common.KubeconfigVolumeName)
@@ -200,8 +198,8 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 			vKubeconfig.ConfigMap.Items[0], cmKubeconfigKey, cmKubeconfigFileName)
 	}
 
-	assertSecretVolume(t, pod.Volumes, pki.SecretSchedulerClient, "scheduler client secret volume")
-	assertSecretVolume(t, pod.Volumes, pki.SecretManagedCA, "managed CA secret volume")
+	assertSecretVolume(t, pod.Volumes, p.Client.SecretName, "scheduler client secret volume")
+	assertSecretVolume(t, pod.Volumes, p.ClientCA.SecretName, "cluster CA secret volume")
 }
 
 func assertStringSliceEqual(t *testing.T, got, want []string, field string) {

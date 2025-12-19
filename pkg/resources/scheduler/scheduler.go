@@ -15,8 +15,6 @@
 package scheduler
 
 import (
-	"path/filepath"
-
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/apiserver"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
@@ -30,21 +28,24 @@ import (
 )
 
 // Resources returns ConfigMap + Deployment for kube-scheduler.
-func Resources(ms *mcpv1alpha1.ManagedControlPlane) []client.Object {
+func Resources(mcp *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	return []client.Object{
-		buildConfigMap(ms),
-		buildDeployment(ms),
+		buildConfigMap(mcp),
+		buildDeployment(mcp),
 	}
 }
 
-func buildConfigMap(ms *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
-	ns := ms.Namespace
+func buildConfigMap(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
+	p := pki.New(mcp).Scheduler()
+
+	ns := mcp.Namespace
 	kcfg := utils.BuildComponentKubeconfig(
 		ns,
 		apiserver.KubeAPIServerSvcName,
 		apiserver.KubeAPIServerSecurePort,
 		"scheduler",
-		pki.SecretSchedulerClient,
+		p.ClientCA,
+		p.Client,
 	)
 
 	kubeconfigData, err := clientcmd.Write(*kcfg)
@@ -57,17 +58,13 @@ func buildConfigMap(ms *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 		Build()
 }
 
-func buildDeployment(ms *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
-	ns := ms.Namespace
-	version := ms.Spec.Version
+func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
+	p := pki.New(mcp).Scheduler()
+
+	ns := mcp.Namespace
+	version := mcp.Spec.Version
 
 	labels := map[string]string{common.LabelKeyApp: labelValApp}
-
-	secretCA := pki.SecretManagedCA
-	secretSchedulerClient := pki.SecretSchedulerClient
-
-	caDir := filepath.Join(common.PKIMountRoot, secretCA)
-	schedulerClientDir := filepath.Join(common.PKIMountRoot, secretSchedulerClient)
 
 	var replicas int32 = 1
 
@@ -77,8 +74,6 @@ func buildDeployment(ms *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 		cmKubeconfigKey,
 		cmKubeconfigFileName,
 	)
-	schedulerClientVol := utils.SecretVolume(secretSchedulerClient, secretSchedulerClient)
-	caVol := utils.SecretVolume(secretCA, secretCA)
 
 	c := corev1.Container{
 		Name:            containerName,
@@ -102,14 +97,15 @@ func buildDeployment(ms *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 
 	return builders.NewDeployment(ns, componentName, labels, replicas).
 		WithContainer(c).
-		AddVolumes(kubeconfigVol, schedulerClientVol, caVol).
+		AddVolumes(append([]corev1.Volume{kubeconfigVol}, p.Volumes()...)...).
 		AddVolumeMounts(c.Name,
-			utils.SecretMount(secretSchedulerClient, schedulerClientDir),
-			utils.SecretMount(secretCA, caDir),
-			corev1.VolumeMount{
-				Name:      common.KubeconfigVolumeName,
-				MountPath: kubeconfigMountDir,
-				ReadOnly:  true,
-			}).
+			append(p.Mounts(true),
+				corev1.VolumeMount{
+					Name:      common.KubeconfigVolumeName,
+					MountPath: kubeconfigMountDir,
+					ReadOnly:  true,
+				},
+			)...,
+		).
 		Build()
 }

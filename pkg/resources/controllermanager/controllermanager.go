@@ -15,8 +15,6 @@
 package controllermanager
 
 import (
-	"path/filepath"
-
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/apiserver"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
@@ -38,13 +36,16 @@ func Resources(cm *mcpv1alpha1.ManagedControlPlane) []client.Object {
 }
 
 func buildConfigMap(cm *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
+	p := pki.New(cm).ControllerManager()
+
 	ns := cm.Namespace
 	kcfg := utils.BuildComponentKubeconfig(
 		ns,
 		apiserver.KubeAPIServerSvcName,
 		apiserver.KubeAPIServerSecurePort,
 		"cm",
-		pki.SecretCMClient,
+		p.ClientCA,
+		p.Client,
 	)
 
 	kubeconfigData, err := clientcmd.Write(*kcfg)
@@ -58,35 +59,22 @@ func buildConfigMap(cm *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 }
 
 func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
+	p := pki.New(cm).ControllerManager()
+
 	ns := cm.Namespace
 	version := cm.Spec.Version
 
 	labels := map[string]string{common.LabelKeyApp: labelValApp}
 
-	// PKI secret names (canonical)
-	secretCA := pki.SecretManagedCA
-	secretSA := pki.SecretSASigner
-	secretCMClient := pki.SecretCMClient
-
-	// Mount dirs based on secret names (same pattern as apiserver/etcd)
-	caDir := filepath.Join(common.PKIMountRoot, secretCA)
-	saDir := filepath.Join(common.PKIMountRoot, secretSA)
-	cmClientDir := filepath.Join(common.PKIMountRoot, secretCMClient)
-
 	var replicas int32 = 1
 
-	// Volumes
 	kubeconfigVol := utils.ConfigMapVolume(
 		common.KubeconfigVolumeName,
 		cmKubeconfigName,
 		cmKubeconfigKey,
 		cmKubeconfigFileName,
 	)
-	cmClientVol := utils.SecretVolume(secretCMClient, secretCMClient)
-	saVol := utils.SecretVolume(secretSA, secretSA)
-	caVol := utils.SecretVolume(secretCA, secretCA)
 
-	// Container
 	c := corev1.Container{
 		Name:            containerName,
 		Image:           "registry.k8s.io/kube-controller-manager:" + version,
@@ -108,15 +96,14 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			"--controllers=*,bootstrapsigner,tokencleaner",
 
 			// service account signing key
-			"--service-account-private-key-file=" + filepath.Join(saDir, common.TLSKeyKey),
+			"--service-account-private-key-file=" + p.ServiceAccountSigner.KeyPath(),
 
 			// cluster signing
-			"--cluster-signing-cert-file=" + filepath.Join(caDir, common.TLSCrtKey),
-			"--cluster-signing-key-file=" + filepath.Join(caDir, common.TLSKeyKey),
-
+			"--cluster-signing-cert-file=" + p.ClientCA.CertPath(),
+			"--cluster-signing-key-file=" + p.ClientCA.KeyPath(),
 			// CA wiring
-			"--client-ca-file=" + filepath.Join(caDir, common.TLSCrtKey),
-			"--root-ca-file=" + filepath.Join(caDir, common.TLSCrtKey),
+			"--client-ca-file=" + p.ClientCA.CertPath(),
+			"--root-ca-file=" + p.ClientCA.CertPath(),
 
 			// networking
 			"--cluster-cidr=" + cm.Spec.Networking.PodCIDR,
@@ -134,16 +121,15 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 
 	return builders.NewDeployment(ns, componentName, labels, replicas).
 		WithContainer(c).
-		AddVolumes(kubeconfigVol, cmClientVol, saVol, caVol).
+		AddVolumes(append([]corev1.Volume{kubeconfigVol}, p.Volumes()...)...).
 		AddVolumeMounts(c.Name,
-			corev1.VolumeMount{
-				Name:      common.KubeconfigVolumeName,
-				MountPath: kubeconfigMountDir,
-				ReadOnly:  true,
-			},
-			utils.SecretMount(secretCMClient, cmClientDir),
-			utils.SecretMount(secretSA, saDir),
-			utils.SecretMount(secretCA, caDir),
+			append([]corev1.VolumeMount{
+				{
+					Name:      common.KubeconfigVolumeName,
+					MountPath: kubeconfigMountDir,
+					ReadOnly:  true,
+				},
+			}, p.Mounts(true)...)...,
 		).
 		Build()
 }
