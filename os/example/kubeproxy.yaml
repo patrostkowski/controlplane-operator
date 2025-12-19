@@ -49,7 +49,7 @@ data:
     apiVersion: kubeproxy.config.k8s.io/v1alpha1
     kind: KubeProxyConfiguration
     mode: "iptables"
-    clusterCIDR: "10.244.0.0/16"   # CLUSTER_CIDR (your Pod CIDR)
+    clusterCIDR: "10.244.0.0/16"
     clientConnection:
       kubeconfig: /var/lib/kube-proxy/kubeconfig.conf
     # You can add:

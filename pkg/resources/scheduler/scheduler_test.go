@@ -82,7 +82,6 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 		t.Fatalf("buildDeployment returned nil")
 	}
 
-	// --- Metadata / selector ---
 	if got.Name != componentName {
 		t.Fatalf("metadata.name: got %q, want %q", got.Name, componentName)
 	}
@@ -100,7 +99,6 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 		)
 	}
 
-	// --- Replicas ---
 	if got.Spec.Replicas == nil {
 		t.Fatalf("spec.replicas is nil")
 	}
@@ -108,7 +106,6 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 		t.Fatalf("spec.replicas: got %d, want 1", *got.Spec.Replicas)
 	}
 
-	// --- Pod template labels ---
 	if got.Spec.Template.Labels[common.LabelKeyApp] != labelValApp {
 		t.Fatalf("template.metadata.labels[%q]: got %q, want %q",
 			common.LabelKeyApp,
@@ -117,7 +114,6 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 		)
 	}
 
-	// --- Container checks ---
 	pod := got.Spec.Template.Spec
 	if len(pod.Containers) != 1 {
 		t.Fatalf("pod.spec.containers length: got %d, want 1", len(pod.Containers))
@@ -140,7 +136,6 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 		t.Fatalf("container.command: got %#v, want [\"kube-scheduler\"]", c.Command)
 	}
 
-	// Args (match what the builder sets)
 	wantArgs := []string{
 		"--bind-address=0.0.0.0",
 		"--kubeconfig=" + kubeconfigPath,
@@ -150,8 +145,6 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 		"--logging-format=json",
 	}
 	assertStringSliceEqual(t, c.Args, wantArgs, "container.args")
-
-	// Ports
 	if len(c.Ports) != 1 {
 		t.Fatalf("container.ports length: got %d, want 1", len(c.Ports))
 	}
@@ -159,18 +152,15 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 		t.Fatalf("container.ports[0]: got %+v, want name=https port=%d", c.Ports[0], securePort)
 	}
 
-	// Probes (compare against exact helper output to avoid re-encoding assumptions)
 	wantLive := utils.HttpsHealthProbe(securePort, common.LivezPath, 10, 10, 10, 10)
 	wantReady := utils.HttpsHealthProbe(securePort, common.ReadyzPath, 5, 5, 5, 5)
 	assertProbeEqual(t, c.LivenessProbe, wantLive, "livenessProbe")
 	assertProbeEqual(t, c.ReadinessProbe, wantReady, "readinessProbe")
 
-	// --- VolumeMounts ---
 	if len(c.VolumeMounts) != 3 {
 		t.Fatalf("container.volumeMounts length: got %d, want 3", len(c.VolumeMounts))
 	}
 
-	// kubeconfig mount
 	vmKubeconfig, ok := findVolumeMount(c.VolumeMounts, common.KubeconfigVolumeName)
 	if !ok {
 		t.Fatalf("missing volumeMount %q", common.KubeconfigVolumeName)
@@ -179,7 +169,6 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 		t.Fatalf("kubeconfig volumeMount: got %+v, want mountPath=%q readOnly=true", vmKubeconfig, kubeconfigMountDir)
 	}
 
-	// secrets mounts (names must match volumes)
 	_, ok = findVolumeMount(c.VolumeMounts, pki.SecretSchedulerClient)
 	if !ok {
 		t.Fatalf("missing volumeMount %q (scheduler client)", pki.SecretSchedulerClient)
@@ -189,12 +178,10 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 		t.Fatalf("missing volumeMount %q (managed CA)", pki.SecretManagedCA)
 	}
 
-	// --- Volumes ---
 	if len(pod.Volumes) != 3 {
 		t.Fatalf("pod.spec.volumes length: got %d, want 3", len(pod.Volumes))
 	}
 
-	// configmap volume
 	vKubeconfig, ok := findVolume(pod.Volumes, common.KubeconfigVolumeName)
 	if !ok {
 		t.Fatalf("missing volume %q", common.KubeconfigVolumeName)
@@ -213,7 +200,6 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 			vKubeconfig.ConfigMap.Items[0], cmKubeconfigKey, cmKubeconfigFileName)
 	}
 
-	// secret volumes
 	assertSecretVolume(t, pod.Volumes, pki.SecretSchedulerClient, "scheduler client secret volume")
 	assertSecretVolume(t, pod.Volumes, pki.SecretManagedCA, "managed CA secret volume")
 }
@@ -239,7 +225,6 @@ func assertProbeEqual(t *testing.T, got, want *corev1.Probe, field string) {
 		return
 	}
 
-	// Compare the parts that matter for your helper-produced probes.
 	if got.InitialDelaySeconds != want.InitialDelaySeconds ||
 		got.PeriodSeconds != want.PeriodSeconds ||
 		got.TimeoutSeconds != want.TimeoutSeconds ||

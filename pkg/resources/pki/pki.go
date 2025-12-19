@@ -1,3 +1,17 @@
+// Copyright 2025 Patryk Rostkowski
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package pki
 
 import (
@@ -33,8 +47,6 @@ func defaultDurations() durations {
 	}
 }
 
-// --- issuers (now via builders) ---
-
 func issuerResources(ns string) []client.Object {
 	return []client.Object{
 		// managed
@@ -50,8 +62,6 @@ func issuerResources(ns string) []client.Object {
 		builders.NewIssuer(ns, issuerFrontProxyCA).CA(secretFrontProxyCA).Build(),
 	}
 }
-
-// --- certificates (now via builders) ---
 
 func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d durations) []client.Object {
 	objs := make([]client.Object, 0, 32)
@@ -261,8 +271,6 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 
 	return objs
 }
-
-// --- SAN logic (unchanged) ---
 
 func apiserverSANs(mcp *mcpv1alpha1.ManagedControlPlane, ns string) (dns []string, ips []string) {
 	dns = []string{

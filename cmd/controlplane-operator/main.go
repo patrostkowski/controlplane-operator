@@ -34,13 +34,12 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme: nil, // we’ll populate below
+		Scheme: nil,
 	})
 	if err != nil {
 		panic(err)
 	}
 
-	// register your API
 	if err := mcpv1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
 		panic(err)
 	}
@@ -51,7 +50,6 @@ func main() {
 		panic(err)
 	}
 
-	// register controllers
 	if err := controller.SetupManagedControlPlaneController(mgr); err != nil {
 		panic(err)
 	}

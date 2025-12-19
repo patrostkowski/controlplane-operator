@@ -15,7 +15,6 @@
 package common
 
 const (
-	// cert-manager Secret keys (your certs are created with tls.crt/tls.key; CA secret also uses tls.crt here)
 	TLSCrtKey = "tls.crt"
 	TLSKeyKey = "tls.key"
 
