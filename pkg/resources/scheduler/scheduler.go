@@ -19,12 +19,12 @@ import (
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/apiserver"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -52,15 +52,9 @@ func buildConfigMap(ms *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 		panic(err)
 	}
 
-	return &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cmKubeconfigName,
-			Namespace: ns,
-		},
-		Data: map[string]string{
-			cmKubeconfigKey: string(kubeconfigData),
-		},
-	}
+	return builders.NewConfigMap(ns, cmKubeconfigName).
+		Put(cmKubeconfigKey, string(kubeconfigData)).
+		Build()
 }
 
 func buildDeployment(ms *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
@@ -75,63 +69,47 @@ func buildDeployment(ms *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	caDir := filepath.Join(common.PKIMountRoot, secretCA)
 	schedulerClientDir := filepath.Join(common.PKIMountRoot, secretSchedulerClient)
 
-	// Runtime
 	var replicas int32 = 1
 
-	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      componentName,
-			Namespace: ns,
-			Labels:    labels,
+	kubeconfigVol := utils.ConfigMapVolume(
+		common.KubeconfigVolumeName,
+		cmKubeconfigName,
+		cmKubeconfigKey,
+		cmKubeconfigFileName,
+	)
+	schedulerClientVol := utils.SecretVolume(secretSchedulerClient, secretSchedulerClient)
+	caVol := utils.SecretVolume(secretCA, secretCA)
+
+	c := corev1.Container{
+		Name:            containerName,
+		Image:           "registry.k8s.io/kube-scheduler:" + version,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command:         []string{"kube-scheduler"},
+		Args: []string{
+			"--bind-address=0.0.0.0",
+			"--kubeconfig=" + kubeconfigPath,
+			"--authentication-kubeconfig=" + kubeconfigPath,
+			"--authorization-kubeconfig=" + kubeconfigPath,
+			"--leader-elect=true",
+			"--logging-format=json",
 		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{MatchLabels: labels},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: labels},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:            containerName,
-							Image:           "registry.k8s.io/kube-scheduler:" + version,
-							ImagePullPolicy: corev1.PullIfNotPresent,
-							Command:         []string{"kube-scheduler"},
-							Args: []string{
-								"--bind-address=0.0.0.0",
-								"--kubeconfig=" + kubeconfigPath,
-								"--authentication-kubeconfig=" + kubeconfigPath,
-								"--authorization-kubeconfig=" + kubeconfigPath,
-								"--leader-elect=true",
-								"--logging-format=json",
-							},
-							Ports: []corev1.ContainerPort{
-								{Name: "https", ContainerPort: securePort},
-							},
-							LivenessProbe:  utils.HttpsHealthProbe(securePort, common.LivezPath, 10, 10, 10, 10),
-							ReadinessProbe: utils.HttpsHealthProbe(securePort, common.ReadyzPath, 5, 5, 5, 5),
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      common.KubeconfigVolumeName,
-									MountPath: kubeconfigMountDir,
-									ReadOnly:  true,
-								},
-								utils.SecretMount(secretSchedulerClient, schedulerClientDir),
-								utils.SecretMount(secretCA, caDir),
-							},
-						},
-					},
-					Volumes: []corev1.Volume{
-						utils.ConfigMapVolume(
-							common.KubeconfigVolumeName,
-							cmKubeconfigName,
-							cmKubeconfigKey,
-							cmKubeconfigFileName,
-						),
-						utils.SecretVolume(secretSchedulerClient, secretSchedulerClient),
-						utils.SecretVolume(secretCA, secretCA),
-					},
-				},
-			},
+		Ports: []corev1.ContainerPort{
+			{Name: "https", ContainerPort: securePort},
 		},
+		LivenessProbe:  utils.HttpsHealthProbe(securePort, common.LivezPath, 10, 10, 10, 10),
+		ReadinessProbe: utils.HttpsHealthProbe(securePort, common.ReadyzPath, 5, 5, 5, 5),
 	}
+
+	return builders.NewDeployment(ns, componentName, labels, replicas).
+		WithContainer(c).
+		AddVolumes(kubeconfigVol, schedulerClientVol, caVol).
+		AddVolumeMounts(c.Name,
+			utils.SecretMount(secretSchedulerClient, schedulerClientDir),
+			utils.SecretMount(secretCA, caDir),
+			corev1.VolumeMount{
+				Name:      common.KubeconfigVolumeName,
+				MountPath: kubeconfigMountDir,
+				ReadOnly:  true,
+			}).
+		Build()
 }

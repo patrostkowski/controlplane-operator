@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
@@ -41,21 +42,13 @@ func buildService(cp *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 	labels := map[string]string{appLabelKey: appLabelVal}
 	ns := cp.Namespace
 
-	return &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      nameEtcd,
-			Namespace: ns,
-			Labels:    labels,
-		},
-		Spec: corev1.ServiceSpec{
-			ClusterIP: "None",
-			Selector:  labels,
-			Ports: []corev1.ServicePort{
-				{Name: "client", Port: clientPort},
-				{Name: "peer", Port: peerPort},
-			},
-		},
-	}
+	return builders.NewService(ns, "etcd").
+		Headless().
+		WithLabels(labels).
+		WithSelector(map[string]string(labels)).
+		AddPort("client", 2379, 2379, corev1.ProtocolTCP).
+		AddPort("peer", 2380, 2380, corev1.ProtocolTCP).
+		Build()
 }
 
 func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {

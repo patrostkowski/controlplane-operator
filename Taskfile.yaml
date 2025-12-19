@@ -38,6 +38,11 @@ tasks:
     cmds:
       - docker run --rm -it -p 8000:8000 -v ${PWD}/docs:/docs squidfunk/mkdocs-material serve -f /docs/mkdocs.yml -a 0.0.0.0:8000
 
+  dev:test:
+    desc: "Run unit tests"
+    cmds:
+      - go test ./pkg/... -v
+
   dev:codegen:
     desc: "Run all code generation scripts (client + CRDs) inside hack/"
     cmds:

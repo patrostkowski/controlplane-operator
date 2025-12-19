@@ -18,12 +18,12 @@ import (
 	"path/filepath"
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -49,24 +49,12 @@ func buildService(api *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 	ns := api.Namespace
 	labels := map[string]string{appLabelKey: appLabelVal}
 
-	return &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      KubeAPIServerSvcName,
-			Namespace: ns,
-			Labels:    labels,
-		},
-		Spec: corev1.ServiceSpec{
-			Selector: labels,
-			Ports: []corev1.ServicePort{
-				{
-					Name:       "https",
-					Port:       securePort,
-					TargetPort: utils.IntstrFromInt(securePort),
-				},
-			},
-			Type: corev1.ServiceTypeLoadBalancer,
-		},
-	}
+	return builders.NewService(ns, KubeAPIServerSvcName).
+		WithLabels(labels).
+		WithSelector(labels).
+		AddPort("https", 6443, 6443, corev1.ProtocolTCP).
+		WithType(corev1.ServiceTypeLoadBalancer).
+		Build()
 }
 
 func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
@@ -86,6 +74,11 @@ func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	frontProxyCAVol := pki.SecretFrontProxyCA
 	frontProxyClientVol := pki.SecretFrontProxyClient
 
+	// Helper: compute file paths inside mounts
+	certPath := func(vol string) string { return filepath.Join(common.PKIMountRoot, vol, common.TLSCrtKey) }
+	keyPath := func(vol string) string { return filepath.Join(common.PKIMountRoot, vol, common.TLSKeyKey) }
+
+	// Mount dirs
 	caDir := filepath.Join(common.PKIMountRoot, caVol)
 	apiTLSDir := filepath.Join(common.PKIMountRoot, apiTLSVol)
 	etcdCADir := filepath.Join(common.PKIMountRoot, etcdCAVol)
@@ -95,100 +88,82 @@ func buildDeployment(api *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	frontProxyCADir := filepath.Join(common.PKIMountRoot, frontProxyCAVol)
 	frontProxyClientDir := filepath.Join(common.PKIMountRoot, frontProxyClientVol)
 
-	// Helper: compute file paths inside mounts
-	certPath := func(vol string) string { return filepath.Join(common.PKIMountRoot, vol, common.TLSCrtKey) }
-	keyPath := func(vol string) string { return filepath.Join(common.PKIMountRoot, vol, common.TLSKeyKey) }
+	c := corev1.Container{
+		Name:            "apiserver",
+		Image:           "registry.k8s.io/kube-apiserver:" + version,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command:         []string{"kube-apiserver"},
+		Args: []string{
+			"--advertise-address=" + api.Status.Address,
+			"--bind-address=0.0.0.0",
+			"--secure-port=6443",
+			"--service-cluster-ip-range=" + api.Spec.Networking.ServiceCIDR,
 
-	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      apiServerName,
-			Namespace: ns,
-			Labels:    labels,
+			// etcd
+			"--etcd-servers=https://etcd-0.etcd." + ns + ".svc:2379",
+			"--etcd-cafile=" + certPath(etcdCAVol),
+			"--etcd-certfile=" + certPath(etcdClientVol),
+			"--etcd-keyfile=" + keyPath(etcdClientVol),
+
+			// serving + client-ca
+			"--client-ca-file=" + certPath(caVol),
+			"--tls-cert-file=" + certPath(apiTLSVol),
+			"--tls-private-key-file=" + keyPath(apiTLSVol),
+
+			// kubelet client
+			"--kubelet-client-certificate=" + certPath(kubeletClientVol),
+			"--kubelet-client-key=" + keyPath(kubeletClientVol),
+			"--kubelet-preferred-address-types=InternalIP,Hostname,InternalDNS,ExternalIP,ExternalDNS",
+
+			"--authorization-mode=Node,RBAC",
+			"--enable-bootstrap-token-auth=true",
+
+			// service account signing
+			"--service-account-issuer=https://kubernetes.default.svc.cluster.local",
+			"--service-account-key-file=" + certPath(saVol),
+			"--service-account-signing-key-file=" + keyPath(saVol),
+
+			"--allow-privileged=true",
+
+			// front-proxy
+			"--requestheader-client-ca-file=" + certPath(frontProxyCAVol),
+			"--requestheader-allowed-names=" + pki.CNFrontProxyClient,
+			"--requestheader-extra-headers-prefix=X-Remote-Extra-",
+			"--requestheader-group-headers=X-Remote-Group",
+			"--requestheader-username-headers=X-Remote-User",
+			"--proxy-client-cert-file=" + certPath(frontProxyClientVol),
+			"--proxy-client-key-file=" + keyPath(frontProxyClientVol),
+
+			"--logging-format=json",
 		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{MatchLabels: labels},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: labels},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:            "apiserver",
-							Image:           "registry.k8s.io/kube-apiserver:" + version,
-							ImagePullPolicy: corev1.PullIfNotPresent,
-							Command:         []string{"kube-apiserver"},
-							Args: []string{
-								"--advertise-address=" + api.Status.Address,
-								"--bind-address=0.0.0.0",
-								"--secure-port=6443",
-								"--service-cluster-ip-range=" + api.Spec.Networking.ServiceCIDR,
-
-								// etcd
-								"--etcd-servers=https://etcd-0.etcd." + ns + ".svc:2379",
-								"--etcd-cafile=" + certPath(etcdCAVol),
-								"--etcd-certfile=" + certPath(etcdClientVol),
-								"--etcd-keyfile=" + keyPath(etcdClientVol),
-
-								// serving + client-ca
-								"--client-ca-file=" + certPath(caVol),
-								"--tls-cert-file=" + certPath(apiTLSVol),
-								"--tls-private-key-file=" + keyPath(apiTLSVol),
-
-								// kubelet client
-								"--kubelet-client-certificate=" + certPath(kubeletClientVol),
-								"--kubelet-client-key=" + keyPath(kubeletClientVol),
-								"--kubelet-preferred-address-types=InternalIP,Hostname,InternalDNS,ExternalIP,ExternalDNS",
-
-								"--authorization-mode=Node,RBAC",
-								"--enable-bootstrap-token-auth=true",
-
-								// service account signing
-								"--service-account-issuer=https://kubernetes.default.svc.cluster.local",
-								"--service-account-key-file=" + certPath(saVol),
-								"--service-account-signing-key-file=" + keyPath(saVol),
-
-								"--allow-privileged=true",
-
-								// front-proxy
-								"--requestheader-client-ca-file=" + certPath(frontProxyCAVol),
-								"--requestheader-allowed-names=" + pki.CNFrontProxyClient,
-								"--requestheader-extra-headers-prefix=X-Remote-Extra-",
-								"--requestheader-group-headers=X-Remote-Group",
-								"--requestheader-username-headers=X-Remote-User",
-								"--proxy-client-cert-file=" + certPath(frontProxyClientVol),
-								"--proxy-client-key-file=" + keyPath(frontProxyClientVol),
-
-								"--logging-format=json",
-							},
-							Ports: []corev1.ContainerPort{
-								{Name: "https", ContainerPort: securePort},
-							},
-							LivenessProbe:  utils.HttpsHealthProbe(securePort, common.LivezPath, 10, 10, 10, 10),
-							ReadinessProbe: utils.HttpsHealthProbe(securePort, common.ReadyzPath, 5, 5, 5, 5),
-							VolumeMounts: []corev1.VolumeMount{
-								utils.SecretMount(caVol, caDir),
-								utils.SecretMount(apiTLSVol, apiTLSDir),
-								utils.SecretMount(etcdCAVol, etcdCADir),
-								utils.SecretMount(etcdClientVol, etcdClientDir),
-								utils.SecretMount(kubeletClientVol, kubeletClientDir),
-								utils.SecretMount(saVol, saDir),
-								utils.SecretMount(frontProxyCAVol, frontProxyCADir),
-								utils.SecretMount(frontProxyClientVol, frontProxyClientDir),
-							},
-						},
-					},
-					Volumes: []corev1.Volume{
-						utils.SecretVolume(caVol, caVol),
-						utils.SecretVolume(apiTLSVol, apiTLSVol),
-						utils.SecretVolume(etcdCAVol, etcdCAVol),
-						utils.SecretVolume(etcdClientVol, etcdClientVol),
-						utils.SecretVolume(kubeletClientVol, kubeletClientVol),
-						utils.SecretVolume(saVol, saVol),
-						utils.SecretVolume(frontProxyCAVol, frontProxyCAVol),
-						utils.SecretVolume(frontProxyClientVol, frontProxyClientVol),
-					},
-				},
-			},
+		Ports: []corev1.ContainerPort{
+			{Name: "https", ContainerPort: securePort},
 		},
+		LivenessProbe:  utils.HttpsHealthProbe(securePort, common.LivezPath, 10, 10, 10, 10),
+		ReadinessProbe: utils.HttpsHealthProbe(securePort, common.ReadyzPath, 5, 5, 5, 5),
 	}
+
+	return builders.NewDeployment(ns, apiServerName, labels, replicas).
+		WithContainer(c).
+		AddVolumes(
+			utils.SecretVolume(caVol, caVol),
+			utils.SecretVolume(apiTLSVol, apiTLSVol),
+			utils.SecretVolume(etcdCAVol, etcdCAVol),
+			utils.SecretVolume(etcdClientVol, etcdClientVol),
+			utils.SecretVolume(kubeletClientVol, kubeletClientVol),
+			utils.SecretVolume(saVol, saVol),
+			utils.SecretVolume(frontProxyCAVol, frontProxyCAVol),
+			utils.SecretVolume(frontProxyClientVol, frontProxyClientVol),
+		).
+		AddVolumeMounts(c.Name,
+			utils.SecretMount(caVol, caDir),
+			utils.SecretMount(apiTLSVol, apiTLSDir),
+			utils.SecretMount(etcdCAVol, etcdCADir),
+			utils.SecretMount(etcdClientVol, etcdClientDir),
+			utils.SecretMount(kubeletClientVol, kubeletClientDir),
+			utils.SecretMount(saVol, saDir),
+			utils.SecretMount(frontProxyCAVol, frontProxyCADir),
+			utils.SecretMount(frontProxyClientVol, frontProxyClientDir),
+		).
+		Build()
 }
