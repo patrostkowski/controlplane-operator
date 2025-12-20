@@ -1,0 +1,83 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: machineconfiguration.controlplane.patrostkowski.dev
+spec:
+  group: controlplane.patrostkowski.dev
+  names:
+    kind: MachineConfigruation
+    listKind: MachineConfigruationList
+    plural: machineconfiguration
+    shortNames:
+    - mc
+    singular: machineconfigruation
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Age
+      jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: MachineConfigruation is the root CR that “owns” the other managed
+          components.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MachineConfigruationSpec defines the desired state of MachineConfigruation.
+            properties:
+              caCertSecretRef:
+                description: |-
+                  LocalObjectReference contains enough information to let you locate the
+                  referenced object inside the same namespace.
+                properties:
+                  name:
+                    default: ""
+                    description: |-
+                      Name of the referent.
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
+              initKubeconfig:
+                format: byte
+                type: string
+              joinTokenSecretRef:
+                properties:
+                  secretName:
+                    type: string
+                required:
+                - secretName
+                type: object
+              kubeletConfiguration:
+                format: byte
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources: {}

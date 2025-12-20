@@ -224,6 +224,12 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return res, nil
 	}
 
+	if res, err := r.reconcileDefaultMachineConfiguration(ctx, mcpObj, cp); err != nil {
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
+	} else if !res.IsZero() {
+		return res, nil
+	}
+
 	_ = r.statusReady(ctx, mcpObj)
 	log.Info("Finished reconciling ManagedControlPlane")
 	return ctrl.Result{}, nil

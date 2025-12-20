@@ -21,10 +21,15 @@
 package v1alpha1
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
+<<<<<<< HEAD
+=======
+	unsafe "unsafe"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+>>>>>>> 1b36643 (feature: create MachineConfiguration CR)
 )
 
 const (
@@ -83,6 +88,124 @@ func (StatusCode) EnumDescriptor() ([]byte, []int) {
 	return file_agent_v1alpha1_agent_proto_rawDescGZIP(), []int{0}
 }
 
+type JoinRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	KubeletConfig  []byte `protobuf:"bytes,1,opt,name=KubeletConfig,proto3" json:"KubeletConfig,omitempty"`
+	InitKubeconfig []byte `protobuf:"bytes,2,opt,name=InitKubeconfig,proto3" json:"InitKubeconfig,omitempty"`
+	CACert         []byte `protobuf:"bytes,3,opt,name=CACert,proto3" json:"CACert,omitempty"`
+}
+
+func (x *JoinRequest) Reset() {
+	*x = JoinRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_agent_v1alpha1_agent_proto_msgTypes[0]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *JoinRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JoinRequest) ProtoMessage() {}
+
+func (x *JoinRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_v1alpha1_agent_proto_msgTypes[0]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JoinRequest.ProtoReflect.Descriptor instead.
+func (*JoinRequest) Descriptor() ([]byte, []int) {
+	return file_agent_v1alpha1_agent_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *JoinRequest) GetKubeletConfig() []byte {
+	if x != nil {
+		return x.KubeletConfig
+	}
+	return nil
+}
+
+func (x *JoinRequest) GetInitKubeconfig() []byte {
+	if x != nil {
+		return x.InitKubeconfig
+	}
+	return nil
+}
+
+func (x *JoinRequest) GetCACert() []byte {
+	if x != nil {
+		return x.CACert
+	}
+	return nil
+}
+
+type JoinResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Code    StatusCode `protobuf:"varint,1,opt,name=code,proto3,enum=agent.v1alpha1.StatusCode" json:"code,omitempty"`
+	Message string     `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+}
+
+func (x *JoinResponse) Reset() {
+	*x = JoinResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_agent_v1alpha1_agent_proto_msgTypes[1]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *JoinResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JoinResponse) ProtoMessage() {}
+
+func (x *JoinResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_v1alpha1_agent_proto_msgTypes[1]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JoinResponse.ProtoReflect.Descriptor instead.
+func (*JoinResponse) Descriptor() ([]byte, []int) {
+	return file_agent_v1alpha1_agent_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *JoinResponse) GetCode() StatusCode {
+	if x != nil {
+		return x.Code
+	}
+	return StatusCode_STATUS_CODE_UNSPECIFIED
+}
+
+func (x *JoinResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
 type StatusRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -118,7 +241,7 @@ func (x *StatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatusRequest.ProtoReflect.Descriptor instead.
 func (*StatusRequest) Descriptor() ([]byte, []int) {
-	return file_agent_v1alpha1_agent_proto_rawDescGZIP(), []int{0}
+	return file_agent_v1alpha1_agent_proto_rawDescGZIP(), []int{2}
 }
 
 type StatusResponse struct {
@@ -162,7 +285,7 @@ func (x *StatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatusResponse.ProtoReflect.Descriptor instead.
 func (*StatusResponse) Descriptor() ([]byte, []int) {
-	return file_agent_v1alpha1_agent_proto_rawDescGZIP(), []int{1}
+	return file_agent_v1alpha1_agent_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *StatusResponse) GetCode() StatusCode {
@@ -239,7 +362,7 @@ func (x *ComponentStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ComponentStatus.ProtoReflect.Descriptor instead.
 func (*ComponentStatus) Descriptor() ([]byte, []int) {
-	return file_agent_v1alpha1_agent_proto_rawDescGZIP(), []int{2}
+	return file_agent_v1alpha1_agent_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ComponentStatus) GetHealthy() bool {
@@ -440,21 +563,21 @@ var file_agent_v1alpha1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_agent_v1alpha1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_agent_v1alpha1_agent_proto_goTypes = []interface{}{
 	(StatusCode)(0),         // 0: agent.v1alpha1.StatusCode
-	(*StatusRequest)(nil),   // 1: agent.v1alpha1.StatusRequest
-	(*StatusResponse)(nil),  // 2: agent.v1alpha1.StatusResponse
-	(*ComponentStatus)(nil), // 3: agent.v1alpha1.ComponentStatus
-	(*JoinRequest)(nil),     // 4: agent.v1alpha1.JoinRequest
-	(*JoinResponse)(nil),    // 5: agent.v1alpha1.JoinResponse
+	(*JoinRequest)(nil),     // 1: agent.v1alpha1.JoinRequest
+	(*JoinResponse)(nil),    // 2: agent.v1alpha1.JoinResponse
+	(*StatusRequest)(nil),   // 3: agent.v1alpha1.StatusRequest
+	(*StatusResponse)(nil),  // 4: agent.v1alpha1.StatusResponse
+	(*ComponentStatus)(nil), // 5: agent.v1alpha1.ComponentStatus
 }
 var file_agent_v1alpha1_agent_proto_depIdxs = []int32{
-	0, // 0: agent.v1alpha1.StatusResponse.code:type_name -> agent.v1alpha1.StatusCode
-	3, // 1: agent.v1alpha1.StatusResponse.kubelet:type_name -> agent.v1alpha1.ComponentStatus
-	3, // 2: agent.v1alpha1.StatusResponse.containerd:type_name -> agent.v1alpha1.ComponentStatus
-	0, // 3: agent.v1alpha1.JoinResponse.code:type_name -> agent.v1alpha1.StatusCode
-	1, // 4: agent.v1alpha1.AgentService.Status:input_type -> agent.v1alpha1.StatusRequest
-	4, // 5: agent.v1alpha1.AgentService.Join:input_type -> agent.v1alpha1.JoinRequest
-	2, // 6: agent.v1alpha1.AgentService.Status:output_type -> agent.v1alpha1.StatusResponse
-	5, // 7: agent.v1alpha1.AgentService.Join:output_type -> agent.v1alpha1.JoinResponse
+	0, // 0: agent.v1alpha1.JoinResponse.code:type_name -> agent.v1alpha1.StatusCode
+	0, // 1: agent.v1alpha1.StatusResponse.code:type_name -> agent.v1alpha1.StatusCode
+	5, // 2: agent.v1alpha1.StatusResponse.kubelet:type_name -> agent.v1alpha1.ComponentStatus
+	5, // 3: agent.v1alpha1.StatusResponse.containerd:type_name -> agent.v1alpha1.ComponentStatus
+	3, // 4: agent.v1alpha1.AgentService.Status:input_type -> agent.v1alpha1.StatusRequest
+	1, // 5: agent.v1alpha1.AgentService.Join:input_type -> agent.v1alpha1.JoinRequest
+	4, // 6: agent.v1alpha1.AgentService.Status:output_type -> agent.v1alpha1.StatusResponse
+	2, // 7: agent.v1alpha1.AgentService.Join:output_type -> agent.v1alpha1.JoinResponse
 	6, // [6:8] is the sub-list for method output_type
 	4, // [4:6] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name

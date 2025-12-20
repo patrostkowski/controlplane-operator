@@ -15,6 +15,7 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -91,4 +92,37 @@ type Conditions struct {
 	Status  metav1.ConditionStatus
 	Reason  Reason
 	Message Message
+}
+
+// MachineConfigruationSpec defines the desired state of MachineConfigruation.
+type MachineConfigruationSpec struct {
+	KubeletConfiguration []byte                       `json:"kubeletConfiguration,omitempty"`
+	InitKubeconfig       []byte                       `json:"initKubeconfig,omitempty"`
+	JoinTokenSecretRef   *RemoteSecretReference       `json:"joinTokenSecretRef,omitempty"`
+	CACertSecretRef      *corev1.LocalObjectReference `json:"caCertSecretRef,omitempty"`
+}
+
+// MachineConfigruation is the root CR that “owns” the other managed components.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:path=machineconfiguration,scope=Namespaced,shortName=mc
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Age"
+type MachineConfigruation struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec MachineConfigruationSpec `json:"spec,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// MachineConfigruationList contains a list of MachineConfigruation.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type MachineConfigruationList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []MachineConfigruation `json:"items"`
+}
+
+type RemoteSecretReference struct {
+	SecretName string `json:"secretName"`
 }

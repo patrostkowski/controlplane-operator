@@ -21,6 +21,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	BootstrapTokenLabel = "controlplane.patrostkowski.dev/bootstrap-token"
+	BootstrapTokenValue = "true"
+)
+
 func BootstrapKubeletJoinResources(token BootstrapToken) []client.Object {
 	return []client.Object{
 		bootstrapTokenSecret(token),
@@ -39,6 +44,9 @@ func bootstrapTokenSecret(token BootstrapToken) *corev1.Secret {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      BootstrapTokenMgmtSecretName + "-" + token.ID,
 			Namespace: KubeSystemNamespace,
+			Labels: map[string]string{
+				BootstrapTokenLabel: BootstrapTokenValue,
+			},
 		},
 		Type: corev1.SecretTypeBootstrapToken,
 		StringData: map[string]string{

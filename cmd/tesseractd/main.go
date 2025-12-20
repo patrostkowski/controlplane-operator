@@ -15,29 +15,38 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
 	"context"
-	"errors"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+	kuberuntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/cert"
 	"k8s.io/klog/v2"
+	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 
 	agentv1alpha1 "github.com/patrostkowski/controlplane-operator/proto/agent/v1alpha1"
 )
 
 const listenAddr = ":32137"
+
+var kubeletScheme = kuberuntime.NewScheme()
+var kubeletCodecs = serializer.NewCodecFactory(kubeletScheme)
+
+func init() {
+	utilruntime.Must(kubeletconfigv1beta1.AddToScheme(kubeletScheme))
+}
 
 type agentServer struct {
 	agentv1alpha1.UnimplementedAgentServiceServer
@@ -84,210 +93,74 @@ func (s *agentServer) Join(ctx context.Context, req *agentv1alpha1.JoinRequest) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	endpoint := strings.TrimSpace(req.GetEndpoint())
-	token := strings.TrimSpace(req.GetToken())
-
-	klog.InfoS("Join requested", "endpoint", endpoint)
-
-	if endpoint == "" {
-		err := errors.New("endpoint is required")
-		klog.Error(err, "Join validation failed")
-		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, err
-	}
-	if token == "" {
-		err := errors.New("token is required")
-		klog.Error(err, "Join validation failed", "endpoint", endpoint)
-		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, err
-	}
-
-	klog.InfoS("Validating endpoint", "endpoint", endpoint)
-	if ip := net.ParseIP(endpoint); ip == nil {
-		err := fmt.Errorf("endpoint must be an IP address, got %q", endpoint)
-		klog.Error(err, "Join validation failed", "endpoint", endpoint)
-		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, err
-	}
-
-	klog.InfoS("Ensuring /etc/hosts contains kubernetes entry", "endpoint", endpoint)
-	if err := ensureHostsHasKubernetes(endpoint); err != nil {
-		wrapped := fmt.Errorf("updating /etc/hosts: %w", err)
-		klog.Error(wrapped, "Join step failed", "step", "ensureHostsHasKubernetes", "endpoint", endpoint)
-		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, wrapped
-	}
-
+	kubeletConfigPath := "/etc/kubernetes/conifg.yaml"
+	caPath := "/etc/kubernetes/pki/ca.crt"
+	initKubeconfigPath := "/etc/kubernetes/kubeconfig"
 	pkiDir := "/etc/kubernetes/pki"
+
+	if err := validateCACertBundle(req.CACert); err != nil {
+		klog.Error(err, "Failed to validate CA cert bundle")
+		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, err
+	}
+	if err := validateKubeconfigBytes(req.InitKubeconfig); err != nil {
+		klog.Error(err, "Failed to validate kubeconfig")
+		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, err
+	}
+	if _, err := validateKubeletConfigBytes(req.KubeletConfig); err != nil {
+		klog.Error(err, "Failed to validate kubelet config")
+		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, err
+	}
+
 	klog.InfoS("Ensuring PKI directory exists", "dir", pkiDir)
 	if err := os.MkdirAll(pkiDir, 0o755); err != nil {
-		wrapped := fmt.Errorf("creating %s: %w", pkiDir, err)
-		klog.Error(wrapped, "Join step failed", "step", "MkdirAll", "dir", pkiDir)
-		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, wrapped
+		klog.Error(err, "Failed to ensure dir", pkiDir)
+		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, err
 	}
 
-	caPath := filepath.Join(pkiDir, "ca.crt")
-	klog.InfoS("Fetching Kubernetes API certificate", "server", "kubernetes:6443", "out", caPath)
-	if err := fetchFirstPeerCertToFile(ctx, "kubernetes:6443", caPath); err != nil {
-		wrapped := fmt.Errorf("fetching api cert: %w", err)
-		klog.Error(wrapped, "Join step failed", "step", "fetchFirstPeerCertToFile", "server", "kubernetes:6443", "out", caPath)
-		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, wrapped
+	klog.InfoS("Creating file", "file", kubeletConfigPath)
+	if err := writeToFile(kubeletConfigPath, req.KubeletConfig); err != nil {
+		klog.Error(err, "Failed to write to file", kubeletConfigPath)
+		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, err
 	}
 
-	kubeconfigPath := "/etc/kubernetes/kubeconfig"
-	klog.InfoS("Writing kubeconfig", "path", kubeconfigPath)
-	if err := writeKubeconfig(kubeconfigPath, token); err != nil {
-		wrapped := fmt.Errorf("writing kubeconfig: %w", err)
-		klog.Error(wrapped, "Join step failed", "step", "writeKubeconfig", "path", kubeconfigPath)
-		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, wrapped
+	klog.InfoS("Creating file", "file", caPath)
+	if err := writeToFile(caPath, req.CACert); err != nil {
+		klog.Error(err, "Failed to write to file", caPath)
+		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, err
+	}
+
+	klog.InfoS("Creating file", "file", initKubeconfigPath)
+	if err := writeToFile(initKubeconfigPath, req.InitKubeconfig); err != nil {
+		klog.Error(err, "Failed to write to file", initKubeconfigPath)
+		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, err
 	}
 
 	klog.InfoS("Starting kubelet")
 	if err := startKubelet(ctx); err != nil {
-		wrapped := fmt.Errorf("starting kubelet: %w", err)
-		klog.Error(wrapped, "Join step failed", "step", "startKubelet")
-		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, wrapped
+		klog.Error(err, "starting kubelet failed")
+		return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_NOK}, err
 	}
 
-	klog.InfoS("Join completed successfully", "endpoint", endpoint)
 	return &agentv1alpha1.JoinResponse{Code: agentv1alpha1.StatusCode_STATUS_CODE_OK}, nil
 }
 
-func ensureHostsHasKubernetes(endpoint string) error {
-	const hostsPath = "/etc/hosts"
-
-	data, err := os.ReadFile(hostsPath)
+func writeToFile(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
-		return err
-	}
-
-	// If ANY non-comment line contains hostname "kubernetes", do nothing.
-	sc := bufio.NewScanner(bytes.NewReader(data))
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
-		}
-		for _, h := range fields[1:] {
-			if h == "kubernetes" {
-				return nil
-			}
-		}
-	}
-	if err := sc.Err(); err != nil {
-		return err
-	}
-
-	// Append new line
-	f, err := os.OpenFile(hostsPath, os.O_APPEND|os.O_WRONLY, 0)
-	if err != nil {
-		return err
+		return fmt.Errorf("Could not open file %q: %s", path, err)
 	}
 	defer f.Close()
 
-	// Ensure we append with a leading newline if file doesn't end with one
-	needsNL := len(data) > 0 && data[len(data)-1] != '\n'
-	if needsNL {
-		if _, err := f.WriteString("\n"); err != nil {
-			return err
-		}
-	}
-	_, err = f.WriteString(fmt.Sprintf("%s kubernetes\n", endpoint))
-	return err
-}
-
-func fetchFirstPeerCertToFile(ctx context.Context, hostport, outPath string) error {
-	// Make sure openssl exists
-	if _, err := exec.LookPath("openssl"); err != nil {
-		return fmt.Errorf("openssl not found in PATH: %w", err)
-	}
-
-	// Equivalent-ish to: echo '' | openssl s_client -connect kubernetes:6443 -showcerts
-	cmd := exec.CommandContext(ctx, "openssl", "s_client", "-connect", hostport, "-showcerts")
-	cmd.Stdin = strings.NewReader("\n")
-
-	out, err := cmd.CombinedOutput()
+	_, err = f.Write(data)
 	if err != nil {
-		return fmt.Errorf("openssl s_client failed: %w (output: %s)", err, string(out))
+		return fmt.Errorf("Could not write to file %q: %s", path, err)
 	}
 
-	pem, err := firstPEMCert(out)
-	if err != nil {
-		return err
-	}
-
-	// Write atomically
-	tmp := outPath + ".tmp"
-	if err := os.WriteFile(tmp, pem, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, outPath)
-}
-
-func firstPEMCert(opensslOutput []byte) ([]byte, error) {
-	const begin = "-----BEGIN CERTIFICATE-----"
-	const end = "-----END CERTIFICATE-----"
-
-	s := string(opensslOutput)
-	i := strings.Index(s, begin)
-	if i < 0 {
-		return nil, errors.New("no BEGIN CERTIFICATE found in openssl output")
-	}
-	j := strings.Index(s[i:], end)
-	if j < 0 {
-		return nil, errors.New("no END CERTIFICATE found in openssl output")
-	}
-	j = i + j + len(end)
-
-	block := s[i:j]
-	// ensure trailing newline
-	if !strings.HasSuffix(block, "\n") {
-		block += "\n"
-	}
-	return []byte(block), nil
-}
-
-func writeKubeconfig(path string, token string) error {
-	// Ensure /etc/kubernetes exists
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-
-	content := fmt.Sprintf(`apiVersion: v1
-kind: Config
-
-clusters:
-- name: default
-  cluster:
-    certificate-authority: /etc/kubernetes/pki/ca.crt
-    server: https://kubernetes:6443
-
-contexts:
-- name: default
-  context:
-    cluster: default
-    user: default
-
-current-context: default
-
-users:
-- name: default
-  user:
-    token: %s
-`, token)
-
-	tmp := path + ".tmp"
-	// kubeconfig should be private
-	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return nil
 }
 
 func startKubelet(ctx context.Context) error {
-	// Prefer systemctl if present
 	if _, err := exec.LookPath("systemctl"); err == nil {
-		// "enable --now" is handy, but "start" is closer to your requirement.
 		cmd := exec.CommandContext(ctx, "systemctl", "start", "kubelet")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -295,18 +168,100 @@ func startKubelet(ctx context.Context) error {
 		}
 		return nil
 	}
+	return fmt.Errorf("systemctl not found; cannot start kubelet")
+}
 
-	// Fallback to service
-	if _, err := exec.LookPath("service"); err == nil {
-		cmd := exec.CommandContext(ctx, "service", "kubelet", "start")
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("service kubelet start failed: %w (output: %s)", err, string(out))
-		}
-		return nil
+func validateCACertBundle(pemBytes []byte) error {
+	certs, err := cert.ParseCertsPEM(pemBytes)
+	if err != nil {
+		return fmt.Errorf("parse CA bundle PEM: %w", err)
+	}
+	if len(certs) == 0 {
+		return fmt.Errorf("no certificates found in CA bundle")
 	}
 
-	return errors.New("neither systemctl nor service found; cannot start kubelet")
+	hasCA := false
+	for _, c := range certs {
+		if c.IsCA {
+			hasCA = true
+			break
+		}
+	}
+	if !hasCA {
+		return fmt.Errorf("no CA certificates (IsCA=true) found in bundle")
+	}
+
+	for _, c := range certs {
+		if _, err := x509.ParseCertificate(c.Raw); err != nil {
+			return fmt.Errorf("x509 parse failed unexpectedly: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func validateKubeconfigBytes(kc []byte) error {
+	cfg, err := clientcmd.Load(kc)
+	if err != nil {
+		return fmt.Errorf("parse kubeconfig: %w", err)
+	}
+
+	if len(cfg.Clusters) == 0 {
+		return fmt.Errorf("kubeconfig has no clusters")
+	}
+	if cfg.CurrentContext == "" {
+		return fmt.Errorf("kubeconfig has empty current-context")
+	}
+
+	cc := cfg.Contexts[cfg.CurrentContext]
+	if cc == nil {
+		return fmt.Errorf("current-context %q not found", cfg.CurrentContext)
+	}
+	cluster := cfg.Clusters[cc.Cluster]
+	if cluster == nil {
+		return fmt.Errorf("cluster %q not found", cc.Cluster)
+	}
+	if cluster.Server == "" {
+		return fmt.Errorf("cluster.server is empty")
+	}
+
+	// Require CA either embedded or file path (since you write ca.crt)
+	if len(cluster.CertificateAuthorityData) == 0 && cluster.CertificateAuthority == "" {
+		return fmt.Errorf("cluster has neither certificate-authority-data nor certificate-authority")
+	}
+
+	// If file path is used, make sure it matches what you write
+	if cluster.CertificateAuthority != "" && cluster.CertificateAuthority != "/etc/kubernetes/pki/ca.crt" {
+		return fmt.Errorf("cluster.certificate-authority=%q (expected /etc/kubernetes/pki/ca.crt or embed certificate-authority-data)", cluster.CertificateAuthority)
+	}
+
+	return nil
+}
+
+func validateKubeletConfigBytes(b []byte) (*kubeletconfigv1beta1.KubeletConfiguration, error) {
+	decoder := kubeletCodecs.UniversalDecoder(kubeletconfigv1beta1.SchemeGroupVersion)
+
+	obj, _, err := decoder.Decode(b, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("decode kubelet config: %w", err)
+	}
+
+	cfg, ok := obj.(*kubeletconfigv1beta1.KubeletConfiguration)
+	if !ok {
+		return nil, fmt.Errorf("decoded object is %T, expected *kubeletconfigv1beta1.KubeletConfiguration", obj)
+	}
+
+	if cfg.Authentication.X509.ClientCAFile == "" {
+		return nil, fmt.Errorf("kubelet config: authentication.x509.clientCAFile is empty")
+	}
+	if cfg.Authorization.Mode == "" {
+		return nil, fmt.Errorf("kubelet config: authorization.mode is empty")
+	}
+	if cfg.Authentication.X509.ClientCAFile != "/etc/kubernetes/pki/ca.crt" {
+		return nil, fmt.Errorf("kubelet config: authentication.x509.clientCAFile=%q (expected /etc/kubernetes/pki/ca.crt)", cfg.Authentication.X509.ClientCAFile)
+	}
+
+	return cfg, nil
 }
 
 func goInfo() string {

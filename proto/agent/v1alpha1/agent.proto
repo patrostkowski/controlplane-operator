@@ -23,6 +23,17 @@ service AgentService {
   rpc Join(JoinRequest) returns (JoinResponse);
 }
 
+message JoinRequest {
+  bytes KubeletConfig = 1;
+  bytes InitKubeconfig = 2;
+  bytes CACert = 3;
+}
+
+message JoinResponse {
+  StatusCode code = 1;
+  string message = 2;
+}
+
 message StatusRequest {}
 
 message StatusResponse {
@@ -46,12 +57,4 @@ message ComponentStatus {
   string version = 3;
 }
 
-message JoinRequest {
-  string endpoint = 1;
-  string token = 2;
-}
-
-message JoinResponse {
-  StatusCode code = 1;
-}
 

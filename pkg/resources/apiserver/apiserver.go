@@ -89,6 +89,7 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			// kubelet client
 			"--kubelet-client-certificate=" + p.KubeletClient.CertPath(),
 			"--kubelet-client-key=" + p.KubeletClient.KeyPath(),
+			"--kubelet-certificate-authority=" + p.ClientCA.CertPath(),
 			"--kubelet-preferred-address-types=InternalIP,Hostname,InternalDNS,ExternalIP,ExternalDNS",
 
 			"--authorization-mode=Node,RBAC",
@@ -102,13 +103,13 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			"--allow-privileged=true",
 
 			// front-proxy
-			// "--proxy-client-cert-file=" + p.FrontProxyClient.CertPath(),
-			// "--proxy-client-key-file=" + p.FrontProxyClient.KeyPath(),
-			// "--requestheader-allowed-names=" + pki.CNFrontProxyClient,
-			// "--requestheader-client-ca-file=" + p.FrontProxyCA.CertPath(),
-			// "--requestheader-extra-headers-prefix=X-Remote-Extra-",
-			// "--requestheader-group-headers=X-Remote-Group",
-			// "--requestheader-username-headers=X-Remote-User",
+			"--proxy-client-cert-file=" + p.FrontProxyClient.CertPath(),
+			"--proxy-client-key-file=" + p.FrontProxyClient.KeyPath(),
+			"--requestheader-allowed-names=" + "front-proxy-client",
+			"--requestheader-client-ca-file=" + p.FrontProxyCA.CertPath(),
+			"--requestheader-extra-headers-prefix=X-Remote-Extra-",
+			"--requestheader-group-headers=X-Remote-Group",
+			"--requestheader-username-headers=X-Remote-User",
 
 			"--logging-format=json",
 		},

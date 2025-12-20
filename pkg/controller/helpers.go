@@ -15,19 +15,27 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/state"
+	"github.com/patrostkowski/controlplane-operator/pkg/utils"
+	corev1 "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/utils/ptr"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/yaml"
 )
 
 type Applier struct {
@@ -159,4 +167,176 @@ func (r *ManagedControlPlaneReconciler) statusReady(ctx context.Context, mcp *mc
 		state.MessageAllResourcesReady,
 		true,
 	)
+}
+
+const (
+	defaultMCName             = "default"
+	defaultJoinTokenNS        = "kube-system"
+	defaultJoinTokenName      = "bootstrap-token"
+	defaultJoinTokenIDKey     = "token-id"
+	defaultJoinTokenSecretKey = "token-secret"
+
+	caPathOnNode = "/etc/kubernetes/pki/ca.crt"
+)
+
+const (
+	// todo remove
+	BootstrapTokenLabel = "controlplane.patrostkowski.dev/bootstrap-token"
+	BootstrapTokenValue = "true"
+)
+
+func (r *ManagedControlPlaneReconciler) reconcileDefaultMachineConfiguration(
+	ctx context.Context,
+	mcpObj *mcpv1alpha1.ManagedControlPlane,
+	cp client.Client, // <— pass the child cluster client you already build in Reconcile
+) (ctrl.Result, error) {
+	if mcpObj.Status.Address == "" {
+		r.Log.Info("API address not set yet")
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+	}
+
+	// 1) CA SecretRef from same ns (local)
+	apiPKI := pki.New(mcpObj).APIServer()
+	// Adjust this field name to whatever you actually have in your PKI model:
+	// In your cluster it looks like "managed-ca".
+	caSecretName := apiPKI.ClientCA.SecretName
+
+	// 2) Join token Secret from child/controlplane cluster (kube-system)
+	var tokenSecrets corev1.SecretList
+	if err := cp.List(
+		ctx,
+		&tokenSecrets,
+		client.InNamespace(defaultJoinTokenNS),
+		client.MatchingLabels{
+			BootstrapTokenLabel: BootstrapTokenValue,
+		},
+	); err != nil {
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
+	}
+
+	if len(tokenSecrets.Items) == 0 {
+		r.Log.Info("No bootstrap token found yet",
+			"namespace", defaultJoinTokenNS,
+			"label", BootstrapTokenLabel,
+		)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+	}
+
+	if len(tokenSecrets.Items) > 1 {
+		return ctrl.Result{}, fmt.Errorf(
+			"multiple bootstrap tokens found (%d); expected exactly one",
+			len(tokenSecrets.Items),
+		)
+	}
+
+	tokenSecret := &tokenSecrets.Items[0]
+
+	tokenIDBytes, _ := tokenSecret.Data[defaultJoinTokenIDKey]
+	tokenSecretBytes, _ := tokenSecret.Data[defaultJoinTokenSecretKey]
+
+	joinToken := string(tokenIDBytes) + "." + string(tokenSecretBytes)
+
+	// 3) Build init kubeconfig (file path CA + token)
+	serverURL := "https://" + mcpObj.Status.Address + ":6443"
+	initCfg := &clientcmdapi.Config{
+		APIVersion: "v1",
+		Kind:       "Config",
+		Clusters: map[string]*clientcmdapi.Cluster{
+			"default": {
+				Server:               serverURL,
+				CertificateAuthority: caPathOnNode,
+			},
+		},
+		Contexts: map[string]*clientcmdapi.Context{
+			"default": {
+				Cluster:  "default",
+				AuthInfo: "default",
+			},
+		},
+		CurrentContext: "default",
+		AuthInfos: map[string]*clientcmdapi.AuthInfo{
+			"default": {
+				Token: joinToken,
+			},
+		},
+	}
+
+	initKubeconfigBytes, err := clientcmd.Write(*initCfg)
+	if err != nil {
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, fmt.Errorf("write init kubeconfig: %w", err)
+	}
+
+	// 4) Build kubelet config YAML (you can keep it as YAML bytes blob)
+	// If you already have this YAML template somewhere, you can just format+[]byte it.
+	kubeletYAML := []byte(`apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd
+containerRuntimeEndpoint: "unix:///run/crio/crio.sock"
+failSwapOn: false
+clusterDomain: cluster.local
+clusterDNS:
+  - 10.96.0.10
+resolvConf: "/run/systemd/resolve/resolv.conf"
+serverTLSBootstrap: true
+rotateCertificates: true
+authentication:
+  x509:
+    clientCAFile: /etc/kubernetes/pki/ca.crt
+  anonymous:
+    enabled: false
+  webhook:
+    enabled: true
+authorization:
+  mode: Webhook
+readOnlyPort: 0
+healthzBindAddress: 127.0.0.1
+healthzPort: 10248
+port: 10250
+`)
+
+	// Optional: normalize YAML (not required, but makes diffs stable)
+	kubeletJSON, err := yaml.YAMLToJSON(kubeletYAML)
+	if err == nil {
+		if normalized, err2 := yaml.JSONToYAML(kubeletJSON); err2 == nil {
+			kubeletYAML = normalized
+		}
+	}
+
+	// Ensure/create MC and fill spec
+	mc := &mcpv1alpha1.MachineConfigruation{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      defaultMCName,
+			Namespace: mcpObj.Namespace,
+		},
+	}
+
+	err = utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, mcpObj, mc, r.Log, func(obj client.Object) error {
+		cur := obj.(*mcpv1alpha1.MachineConfigruation)
+		if cur.Spec.CACertSecretRef == nil {
+			cur.Spec.CACertSecretRef = &corev1.LocalObjectReference{}
+		}
+		cur.Spec.CACertSecretRef.Name = caSecretName
+
+		// Your RemoteSecretReference currently only has SecretName
+		if cur.Spec.JoinTokenSecretRef == nil {
+			cur.Spec.JoinTokenSecretRef = &mcpv1alpha1.RemoteSecretReference{}
+		}
+		cur.Spec.JoinTokenSecretRef.SecretName = defaultJoinTokenName
+
+		// Set the blobs only if changed (avoid endless updates)
+		if !bytes.Equal(cur.Spec.InitKubeconfig, initKubeconfigBytes) {
+			cur.Spec.InitKubeconfig = initKubeconfigBytes
+		}
+		if !bytes.Equal(cur.Spec.KubeletConfiguration, kubeletYAML) {
+			cur.Spec.KubeletConfiguration = kubeletYAML
+		}
+
+		return nil
+	})
+	if err != nil {
+		r.Log.Error(err, "failed to ensure default MachineConfiguration", "name", defaultMCName)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
+	}
+
+	return ctrl.Result{}, nil
 }
