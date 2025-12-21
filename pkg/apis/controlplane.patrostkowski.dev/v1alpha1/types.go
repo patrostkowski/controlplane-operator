@@ -29,9 +29,10 @@ type ManagedControlPlaneSpec struct {
 type ManagedControlPlaneStatus struct {
 	// Conditions represents the latest available observations of the control plane's state.
 	// e.g. APIServerAvailable, EtcdHealthy, ControllersHealthy, Ready, etc.
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
-	Status     `json:",inline,omitempty"`
-	Address    string `json:"address,omitempty"`
+	Conditions               []metav1.Condition `json:"conditions,omitempty"`
+	Status                   `json:",inline,omitempty"`
+	Address                  string                   `json:"address,omitempty"`
+	AdminKubeconfigSecretRef AdminKubeconfigSecretRef `json:"adminKubeconfigSecretRef,omitempty"`
 }
 
 // ManagedControlPlane is the root CR that “owns” the other managed components.
@@ -75,9 +76,15 @@ type Status struct {
 	Ready   *bool  `json:"ready"`
 }
 
-type Condition string
-type Reason string
-type Message string
+type AdminKubeconfigSecretRef struct {
+	Name string `json:"name"`
+}
+
+type (
+	Condition string
+	Reason    string
+	Message   string
+)
 
 type Conditions struct {
 	Type    Condition

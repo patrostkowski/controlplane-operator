@@ -15,30 +15,15 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"net"
 	"os"
-	"strings"
-	"time"
 
-	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-
-	agentv1alpha1 "github.com/patrostkowski/controlplane-operator/proto/agent/v1alpha1"
-)
-
-var (
-	node     string
-	endpoint string
-	token    string
-	timeout  time.Duration
+	"github.com/patrostkowski/controlplane-operator/cmd/tesseractl/cli"
 )
 
 func main() {
 	// init cli
-	cli := NewTesseractCommand()
+	cli := cli.NewTesseractCommand()
 	cli.SilenceErrors = true
 	cli.SilenceUsage = true
 
@@ -47,75 +32,4 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-}
-
-func NewTesseractCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "tesseractl",
-		Short: "tesseract control CLI",
-		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Help()
-		},
-	}
-
-	cmd.AddCommand(
-		newJoinCommand(),
-	)
-
-	return cmd
-}
-
-func newJoinCommand() *cobra.Command {
-	joinCmd := &cobra.Command{
-		Use:   "join",
-		Short: "Join a node to the control plane",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			node = strings.TrimSpace(node)
-			endpoint = strings.TrimSpace(endpoint)
-			token = strings.TrimSpace(token)
-
-			// Accept either "<ip>" or "<ip>:32137"
-			if !strings.Contains(node, ":") {
-				node = net.JoinHostPort(node, "32137")
-			}
-
-			// Optional: validate endpoint is IP (matches your server expectations)
-			if ip := net.ParseIP(endpoint); ip == nil {
-				return fmt.Errorf("--endpoint must be an IP address, got %q", endpoint)
-			}
-
-			ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
-			defer cancel()
-
-			conn, err := grpc.NewClient(node, grpc.WithTransportCredentials(insecure.NewCredentials()))
-			if err != nil {
-				return err
-			}
-			defer conn.Close()
-
-			client := agentv1alpha1.NewAgentServiceClient(conn)
-			resp, err := client.Join(ctx, &agentv1alpha1.JoinRequest{
-				Endpoint: endpoint,
-				Token:    token,
-			})
-			if err != nil {
-				return err
-			}
-
-			// Print a simple result
-			fmt.Printf("code=%s\n", resp.GetCode().String())
-			return nil
-		},
-	}
-
-	joinCmd.Flags().StringVar(&node, "node", "", "Agent node address (ip or ip:port). Default port is 32137")
-	joinCmd.Flags().StringVar(&endpoint, "endpoint", "", "Kubernetes API endpoint IP to map as 'kubernetes' in /etc/hosts")
-	joinCmd.Flags().StringVar(&token, "token", "", "Bearer token used in kubeconfig")
-	joinCmd.Flags().DurationVar(&timeout, "timeout", 20*time.Second, "Request timeout")
-
-	_ = joinCmd.MarkFlagRequired("node")
-	_ = joinCmd.MarkFlagRequired("endpoint")
-	_ = joinCmd.MarkFlagRequired("token")
-
-	return joinCmd
 }

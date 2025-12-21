@@ -65,6 +65,25 @@ func (r *BaseReconciler) UpdateMCPAddress(
 	})
 }
 
+func (r *BaseReconciler) UpdateMCPAdminSecretRef(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+	secretName string,
+	namespace string,
+) error {
+	key := client.ObjectKeyFromObject(mcp)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest := mcp.DeepCopyObject().(*mcpv1alpha1.ManagedControlPlane)
+		if err := r.Get(ctx, key, latest); err != nil {
+			return err
+		}
+
+		latest.Status.AdminKubeconfigSecretRef.Name = secretName
+
+		return r.Status().Update(ctx, latest)
+	})
+}
+
 // func (r *BaseReconciler) IsDeploymentReady(dep *appsv1.Deployment) bool {
 // 	desired := *dep.Spec.Replicas
 // 	if dep.Status.ReadyReplicas < desired {
