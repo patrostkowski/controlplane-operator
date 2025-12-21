@@ -93,7 +93,6 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			// leader election + sa creds
 			"--leader-elect=true",
 			"--use-service-account-credentials=true",
-			"--controllers=*,bootstrapsigner,tokencleaner",
 
 			// service account signing key
 			"--service-account-private-key-file=" + p.ServiceAccountSigner.KeyPath(),

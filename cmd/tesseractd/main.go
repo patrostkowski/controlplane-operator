@@ -93,7 +93,7 @@ func (s *agentServer) Join(ctx context.Context, req *agentv1alpha1.JoinRequest) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	kubeletConfigPath := "/etc/kubernetes/conifg.yaml"
+	kubeletConfigPath := "/etc/kubernetes/config.yaml"
 	caPath := "/etc/kubernetes/pki/ca.crt"
 	initKubeconfigPath := "/etc/kubernetes/kubeconfig"
 	pkiDir := "/etc/kubernetes/pki"

@@ -31,9 +31,11 @@ const (
 
 	CRBNodeClientAutoApproveName  = "kubelet-bootstrap-auto-approve-node-client-certs"
 	CRBSelfNodeClientRotationName = "kubelet-auto-approve-node-client-cert-rotation"
+	CRBNodeCertAutoApprover       = "kubelet-auto-approve-kubelet-serving"
 	CRBNodeBootstrapperName       = "kubelet-bootstrap"
 
 	RoleNodeClientCSRApprove = "system:certificates.k8s.io:certificatesigningrequests:nodeclient"
 	RoleSelfNodeClientCSR    = "system:certificates.k8s.io:certificatesigningrequests:selfnodeclient"
+	RoleSelfNodeServer       = "system:certificates.k8s.io:certificatesigningrequests:selfnodeserver"
 	RoleNodeBootstrapper     = "system:node-bootstrapper"
 )

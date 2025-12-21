@@ -32,6 +32,7 @@ func BootstrapKubeletJoinResources(token BootstrapToken) []client.Object {
 		crbNodeClientAutoApprove(),
 		crbSelfNodeClientRotationAutoApprove(),
 		crbNodeBootstrapper(),
+		crbKubeletBootstrapper(),
 	}
 }
 
@@ -127,6 +128,30 @@ func crbNodeBootstrapper() *rbacv1.ClusterRoleBinding {
 				APIGroup: rbacv1.GroupName,
 				Kind:     "Group",
 				Name:     GroupBootstrappers,
+			},
+		},
+	}
+}
+
+func crbKubeletBootstrapper() *rbacv1.ClusterRoleBinding {
+	return &rbacv1.ClusterRoleBinding{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: rbacv1.SchemeGroupVersion.String(),
+			Kind:       "ClusterRoleBinding",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: CRBNodeCertAutoApprover,
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: rbacv1.GroupName,
+			Kind:     "ClusterRole",
+			Name:     RoleSelfNodeServer,
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				APIGroup: rbacv1.GroupName,
+				Kind:     "Group",
+				Name:     GroupNodes,
 			},
 		},
 	}
