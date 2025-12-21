@@ -54,10 +54,7 @@ func newKubeconfigCommand() *cobra.Command {
 			ctx, _ := cmd.InheritedFlags().GetString("context")
 			ns, _ := cmd.InheritedFlags().GetString("namespace")
 
-			k := mcpclient.Config{
-				Kubeconfig: kubeconfigPath,
-				Context:    ctx,
-			}
+			k := mcpclient.NewClient(ctx, kubeconfigPath)
 			c, err := k.BuildClient()
 			if err != nil {
 				return err

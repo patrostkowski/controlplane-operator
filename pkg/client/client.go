@@ -24,12 +24,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// small struct to build k8s client
 type Config struct {
 	Kubeconfig string
 	Context    string
 	cfg        *rest.Config
 	client     client.Client
+}
+
+func NewClient(ctx, kubeconfig string) *Config {
+	return &Config{
+		Kubeconfig: kubeconfig,
+		Context:    ctx,
+	}
 }
 
 func (c *Config) BuildClient() (client.Client, error) {
