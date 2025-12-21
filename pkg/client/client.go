@@ -37,7 +37,7 @@ func NewClient(ctx, kubeconfig string) (client.Client, error) {
 		Context:    ctx,
 	}
 
-	client, err := cfg.BuildConfig()
+	client, err := cfg.buildConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -45,13 +45,13 @@ func NewClient(ctx, kubeconfig string) (client.Client, error) {
 	return client, nil
 }
 
-func (c *Config) BuildConfig() (client.Client, error) {
+func (c *Config) buildConfig() (client.Client, error) {
 	if c.client != nil {
 		return c.client, nil
 	}
 
 	// build kube cfg
-	cfg, err := c.BuildRESTConfig()
+	cfg, err := c.buildRESTConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (c *Config) BuildConfig() (client.Client, error) {
 	return c.client, nil
 }
 
-func (c *Config) BuildRESTConfig() (*rest.Config, error) {
+func (c *Config) buildRESTConfig() (*rest.Config, error) {
 	loading := clientcmd.NewDefaultClientConfigLoadingRules()
 
 	if c.Kubeconfig != "" {
