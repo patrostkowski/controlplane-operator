@@ -31,14 +31,21 @@ type Config struct {
 	client     client.Client
 }
 
-func NewClient(ctx, kubeconfig string) *Config {
-	return &Config{
+func NewClient(ctx, kubeconfig string) (client.Client, error) {
+	cfg := Config{
 		Kubeconfig: kubeconfig,
 		Context:    ctx,
 	}
+
+	client, err := cfg.BuildConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	return client, nil
 }
 
-func (c *Config) BuildClient() (client.Client, error) {
+func (c *Config) BuildConfig() (client.Client, error) {
 	if c.client != nil {
 		return c.client, nil
 	}

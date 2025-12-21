@@ -28,6 +28,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	adminConfigSecretKey = "config"
+)
+
 func NewMCPCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mcp",
@@ -54,8 +58,7 @@ func newKubeconfigCommand() *cobra.Command {
 			ctx, _ := cmd.InheritedFlags().GetString("context")
 			ns, _ := cmd.InheritedFlags().GetString("namespace")
 
-			k := mcpclient.NewClient(ctx, kubeconfigPath)
-			c, err := k.BuildClient()
+			c, err := mcpclient.NewClient(ctx, kubeconfigPath)
 			if err != nil {
 				return err
 			}
@@ -78,7 +81,7 @@ func newKubeconfigCommand() *cobra.Command {
 				return err
 			}
 
-			printKubeconfigFromSecret(sec, "config")
+			printKubeconfigFromSecret(sec, adminConfigSecretKey)
 
 			return nil
 		},
