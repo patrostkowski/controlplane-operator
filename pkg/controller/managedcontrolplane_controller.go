@@ -240,7 +240,6 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServiceSvc(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
 ) (ctrl.Result, error) {
-
 	log := r.Log.WithValues("api-endpoint", mcp.Namespace)
 	api := NewAPIServer(mcp, r.Client, r.Scheme, log)
 
@@ -270,7 +269,6 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServer(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
 ) (ctrl.Result, error) {
-
 	log := r.Log.WithValues("apiserver", mcp.Namespace)
 	api := NewAPIServer(mcp, r.Client, r.Scheme, log)
 
@@ -342,17 +340,17 @@ func (r *ManagedControlPlaneReconciler) reconcilePKI(ctx context.Context, mcp *m
 // Still it doesnt look perfect
 func (r *ManagedControlPlaneReconciler) reconcileAdminConfig(
 	ctx context.Context,
-	mcpObj *mcpv1alpha1.ManagedControlPlane,
+	mcp *mcpv1alpha1.ManagedControlPlane,
 	ns string,
 ) (ctrl.Result, error) {
-	if mcpObj.Status.Address == "" {
+	if mcp.Status.Address == "" {
 		r.Log.Info("API address not set yet")
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
-	serverURL := "https://" + mcpObj.Status.Address + ":6443"
+	serverURL := "https://" + mcp.Status.Address + ":6443"
 
-	p := pki.New(mcpObj).Admin()
+	p := pki.New(mcp).Admin()
 
 	// get admin-client secret
 	adminClient := &corev1.Secret{}
@@ -386,7 +384,7 @@ func (r *ManagedControlPlaneReconciler) reconcileAdminConfig(
 		Type: corev1.SecretTypeOpaque,
 	}
 
-	err = utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, mcpObj, s, r.Log, func(obj client.Object) error {
+	err = utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, mcp, s, r.Log, func(obj client.Object) error {
 		sec := obj.(*corev1.Secret)
 		if sec.Data == nil {
 			sec.Data = map[string][]byte{}
@@ -395,6 +393,7 @@ func (r *ManagedControlPlaneReconciler) reconcileAdminConfig(
 			return nil
 		}
 		sec.Data[common.AdminConfigKubeconfigKey] = kubeconfigBytes
+
 		return nil
 	})
 	if err != nil {
@@ -402,6 +401,11 @@ func (r *ManagedControlPlaneReconciler) reconcileAdminConfig(
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 	}
 
+	// updating MCP status with sercet ref
+	if err = r.UpdateMCPAdminSecretRef(ctx, mcp, common.AdminConfigName, ns); err != nil {
+		r.Log.Error(err, "failed to update admin config secret ref")
+		return ctrl.Result{}, err
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -413,6 +417,7 @@ func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
 		Owns(&corev1.Service{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.ConfigMap{}).
+		Owns(&corev1.Secret{}).
 		Owns(&appsv1.StatefulSet{}).
 		Owns(&certmanagerv1.Certificate{}, builder.WithPredicates(certPred)).
 		Owns(&certmanagerv1.Issuer{}, builder.WithPredicates(issuerPred)).

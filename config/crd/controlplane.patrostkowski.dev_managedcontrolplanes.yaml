@@ -78,6 +78,13 @@ spec:
             properties:
               address:
                 type: string
+              adminKubeconfigSecretRef:
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
               conditions:
                 description: |-
                   Conditions represents the latest available observations of the control plane's state.
