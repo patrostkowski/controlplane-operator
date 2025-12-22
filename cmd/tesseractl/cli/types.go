@@ -12,21 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package cli
 
 import (
-	"fmt"
-	"os"
-
-	"github.com/patrostkowski/controlplane-operator/cmd/tesseractl/cli"
+	"github.com/spf13/cobra"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func main() {
-	cli := cli.New()
+type CLI struct {
+	cmd *cobra.Command
+	k8s client.Client
+}
 
-	err := cli.Run()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+type effectiveFlags struct {
+	KubeconfigPath string
+	Context        string
+	Namespace      string
 }
