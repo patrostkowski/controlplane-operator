@@ -109,10 +109,7 @@ func (c *CLI) newJoinCommand() *cobra.Command {
 			defer conn.Close()
 
 			client := agentv1alpha1.NewAgentServiceClient(conn)
-			resp, err := client.Join(ctx, &agentv1alpha1.JoinRequest{
-				Endpoint: endpoint,
-				Token:    token,
-			})
+			resp, err := client.Join(ctx, &agentv1alpha1.JoinRequest{})
 			if err != nil {
 				return err
 			}
