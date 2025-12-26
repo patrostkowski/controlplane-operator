@@ -8,62 +8,39 @@ package controller
 import (
 	"context"
 
+	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
+	applier "github.com/patrostkowski/controlplane-operator/pkg/controller/apply"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/addons"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	ctrl "sigs.k8s.io/controller-runtime"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// todo: match how other things reconcile
-func (r *ManagedControlPlaneReconciler) reconcileAddon(
-	ctx context.Context,
-	mcp *mcpv1alpha1.ManagedControlPlane,
-	c *controlplane.ControlPlaneClient,
-) (ctrl.Result, error) {
-	log := r.Log.WithValues("addons", mcp.Namespace)
-	log.Info("Reconciling Addons")
-
-	resources := addons.Resources(mcp)
-
-	if err := c.ApplySSA(ctx, "mcp", resources...); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	log.Info("Finished reconciling Addons")
-
-	return ctrl.Result{}, nil
+type Addons struct {
+	*applier.Applier
+	mcp *mcpv1alpha1.ManagedControlPlane
+	log logr.Logger
 }
 
-func (r *ManagedControlPlaneReconciler) reconcileKubeletJoinResources(
-	ctx context.Context,
-	mcp *mcpv1alpha1.ManagedControlPlane,
-	c *controlplane.ControlPlaneClient,
-) (ctrl.Result, error) {
-
-	log := r.Log.WithValues("rbac", mcp.Namespace)
-
-	log.Info("Reconciling kubelet join resources")
-
-	tok, err := r.ensureBootstrapToken(ctx, mcp)
-	if err != nil {
-		return ctrl.Result{}, err
+func NewAddons(mcp *mcpv1alpha1.ManagedControlPlane, k8s client.Client, scheme *runtime.Scheme, log logr.Logger) *Addons {
+	return &Addons{
+		Applier: applier.NewApplier(
+			k8s,
+			scheme,
+			log,
+			fieldOwner,
+			applier.WithOwnerRef(false),
+		),
+		mcp: mcp,
+		log: log.WithName("addons"),
 	}
+}
 
-	resources := addons.BootstrapKubeletJoinResources(tok)
-
-	if err := c.ApplySSA(ctx, "mcp", resources...); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	log.Info("Finished reconciling kubelet join resources",
-		"tokenID", tok.ID,
-	)
-
-	return ctrl.Result{}, nil
+func (a *Addons) Ensure(ctx context.Context, resources []client.Object) error {
+	return a.Apply(ctx, a.mcp, resources...)
 }
 
 // todo: think how to rotate the token
@@ -71,7 +48,6 @@ func (r *ManagedControlPlaneReconciler) ensureBootstrapToken(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
 ) (addons.BootstrapToken, error) {
-
 	sec := &corev1.Secret{}
 	key := client.ObjectKey{
 		Namespace: mcp.Namespace,

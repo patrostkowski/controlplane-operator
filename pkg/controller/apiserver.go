@@ -21,20 +21,21 @@ import (
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	applier "github.com/patrostkowski/controlplane-operator/pkg/controller/apply"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/apiserver"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type APIServer struct {
-	*Applier
+	*applier.Applier
 	mcp *mcpv1alpha1.ManagedControlPlane
 	log logr.Logger
 }
 
 func NewAPIServer(mcp *mcpv1alpha1.ManagedControlPlane, k8s client.Client, scheme *runtime.Scheme, log logr.Logger) *APIServer {
 	return &APIServer{
-		Applier: NewApplier(k8s, scheme, log, fieldOwner),
+		Applier: applier.NewApplier(k8s, scheme, log, fieldOwner),
 		mcp:     mcp,
 		log:     log.WithName("apiserver"),
 	}
@@ -54,7 +55,7 @@ func (a *APIServer) workloadManifests() []client.Object {
 
 func (a *APIServer) tryEndpointAddress(ctx context.Context) (string, error) {
 	svc := &corev1.Service{}
-	if err := a.k8s.Get(ctx, client.ObjectKey{Namespace: a.mcp.Namespace, Name: apiserver.KubeAPIServerSvcName}, svc); err != nil {
+	if err := a.Get(ctx, client.ObjectKey{Namespace: a.mcp.Namespace, Name: apiserver.KubeAPIServerSvcName}, svc); err != nil {
 		return "", err
 	}
 	if len(svc.Status.LoadBalancer.Ingress) == 0 {

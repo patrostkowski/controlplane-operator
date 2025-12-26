@@ -47,7 +47,6 @@ func NewFromKubeconfigSecret(
 	scheme *runtime.Scheme,
 	secretNS string,
 ) (*ControlPlaneClient, error) {
-
 	sec := &corev1.Secret{}
 	if err := mgmt.Get(ctx, client.ObjectKey{Namespace: secretNS, Name: common.AdminConfigName}, sec); err != nil {
 		return nil, err

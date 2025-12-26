@@ -22,6 +22,7 @@ import (
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/addons"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/controllermanager"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/etcd"
@@ -216,7 +217,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
-	if res, err := r.reconcileAddon(ctx, mcpObj, cp); err != nil {
+	if res, err := r.reconcileAddons(ctx, mcpObj, cp); err != nil {
 		_ = r.statusFailed(ctx, mcpObj, state.MessageAddonsFailed)
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 	} else if !res.IsZero() {
@@ -318,6 +319,48 @@ func (r *ManagedControlPlaneReconciler) reconcileScheduler(ctx context.Context, 
 	resources := scheduler.Resources(mcp)
 
 	if err := s.Ensure(ctx, resources); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// TODO: find a way to watch & act on child resources
+func (r *ManagedControlPlaneReconciler) reconcileAddons(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+	c *controlplane.ControlPlaneClient,
+) (ctrl.Result, error) {
+	log := r.Log.WithValues("addons", mcp.GetObjectMeta().GetNamespace())
+	a := NewAddons(mcp, c.Client, r.Scheme, log)
+
+	resources := addons.Resources(mcp)
+
+	if err := a.Ensure(ctx, resources); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// TODO: decide separate it from addons or
+// bundle them together
+func (r *ManagedControlPlaneReconciler) reconcileKubeletJoinResources(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+	c *controlplane.ControlPlaneClient,
+) (ctrl.Result, error) {
+	log := r.Log.WithValues("kubelet-resources", mcp.GetObjectMeta().GetNamespace())
+	k := NewAddons(mcp, c.Client, r.Scheme, log)
+
+	tok, err := r.ensureBootstrapToken(ctx, mcp)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	resources := addons.BootstrapKubeletJoinResources(tok)
+
+	if err := k.Ensure(ctx, resources); err != nil {
 		return ctrl.Result{}, err
 	}
 
