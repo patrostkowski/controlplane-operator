@@ -19,20 +19,21 @@ import (
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	applier "github.com/patrostkowski/controlplane-operator/pkg/controller/apply"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type PKI struct {
-	*Applier
+	*applier.Applier
 	mcp *mcpv1alpha1.ManagedControlPlane
 	log logr.Logger
 }
 
 func NewPKI(mcp *mcpv1alpha1.ManagedControlPlane, k8s client.Client, scheme *runtime.Scheme, log logr.Logger) *PKI {
 	return &PKI{
-		Applier: NewApplier(k8s, scheme, log, fieldOwner),
+		Applier: applier.NewApplier(k8s, scheme, log, fieldOwner),
 		mcp:     mcp,
 		log:     log.WithName("pki"),
 	}
