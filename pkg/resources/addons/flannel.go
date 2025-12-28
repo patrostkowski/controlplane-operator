@@ -16,6 +16,7 @@ package addons
 
 import (
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -48,25 +49,22 @@ func buildFlannel(ma *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	}
 }
 
-var FlannelLabels = map[string]string{
-	"app":     "flannel",
-	"k8s-app": "flannel",
-}
+var (
+	FlannelLabels = map[string]string{
+		"app":     "flannel",
+		"k8s-app": "flannel",
+	}
+	FlannelNamespaceLabels = map[string]string{
+		"k8s-app":                            "flannel",
+		"pod-security.kubernetes.io/enforce": "privileged",
+	}
+)
 
 func buildFlannelNamespace() *corev1.Namespace {
-	return &corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: FlannelNamespaceName,
-			Labels: map[string]string{
-				"k8s-app":                            "flannel",
-				"pod-security.kubernetes.io/enforce": "privileged",
-			},
-		},
-	}
+	return builders.NewNamespace().
+		WithName(FlannelNamespaceName).
+		WithLabels(FlannelNamespaceLabels).
+		Build()
 }
 
 func buildFlannelClusterRole() *rbacv1.ClusterRole {

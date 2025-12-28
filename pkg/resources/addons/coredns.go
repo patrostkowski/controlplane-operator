@@ -16,6 +16,7 @@ package addons
 
 import (
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -79,14 +80,11 @@ func buildCoreDNS(ma *mcpv1alpha1.ManagedControlPlane) []client.Object {
 }
 
 func buildCoreDNSServiceAccount() *corev1.ServiceAccount {
-	return &corev1.ServiceAccount{
-		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "ServiceAccount"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      CoreDNSServiceAccountName,
-			Namespace: CoreDNSNamespaceName,
-			Labels:    CoreDNSPodLabels,
-		},
-	}
+	return builders.NewServiceAccount().
+		WithName(CoreDNSServiceAccountName).
+		WithNamespace(CoreDNSNamespaceName).
+		WithLabels(CoreDNSPodLabels).
+		Build()
 }
 
 func buildCoreDNSClusterRoleBinding() *rbacv1.ClusterRoleBinding {
