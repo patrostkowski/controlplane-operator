@@ -20,7 +20,9 @@ import (
 )
 
 func TestNewServiceAccount_SetsNameNamespace(t *testing.T) {
-	s := NewServiceAccount("ns1", "sa1")
+	s := NewServiceAccount().
+		WithName("sa1").
+		WithNamespace("ns1")
 
 	if s == nil || s.ServiceAccount == nil {
 		t.Fatalf("expected non-nil ServiceAccountTemplate")
@@ -34,7 +36,9 @@ func TestNewServiceAccount_SetsNameNamespace(t *testing.T) {
 }
 
 func TestSAWithLabels_MergesAndInitializes(t *testing.T) {
-	s := NewServiceAccount("ns", "sa")
+	s := NewServiceAccount().
+		WithName("sa").
+		WithNamespace("ns")
 	s.Labels = nil
 
 	s.WithLabels(map[string]string{"a": "1", "b": "2"}).
@@ -47,7 +51,9 @@ func TestSAWithLabels_MergesAndInitializes(t *testing.T) {
 }
 
 func TestSAWithAnnotations_MergesAndInitializes(t *testing.T) {
-	s := NewServiceAccount("ns", "sa")
+	s := NewServiceAccount().
+		WithName("sa").
+		WithNamespace("ns")
 	s.Annotations = nil
 
 	s.WithAnnotations(map[string]string{"x": "y"}).

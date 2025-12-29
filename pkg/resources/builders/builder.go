@@ -26,12 +26,8 @@ type Component interface {
 	Objects() []client.Object
 }
 
-type HasMeta interface {
-	GetMeta() *metav1.ObjectMeta
-}
-
 type MetaMutator struct {
-	h HasMeta
+	obj metav1.Object
 }
 
 type HasPodTemplate interface {
@@ -39,25 +35,25 @@ type HasPodTemplate interface {
 }
 
 type PodTemplateMutator struct {
-	h HasPodTemplate
+	obj HasPodTemplate
 }
 
 func (m PodTemplateMutator) WithServiceAccount(sa string) {
-	m.h.GetPodTemplate().Spec.ServiceAccountName = sa
+	m.obj.GetPodTemplate().Spec.ServiceAccountName = sa
 }
 
 func (m PodTemplateMutator) WithContainer(c corev1.Container) {
-	pt := m.h.GetPodTemplate()
+	pt := m.obj.GetPodTemplate()
 	pt.Spec.Containers = append(pt.Spec.Containers, c)
 }
 
 func (m PodTemplateMutator) AddVolumes(vols ...corev1.Volume) {
-	pt := m.h.GetPodTemplate()
+	pt := m.obj.GetPodTemplate()
 	pt.Spec.Volumes = append(pt.Spec.Volumes, vols...)
 }
 
 func (m *PodTemplateMutator) WithLabels(labels map[string]string) {
-	pt := m.h.GetPodTemplate()
+	pt := m.obj.GetPodTemplate()
 	if labels == nil {
 		return
 	}
@@ -71,7 +67,7 @@ func (m *PodTemplateMutator) WithLabels(labels map[string]string) {
 }
 
 func (m *PodTemplateMutator) WithAnnotations(ann map[string]string) {
-	pt := m.h.GetPodTemplate()
+	pt := m.obj.GetPodTemplate()
 	if ann == nil {
 		return
 	}
@@ -85,7 +81,7 @@ func (m *PodTemplateMutator) WithAnnotations(ann map[string]string) {
 }
 
 func (m PodTemplateMutator) PatchContainer(name string, fn func(*corev1.Container)) bool {
-	cs := m.h.GetPodTemplate().Spec.Containers
+	cs := m.obj.GetPodTemplate().Spec.Containers
 	for i := range cs {
 		if cs[i].Name == name {
 			fn(&cs[i])
@@ -102,41 +98,31 @@ func (m PodTemplateMutator) AddVolumeMounts(containerName string, mounts ...core
 }
 
 func (m *MetaMutator) WithLabels(labels map[string]string) {
-	om := m.h.GetMeta()
-	if labels == nil {
-		return
-	}
-	l := om.GetLabels()
+	l := m.obj.GetLabels()
 	if l == nil {
 		l = map[string]string{}
 	}
 	maps.Copy(l, labels)
-	om.SetLabels(l)
+	m.obj.SetLabels(l)
 }
 
 func (m *MetaMutator) WithAnnotations(ann map[string]string) {
-	om := m.h.GetMeta()
-	if ann == nil {
-		return
-	}
-	a := om.GetAnnotations()
+	a := m.obj.GetAnnotations()
 	if a == nil {
 		a = map[string]string{}
 	}
 	maps.Copy(a, ann)
-	om.SetLabels(a)
+	m.obj.SetLabels(a)
 }
 
 func (m *MetaMutator) WithName(name string) {
-	om := m.h.GetMeta()
 	if name != "" {
-		om.SetName(name)
+		m.obj.SetName(name)
 	}
 }
 
 func (m *MetaMutator) WithNamespace(ns string) {
-	om := m.h.GetMeta()
 	if ns != "" {
-		om.SetNamespace(ns)
+		m.obj.SetNamespace(ns)
 	}
 }

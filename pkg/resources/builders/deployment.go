@@ -38,7 +38,7 @@ func NewDeployment(ns, name string, labels map[string]string, replicas int32) *D
 		},
 	}
 	w := &DeploymentTemplate{Deployment: d}
-	w.pod = PodTemplateMutator{h: w}
+	w.pod = PodTemplateMutator{obj: w}
 	return w
 }
 

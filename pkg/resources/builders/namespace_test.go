@@ -20,7 +20,7 @@ import (
 )
 
 func TestNewNS_SetsName(t *testing.T) {
-	n := NewNamespace("ns1")
+	n := NewNamespace().WithName("ns1")
 
 	if n == nil || n.Namespace == nil {
 		t.Fatalf("expected non-nil NamespaceTemplate")
@@ -31,7 +31,7 @@ func TestNewNS_SetsName(t *testing.T) {
 }
 
 func TestNSWithLabels_MergesAndInitializes(t *testing.T) {
-	n := NewNamespace("ns")
+	n := NewNamespace().WithName("ns")
 	n.Labels = nil
 
 	n.WithLabels(map[string]string{"a": "1", "b": "2"}).
@@ -44,7 +44,7 @@ func TestNSWithLabels_MergesAndInitializes(t *testing.T) {
 }
 
 func TestNSWithAnnotations_MergesAndInitializes(t *testing.T) {
-	n := NewNamespace("ns")
+	n := NewNamespace().WithName("ns")
 	n.Annotations = nil
 
 	n.WithAnnotations(map[string]string{"x": "y"}).

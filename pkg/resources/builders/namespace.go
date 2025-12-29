@@ -12,9 +12,9 @@ type NamespaceTemplate struct {
 
 func NewNamespace() *NamespaceTemplate {
 	ns := &corev1.Namespace{}
-	n := &NamespaceTemplate{Namespace: ns}
-	n.meta = MetaMutator{h: n}
-	return n
+	newNS := &NamespaceTemplate{Namespace: ns}
+	newNS.meta = MetaMutator{obj: ns}
+	return newNS
 }
 
 func (n *NamespaceTemplate) GetMeta() *metav1.ObjectMeta {
@@ -33,6 +33,11 @@ func (n *NamespaceTemplate) WithAnnotations(ann map[string]string) *NamespaceTem
 
 func (n *NamespaceTemplate) WithName(name string) *NamespaceTemplate {
 	n.meta.WithName(name)
+	return n
+}
+
+func (n *NamespaceTemplate) WithNamespace(ns string) *NamespaceTemplate {
+	n.meta.WithNamespace(ns)
 	return n
 }
 
