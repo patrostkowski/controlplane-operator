@@ -40,7 +40,7 @@ func NewStatefulSet(ns, name string, labels map[string]string, replicas int32, s
 	}
 
 	w := &StatefulSetTemplate{StatefulSet: sts}
-	w.pod = PodTemplateMutator{h: w}
+	w.pod = PodTemplateMutator{obj: w}
 	return w
 }
 
@@ -52,18 +52,22 @@ func (w *StatefulSetTemplate) WithServiceAccount(sa string) *StatefulSetTemplate
 	w.pod.WithServiceAccount(sa)
 	return w
 }
+
 func (w *StatefulSetTemplate) WithContainer(c corev1.Container) *StatefulSetTemplate {
 	w.pod.WithContainer(c)
 	return w
 }
+
 func (w *StatefulSetTemplate) AddVolumes(vols ...corev1.Volume) *StatefulSetTemplate {
 	w.pod.AddVolumes(vols...)
 	return w
 }
+
 func (w *StatefulSetTemplate) AddVolumeMounts(container string, mounts ...corev1.VolumeMount) *StatefulSetTemplate {
 	w.pod.AddVolumeMounts(container, mounts...)
 	return w
 }
+
 func (w *StatefulSetTemplate) PatchContainer(name string, fn func(*corev1.Container)) *StatefulSetTemplate {
 	w.pod.PatchContainer(name, fn)
 	return w
