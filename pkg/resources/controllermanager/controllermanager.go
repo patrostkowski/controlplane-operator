@@ -53,7 +53,9 @@ func buildConfigMap(cm *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 		panic(err) // should never happen
 	}
 
-	return builders.NewConfigMap(ns, cmKubeconfigName).
+	return builders.NewConfigMap().
+		WithName(cmKubeconfigName).
+		WithNamespace(ns).
 		Put(cmKubeconfigKey, string(kubeconfigData)).
 		Build()
 }
@@ -119,7 +121,12 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 		ReadinessProbe: utils.HttpsHealthProbe(securePort, common.HealthPath, 5, 5, 15, 3),
 	}
 
-	return builders.NewDeployment(ns, componentName, labels, replicas).
+	return builders.NewDeployment().
+		WithName(componentName).
+		WithNamespace(ns).
+		WithLabels(labels).
+		WithSelector(labels).
+		WithReplicas(replicas).
 		WithContainer(c).
 		AddVolumes(append([]corev1.Volume{kubeconfigVol}, p.Volumes()...)...).
 		AddVolumeMounts(c.Name,

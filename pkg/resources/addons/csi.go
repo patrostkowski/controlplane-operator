@@ -15,11 +15,11 @@
 package addons
 
 import (
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -66,217 +66,115 @@ func buildCSI() []client.Object {
 }
 
 func buildCSINamespace() *corev1.Namespace {
-	return &corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: CSINamespaceName,
-		},
-	}
+	return builders.NewNamespace().
+		WithName(CSINamespaceName).
+		Build()
 }
 
 func buildCSIServiceAccount() *corev1.ServiceAccount {
-	return &corev1.ServiceAccount{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "ServiceAccount",
+	return builders.NewServiceAccount().
+		WithName(CSIServiceAccountName).
+		WithNamespace(CSINamespaceName).
+		Build()
+}
+
+func buildCSIRole() *rbacv1.Role {
+	rules := []rbacv1.PolicyRule{
+		{
+			APIGroups: []string{""},
+			Resources: []string{"pods"},
+			Verbs:     []string{"get", "list", "watch", "create", "patch", "update", "delete"},
 		},
-		ObjectMeta: metav1.ObjectMeta{
+	}
+
+	return builders.NewRole().
+		WithName(CSIRoleName).
+		WithNamespace(CSINamespaceName).
+		WithRules(rules).
+		Build()
+}
+
+func buildCSIClusterRole() *rbacv1.ClusterRole {
+	rules := []rbacv1.PolicyRule{
+		{
+			APIGroups: []string{""},
+			Resources: []string{"nodes", "persistentvolumeclaims", "configmaps", "pods", "pods/log"},
+			Verbs:     []string{"get", "list", "watch"},
+		},
+		{
+			APIGroups: []string{""},
+			Resources: []string{"persistentvolumes"},
+			Verbs:     []string{"get", "list", "watch", "create", "patch", "update", "delete"},
+		},
+		{
+			APIGroups: []string{""},
+			Resources: []string{"events"},
+			Verbs:     []string{"create", "patch"},
+		},
+		{
+			APIGroups: []string{"storage.k8s.io"},
+			Resources: []string{"storageclasses"},
+			Verbs:     []string{"get", "list", "watch"},
+		},
+	}
+
+	return builders.NewClusterRole().
+		WithName(CSIClusterRoleName).
+		WithRules(rules).
+		Build()
+}
+
+func buildCSIRoleBinding() *rbacv1.RoleBinding {
+	roleRef := rbacv1.RoleRef{
+		APIGroup: rbacv1.GroupName,
+		Kind:     "Role",
+		Name:     CSIRoleName,
+	}
+	subjects := []rbacv1.Subject{
+		{
+			Kind:      rbacv1.ServiceAccountKind,
 			Name:      CSIServiceAccountName,
 			Namespace: CSINamespaceName,
 		},
 	}
-}
 
-func buildCSIRole() *rbacv1.Role {
-	return &rbacv1.Role{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "rbac.authorization.k8s.io/v1",
-			Kind:       "Role",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      CSIRoleName,
-			Namespace: CSINamespaceName,
-		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups: []string{""},
-				Resources: []string{"pods"},
-				Verbs:     []string{"get", "list", "watch", "create", "patch", "update", "delete"},
-			},
-		},
-	}
-}
-
-func buildCSIClusterRole() *rbacv1.ClusterRole {
-	return &rbacv1.ClusterRole{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "rbac.authorization.k8s.io/v1",
-			Kind:       "ClusterRole",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: CSIClusterRoleName,
-		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups: []string{""},
-				Resources: []string{"nodes", "persistentvolumeclaims", "configmaps", "pods", "pods/log"},
-				Verbs:     []string{"get", "list", "watch"},
-			},
-			{
-				APIGroups: []string{""},
-				Resources: []string{"persistentvolumes"},
-				Verbs:     []string{"get", "list", "watch", "create", "patch", "update", "delete"},
-			},
-			{
-				APIGroups: []string{""},
-				Resources: []string{"events"},
-				Verbs:     []string{"create", "patch"},
-			},
-			{
-				APIGroups: []string{"storage.k8s.io"},
-				Resources: []string{"storageclasses"},
-				Verbs:     []string{"get", "list", "watch"},
-			},
-		},
-	}
-}
-
-func buildCSIRoleBinding() *rbacv1.RoleBinding {
-	return &rbacv1.RoleBinding{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "rbac.authorization.k8s.io/v1",
-			Kind:       "RoleBinding",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      CSIRoleBindingName,
-			Namespace: CSINamespaceName,
-		},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: rbacv1.GroupName,
-			Kind:     "Role",
-			Name:     CSIRoleName,
-		},
-		Subjects: []rbacv1.Subject{
-			{
-				Kind:      rbacv1.ServiceAccountKind,
-				Name:      CSIServiceAccountName,
-				Namespace: CSINamespaceName,
-			},
-		},
-	}
+	return builders.NewRoleBinding().
+		WithName(CSIRoleBindingName).
+		WithNamespace(CSINamespaceName).
+		WithRefs(subjects, roleRef).
+		Build()
 }
 
 func buildCSIClusterRoleBinding() *rbacv1.ClusterRoleBinding {
-	return &rbacv1.ClusterRoleBinding{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "rbac.authorization.k8s.io/v1",
-			Kind:       "ClusterRoleBinding",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: CSIClusterRoleBindingName,
-		},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: rbacv1.GroupName,
-			Kind:     "ClusterRole",
-			Name:     CSIClusterRoleName,
-		},
-		Subjects: []rbacv1.Subject{
-			{
-				Kind:      rbacv1.ServiceAccountKind,
-				Name:      CSIServiceAccountName,
-				Namespace: CSINamespaceName,
-			},
-		},
+	roleRef := rbacv1.RoleRef{
+		APIGroup: rbacv1.GroupName,
+		Kind:     "ClusterRole",
+		Name:     CSIClusterRoleName,
 	}
-}
-
-func buildCSIDeployment() *appsv1.Deployment {
-	var replicas int32 = 1
-
-	return &appsv1.Deployment{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "apps/v1",
-			Kind:       "Deployment",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      CSIDeploymentName,
+	subjects := []rbacv1.Subject{
+		{
+			Kind:      rbacv1.ServiceAccountKind,
+			Name:      CSIServiceAccountName,
 			Namespace: CSINamespaceName,
-			Labels:    CSILabels,
-		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: CSILabels,
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: CSILabels,
-				},
-				Spec: corev1.PodSpec{
-					ServiceAccountName: CSIServiceAccountName,
-					Containers: []corev1.Container{
-						{
-							Name:            "local-path-provisioner",
-							Image:           CSIProvisionerImage,
-							ImagePullPolicy: corev1.PullIfNotPresent,
-							Command: []string{
-								"local-path-provisioner",
-								"--debug",
-								"start",
-								"--config",
-								"/etc/config/config.json",
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name: "POD_NAMESPACE",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{
-											FieldPath: "metadata.namespace",
-										},
-									},
-								},
-								{Name: "CONFIG_MOUNT_PATH", Value: "/etc/config/"},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{Name: "config-volume", MountPath: "/etc/config/"},
-							},
-						},
-					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "config-volume",
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{Name: CSIConfigMapName},
-								},
-							},
-						},
-					},
-				},
-			},
 		},
 	}
+
+	return builders.NewClusterRoleBinding().
+		WithName(CSIClusterRoleName).
+		WithRefs(subjects, roleRef).
+		Build()
 }
 
 func buildCSIStorageClass() *storagev1.StorageClass {
 	reclaim := CSIReclaimPolicy
 	mode := CSIVolumeBindingMode
 
-	return &storagev1.StorageClass{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "storage.k8s.io/v1",
-			Kind:       "StorageClass",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: CSIStorageClassName,
-		},
-		Provisioner:       CSIProvisionerName,
-		ReclaimPolicy:     &reclaim,
-		VolumeBindingMode: &mode,
-	}
+	return builders.NewStorageClass().
+		WithName(CSIStorageClassName).
+		WithProvisioner(CSIProvisionerName).
+		WithPolicy(reclaim).
+		WithBindingMode(mode).
+		Build()
 }
 
 func buildCSIConfigMap() *corev1.ConfigMap {
@@ -316,21 +214,65 @@ spec:
       image: ` + CSIHelperPodImage + `
       imagePullPolicy: IfNotPresent
 `
+	return builders.NewConfigMap().
+		WithName(CSIConfigMapName).
+		WithNamespace(CSINamespaceName).
+		Put("config.json", configJSON).
+		Put("setup", setup).
+		Put("teardown", teardown).
+		Put("helperPod.yaml", helperPodYAML).
+		Build()
+}
 
-	return &corev1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "ConfigMap",
+func buildCSIDeployment() *appsv1.Deployment {
+	var replicas int32 = 1
+
+	c := corev1.Container{
+		Name:            "local-path-provisioner",
+		Image:           CSIProvisionerImage,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command: []string{
+			"local-path-provisioner",
+			"--debug",
+			"start",
+			"--config",
+			"/etc/config/config.json",
 		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      CSIConfigMapName,
-			Namespace: CSINamespaceName,
-		},
-		Data: map[string]string{
-			"config.json":    configJSON,
-			"setup":          setup,
-			"teardown":       teardown,
-			"helperPod.yaml": helperPodYAML,
+		Env: []corev1.EnvVar{
+			{
+				Name: "POD_NAMESPACE",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "metadata.namespace",
+					},
+				},
+			},
+			{Name: "CONFIG_MOUNT_PATH", Value: "/etc/config/"},
 		},
 	}
+	volumeMounts := []corev1.VolumeMount{
+		{Name: "config-volume", MountPath: "/etc/config/"},
+	}
+	volumes := []corev1.Volume{
+		{
+			Name: "config-volume",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: CSIConfigMapName},
+				},
+			},
+		},
+	}
+
+	return builders.NewDeployment().
+		WithName(CSIDeploymentName).
+		WithNamespace(CSINamespaceName).
+		WithLabels(CSILabels).
+		WithSelector(CSILabels).
+		WithServiceAccount(CSIServiceAccountName).
+		WithReplicas(replicas).
+		WithContainer(c).
+		AddVolumes(volumes...).
+		AddVolumeMounts(c.Name, volumeMounts...).
+		Build()
 }

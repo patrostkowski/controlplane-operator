@@ -18,10 +18,10 @@ import (
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	intstr "k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -88,93 +88,87 @@ func buildCoreDNSServiceAccount() *corev1.ServiceAccount {
 }
 
 func buildCoreDNSClusterRoleBinding() *rbacv1.ClusterRoleBinding {
-	return &rbacv1.ClusterRoleBinding{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "rbac.authorization.k8s.io/v1",
-			Kind:       "ClusterRoleBinding",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: CoreDNSClusterRoleBindingName,
-		},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: rbacv1.GroupName,
-			Kind:     "ClusterRole",
-			Name:     CoreDNSClusterRoleName,
-		},
-		Subjects: []rbacv1.Subject{
-			{
-				Kind:      rbacv1.ServiceAccountKind,
-				Name:      CoreDNSServiceAccountName,
-				Namespace: CoreDNSNamespaceName,
-			},
+	roleRef := rbacv1.RoleRef{
+		APIGroup: rbacv1.GroupName,
+		Kind:     "ClusterRole",
+		Name:     CoreDNSClusterRoleName,
+	}
+
+	subjects := []rbacv1.Subject{
+		{
+			Kind:      rbacv1.ServiceAccountKind,
+			Name:      CoreDNSServiceAccountName,
+			Namespace: CoreDNSNamespaceName,
 		},
 	}
+
+	return builders.NewClusterRoleBinding().
+		WithName(CoreDNSClusterRoleBindingName).
+		WithRefs(subjects, roleRef).
+		Build()
 }
 
 func buildCoreDNSClusterRole() *rbacv1.ClusterRole {
-	return &rbacv1.ClusterRole{
-		TypeMeta: metav1.TypeMeta{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "ClusterRole"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: CoreDNSClusterRoleName,
+	rules := []rbacv1.PolicyRule{
+		{
+			APIGroups: []string{""},
+			Resources: []string{"endpoints", "services", "pods", "namespaces"},
+			Verbs:     []string{"list", "watch"},
 		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups: []string{""},
-				Resources: []string{"endpoints", "services", "pods", "namespaces"},
-				Verbs:     []string{"list", "watch"},
-			},
-			{
-				APIGroups: []string{"discovery.k8s.io"},
-				Resources: []string{"endpointslices"},
-				Verbs:     []string{"list", "watch"},
-			},
-			{
-				APIGroups: []string{""},
-				Resources: []string{"nodes"},
-				Verbs:     []string{"get", "list", "watch"},
-			},
+		{
+			APIGroups: []string{"discovery.k8s.io"},
+			Resources: []string{"endpointslices"},
+			Verbs:     []string{"list", "watch"},
+		},
+		{
+			APIGroups: []string{""},
+			Resources: []string{"nodes"},
+			Verbs:     []string{"get", "list", "watch"},
 		},
 	}
+
+	return builders.NewClusterRole().
+		WithName(CoreDNSClusterRoleName).
+		WithRules(rules).
+		Build()
 }
 
 func buildCoreDNSRole() *rbacv1.Role {
-	return &rbacv1.Role{
-		TypeMeta: metav1.TypeMeta{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "Role"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      CoreDNSRoleName,
-			Namespace: CoreDNSNamespaceName,
-		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups:     []string{""},
-				Resources:     []string{"configmaps"},
-				ResourceNames: []string{CoreDNSConfigMapName},
-				Verbs:         []string{"get", "list", "watch"},
-			},
+	rules := []rbacv1.PolicyRule{
+		{
+			APIGroups:     []string{""},
+			Resources:     []string{"configmaps"},
+			ResourceNames: []string{CoreDNSConfigMapName},
+			Verbs:         []string{"get", "list", "watch"},
 		},
 	}
+
+	return builders.NewRole().
+		WithName(CoreDNSRoleName).
+		WithNamespace(CoreDNSNamespaceName).
+		WithRules(rules).
+		Build()
 }
 
 func buildCoreDNSRoleBinding() *rbacv1.RoleBinding {
-	return &rbacv1.RoleBinding{
-		TypeMeta: metav1.TypeMeta{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "RoleBinding"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      CoreDNSRoleBindingName,
+	roleRef := rbacv1.RoleRef{
+		APIGroup: rbacv1.GroupName,
+		Kind:     "Role",
+		Name:     CoreDNSRoleName,
+	}
+	subjects := []rbacv1.Subject{
+		{
+			Kind:      rbacv1.ServiceAccountKind,
+			Name:      CoreDNSServiceAccountName,
 			Namespace: CoreDNSNamespaceName,
 		},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: rbacv1.GroupName,
-			Kind:     "Role",
-			Name:     CoreDNSRoleName,
-		},
-		Subjects: []rbacv1.Subject{
-			{
-				Kind:      rbacv1.ServiceAccountKind,
-				Name:      CoreDNSServiceAccountName,
-				Namespace: CoreDNSNamespaceName,
-			},
-		},
 	}
+
+	return builders.NewRoleBinding().
+		WithName(CoreDNSRoleBindingName).
+		WithNamespace(CoreDNSNamespaceName).
+		WithRefs(subjects, roleRef).
+		Build()
 }
 
 func buildCoreDNSConfigMap() *corev1.ConfigMap {
@@ -193,81 +187,63 @@ func buildCoreDNSConfigMap() *corev1.ConfigMap {
         loadbalance
     }`
 
-	return &corev1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      CoreDNSConfigMapName,
-			Namespace: CoreDNSNamespaceName,
-		},
-		Data: map[string]string{"Corefile": corefile},
-	}
+	return builders.NewConfigMap().
+		WithName(CoreDNSConfigMapName).
+		WithNamespace(CoreDNSNamespaceName).
+		Put("Corefile", corefile).
+		Build()
 }
 
 func buildCoreDNSService(ma *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
-	ip, _ := utils.IPAtOffset(ma.Spec.Networking.ServiceCIDR, 10)
-	return &corev1.Service{
-		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Service"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      CoreDNSServiceName,
-			Namespace: CoreDNSNamespaceName,
-			Labels:    CoreDNSServiceLabels,
-		},
-		Spec: corev1.ServiceSpec{
-			Type:      corev1.ServiceTypeClusterIP,
-			ClusterIP: ip.String(),
-			Selector:  CoreDNSPodLabels,
-			Ports: []corev1.ServicePort{
-				{Name: "dns", Port: 53, Protocol: corev1.ProtocolUDP, TargetPort: intstr.FromInt(53)},
-				{Name: "dns-tcp", Port: 53, Protocol: corev1.ProtocolTCP, TargetPort: intstr.FromInt(53)},
-			},
-		},
+	ports := []corev1.ServicePort{
+		{Name: "dns", Port: 53, Protocol: corev1.ProtocolUDP, TargetPort: intstr.FromInt(53)},
+		{Name: "dns-tcp", Port: 53, Protocol: corev1.ProtocolTCP, TargetPort: intstr.FromInt(53)},
 	}
+	ip, _ := utils.IPAtOffset(ma.Spec.Networking.ServiceCIDR, 10)
+	return builders.NewService().
+		WithName(CoreDNSServiceName).
+		WithNamespace(CoreDNSNamespaceName).
+		WithLabels(CoreDNSServiceLabels).
+		WithSelector(CoreDNSPodLabels).
+		WithType(corev1.ServiceTypeClusterIP).
+		WithClusterIP(ip).
+		AddPorts(ports).
+		Build()
 }
 
 func buildCoreDNSDeployment() *appsv1.Deployment {
-	replicas := CoreDNSReplicas
-
-	return &appsv1.Deployment{
-		TypeMeta: metav1.TypeMeta{APIVersion: "apps/v1", Kind: "Deployment"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      CoreDNSDeploymentName,
-			Namespace: CoreDNSNamespaceName,
-			Labels:    CoreDNSPodLabels,
+	c := corev1.Container{
+		Name:            "coredns",
+		Image:           CoreDNSImage,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Args:            []string{"-conf", "/etc/coredns/Corefile"},
+		Ports: []corev1.ContainerPort{
+			{ContainerPort: 53, Protocol: corev1.ProtocolUDP},
+			{ContainerPort: 53, Protocol: corev1.ProtocolTCP},
 		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{MatchLabels: CoreDNSPodLabels},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: CoreDNSPodLabels},
-				Spec: corev1.PodSpec{
-					ServiceAccountName: CoreDNSServiceAccountName,
-					Containers: []corev1.Container{
-						{
-							Name:            "coredns",
-							Image:           CoreDNSImage,
-							ImagePullPolicy: corev1.PullIfNotPresent,
-							Args:            []string{"-conf", "/etc/coredns/Corefile"},
-							Ports: []corev1.ContainerPort{
-								{ContainerPort: 53, Protocol: corev1.ProtocolUDP},
-								{ContainerPort: 53, Protocol: corev1.ProtocolTCP},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{Name: "config-volume", MountPath: "/etc/coredns"},
-							},
-						},
-					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "config-volume",
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{Name: CoreDNSConfigMapName},
-								},
-							},
-						},
-					},
+	}
+	volumes := []corev1.Volume{
+		{
+			Name: "config-volume",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: CoreDNSConfigMapName},
 				},
 			},
 		},
 	}
+	volumeMounts := corev1.VolumeMount{
+		Name: "config-volume", MountPath: "/etc/coredns",
+	}
+
+	return builders.NewDeployment().
+		WithName(CoreDNSDeploymentName).
+		WithNamespace(CoreDNSNamespaceName).
+		WithLabels(CoreDNSPodLabels).
+		WithSelector(CoreDNSPodLabels).
+		WithReplicas(CoreDNSReplicas).
+		WithContainer(c).
+		AddVolumes(volumes...).
+		AddVolumeMounts(c.Name, volumeMounts).
+		Build()
 }

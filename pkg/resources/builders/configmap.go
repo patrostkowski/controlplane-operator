@@ -21,38 +21,39 @@ import (
 
 type ConfigMapTemplate struct {
 	*corev1.ConfigMap
+	meta MetaMutator
 }
 
-func NewConfigMap(ns, name string) *ConfigMapTemplate {
-	return &ConfigMapTemplate{
-		ConfigMap: &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: ns,
-			},
-			Data:       map[string]string{},
-			BinaryData: map[string][]byte{},
-		},
-	}
+func NewConfigMap() *ConfigMapTemplate {
+	cm := &corev1.ConfigMap{}
+	newCM := &ConfigMapTemplate{ConfigMap: cm}
+	newCM.meta = MetaMutator{obj: cm}
+	newCM.Data = map[string]string{}
+	newCM.BinaryData = map[string][]byte{}
+	return newCM
+}
+
+func (c *ConfigMapTemplate) GetMeta() *metav1.ObjectMeta {
+	return &c.ConfigMap.ObjectMeta
 }
 
 func (c *ConfigMapTemplate) WithLabels(labels map[string]string) *ConfigMapTemplate {
-	if c.Labels == nil {
-		c.Labels = map[string]string{}
-	}
-	for k, v := range labels {
-		c.Labels[k] = v
-	}
+	c.meta.WithLabels(labels)
 	return c
 }
 
 func (c *ConfigMapTemplate) WithAnnotations(ann map[string]string) *ConfigMapTemplate {
-	if c.Annotations == nil {
-		c.Annotations = map[string]string{}
-	}
-	for k, v := range ann {
-		c.Annotations[k] = v
-	}
+	c.meta.WithAnnotations(ann)
+	return c
+}
+
+func (c *ConfigMapTemplate) WithName(name string) *ConfigMapTemplate {
+	c.meta.WithName(name)
+	return c
+}
+
+func (c *ConfigMapTemplate) WithNamespace(ns string) *ConfigMapTemplate {
+	c.meta.WithNamespace(ns)
 	return c
 }
 

@@ -23,7 +23,9 @@ import (
 )
 
 func TestNewService_SetsNameNamespaceAndDefaults(t *testing.T) {
-	s := NewService("ns1", "svc1")
+	s := NewService().
+		WithName("svc1").
+		WithNamespace("ns1")
 
 	if s == nil || s.Service == nil {
 		t.Fatalf("expected non-nil ServiceTemplate")
@@ -47,7 +49,9 @@ func TestNewService_SetsNameNamespaceAndDefaults(t *testing.T) {
 }
 
 func TestWithLabels_Merges(t *testing.T) {
-	s := NewService("ns", "svc")
+	s := NewService().
+		WithName("svc").
+		WithNamespace("ns")
 	s.Labels = nil
 
 	s.WithLabels(map[string]string{"a": "1", "b": "2"}).
@@ -60,7 +64,9 @@ func TestWithLabels_Merges(t *testing.T) {
 }
 
 func TestWithAnnotations_Merges(t *testing.T) {
-	s := NewService("ns", "svc")
+	s := NewService().
+		WithName("svc").
+		WithNamespace("ns")
 	s.Annotations = nil
 
 	s.WithAnnotations(map[string]string{"x": "y"}).
@@ -73,7 +79,9 @@ func TestWithAnnotations_Merges(t *testing.T) {
 }
 
 func TestWithSelector_Merges(t *testing.T) {
-	s := NewService("ns", "svc")
+	s := NewService().
+		WithName("svc").
+		WithNamespace("ns")
 	s.Spec.Selector = nil
 
 	s.WithSelector(map[string]string{"app": "x"}).
@@ -86,26 +94,36 @@ func TestWithSelector_Merges(t *testing.T) {
 }
 
 func TestWithType_SetsType(t *testing.T) {
-	s := NewService("ns", "svc").WithType(corev1.ServiceTypeNodePort)
+	s := NewService().
+		WithName("svc").
+		WithNamespace("ns").
+		WithType(corev1.ServiceTypeNodePort)
 	if s.Spec.Type != corev1.ServiceTypeNodePort {
 		t.Fatalf("expected type NodePort, got %q", s.Spec.Type)
 	}
 }
 
 func TestHeadless_SetsClusterIPNone(t *testing.T) {
-	s := NewService("ns", "svc").Headless()
+	s := NewService().
+		WithName("svc").
+		WithNamespace("ns").
+		Headless()
 	if s.Spec.ClusterIP != corev1.ClusterIPNone {
 		t.Fatalf("expected ClusterIP None, got %q", s.Spec.ClusterIP)
 	}
 }
 
 func TestAddPorts_Appends(t *testing.T) {
-	s := NewService("ns", "svc")
+	s := NewService().
+		WithName("svc").
+		WithNamespace("ns")
 
-	p1 := corev1.ServicePort{Name: "https", Port: 443, Protocol: corev1.ProtocolTCP}
-	p2 := corev1.ServicePort{Name: "metrics", Port: 10250, Protocol: corev1.ProtocolTCP}
+	p := []corev1.ServicePort{
+		{Name: "https", Port: 443, Protocol: corev1.ProtocolTCP},
+		{Name: "metrics", Port: 10250, Protocol: corev1.ProtocolTCP},
+	}
 
-	s.AddPorts(p1, p2)
+	s.AddPorts(p)
 
 	if len(s.Spec.Ports) != 2 {
 		t.Fatalf("expected 2 ports, got %d", len(s.Spec.Ports))
@@ -116,7 +134,9 @@ func TestAddPorts_Appends(t *testing.T) {
 }
 
 func TestAddPort_Convenience(t *testing.T) {
-	s := NewService("ns", "svc").
+	s := NewService().
+		WithName("svc").
+		WithNamespace("ns").
 		AddPort("https", 6443, 6443, corev1.ProtocolTCP)
 
 	if len(s.Spec.Ports) != 1 {
@@ -132,7 +152,9 @@ func TestAddPort_Convenience(t *testing.T) {
 }
 
 func TestBuild_ReturnsDeepCopy(t *testing.T) {
-	s := NewService("ns", "svc").
+	s := NewService().
+		WithName("svc").
+		WithNamespace("ns").
 		WithLabels(map[string]string{"app": "x"}).
 		WithSelector(map[string]string{"app": "x"}).
 		AddPort("https", 6443, 6443, corev1.ProtocolTCP)

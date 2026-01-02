@@ -50,16 +50,40 @@ func defaultDurations() durations {
 func issuerResources(ns string) []client.Object {
 	return []client.Object{
 		// managed
-		builders.NewIssuer(ns, issuerSelfSigned).SelfSigned().Build(),
-		builders.NewIssuer(ns, issuerCA).CA(secretManagedCA).Build(),
+		builders.NewIssuer().
+			WithName(issuerSelfSigned).
+			WithNamespace(ns).
+			SelfSigned().
+			Build(),
+		builders.NewIssuer().
+			WithName(issuerCA).
+			WithNamespace(ns).
+			CA(secretManagedCA).
+			Build(),
 
 		// etcd
-		builders.NewIssuer(ns, issuerEtcdSelfSigned).SelfSigned().Build(),
-		builders.NewIssuer(ns, issuerEtcdCA).CA(secretEtcdCA).Build(),
+		builders.NewIssuer().
+			WithName(issuerEtcdSelfSigned).
+			WithNamespace(ns).
+			SelfSigned().
+			Build(),
+		builders.NewIssuer().
+			WithName(issuerEtcdCA).
+			WithNamespace(ns).
+			CA(secretEtcdCA).
+			Build(),
 
 		// front-proxy
-		builders.NewIssuer(ns, issuerFrontProxySelf).SelfSigned().Build(),
-		builders.NewIssuer(ns, issuerFrontProxyCA).CA(secretFrontProxyCA).Build(),
+		builders.NewIssuer().
+			WithName(issuerFrontProxySelf).
+			WithNamespace(ns).
+			SelfSigned().
+			Build(),
+		builders.NewIssuer().
+			WithName(issuerFrontProxyCA).
+			WithNamespace(ns).
+			CA(secretFrontProxyCA).
+			Build(),
 	}
 }
 
@@ -68,21 +92,27 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 
 	// root CAs
 	objs = append(objs,
-		builders.NewCertificate(ns, secretManagedCA).
+		builders.NewCertificate().
+			WithName(secretManagedCA).
+			WithNamespace(ns).
 			WithSecretName(secretManagedCA).
 			WithCommonName(cnManagedCA).
 			IsCA(true).
 			Issuer(issuerSelfSigned).
 			Build(),
 
-		builders.NewCertificate(ns, secretEtcdCA).
+		builders.NewCertificate().
+			WithName(secretEtcdCA).
+			WithNamespace(ns).
 			WithSecretName(secretEtcdCA).
 			WithCommonName(cnEtcdCA).
 			IsCA(true).
 			Issuer(issuerEtcdSelfSigned).
 			Build(),
 
-		builders.NewCertificate(ns, secretFrontProxyCA).
+		builders.NewCertificate().
+			WithName(secretFrontProxyCA).
+			WithNamespace(ns).
 			WithSecretName(secretFrontProxyCA).
 			WithCommonName(cnFrontProxyCA).
 			IsCA(true).
@@ -92,7 +122,9 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 
 	// service account signer
 	objs = append(objs,
-		builders.NewCertificate(ns, secretSASigner).
+		builders.NewCertificate().
+			WithName(secretSASigner).
+			WithNamespace(ns).
 			WithSecretName(secretSASigner).
 			WithCommonName(cnSASigner).
 			Issuer(issuerCA).
@@ -108,7 +140,9 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 	// apiserver serving cert
 	dns, ips := apiserverSANs(mcp, ns)
 	objs = append(objs,
-		builders.NewCertificate(ns, secretAPIServerTLS).
+		builders.NewCertificate().
+			WithName(secretAPIServerTLS).
+			WithNamespace(ns).
 			WithSecretName(secretAPIServerTLS).
 			WithCommonName(cnAPIServer).
 			Issuer(issuerCA).
@@ -126,7 +160,9 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 
 	// apiserver -> kubelet client
 	objs = append(objs,
-		builders.NewCertificate(ns, secretAPIServerKubelet).
+		builders.NewCertificate().
+			WithName(secretAPIServerKubelet).
+			WithNamespace(ns).
 			WithSecretName(secretAPIServerKubelet).
 			WithCommonName(cnAPIServerKubelet).
 			Issuer(issuerCA).
@@ -147,7 +183,9 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 
 	objs = append(objs,
 		// etcd server cert
-		builders.NewCertificate(ns, "etcd-server").
+		builders.NewCertificate().
+			WithName("etcd-server").
+			WithNamespace(ns).
 			WithSecretName(secretEtcdServerTLS).
 			WithCommonName(etcd0).
 			Issuer(issuerEtcdCA).
@@ -163,7 +201,9 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 			Build(),
 
 		// etcd peer cert
-		builders.NewCertificate(ns, "etcd-peer").
+		builders.NewCertificate().
+			WithName("etcd-peer").
+			WithNamespace(ns).
 			WithSecretName(secretEtcdPeerTLS).
 			WithCommonName(etcd0).
 			Issuer(issuerEtcdCA).
@@ -179,7 +219,9 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 			Build(),
 
 		// etcd healthcheck client
-		builders.NewCertificate(ns, secretEtcdHealthClient).
+		builders.NewCertificate().
+			WithName(secretEtcdHealthClient).
+			WithNamespace(ns).
 			WithSecretName(secretEtcdHealthClient).
 			WithCommonName(cnEtcdHealth).
 			Issuer(issuerEtcdCA).
@@ -193,7 +235,9 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 			Build(),
 
 		// apiserver -> etcd client
-		builders.NewCertificate(ns, secretAPIServerEtcd).
+		builders.NewCertificate().
+			WithName(secretAPIServerEtcd).
+			WithNamespace(ns).
 			WithSecretName(secretAPIServerEtcd).
 			WithCommonName(cnAPIServerEtcd).
 			Issuer(issuerEtcdCA).
@@ -209,7 +253,9 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 
 	// front-proxy client
 	objs = append(objs,
-		builders.NewCertificate(ns, secretFrontProxyClient).
+		builders.NewCertificate().
+			WithName(secretFrontProxyClient).
+			WithNamespace(ns).
 			WithSecretName(secretFrontProxyClient).
 			WithCommonName(cnFrontProxyClient).
 			Issuer(issuerFrontProxyCA).
@@ -225,7 +271,9 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 
 	// controller-manager & scheduler clients
 	objs = append(objs,
-		builders.NewCertificate(ns, secretCMClient).
+		builders.NewCertificate().
+			WithName(secretCMClient).
+			WithNamespace(ns).
 			WithSecretName(secretCMClient).
 			WithCommonName(cnCMClient).
 			Issuer(issuerCA).
@@ -238,7 +286,9 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 			).
 			Build(),
 
-		builders.NewCertificate(ns, secretSchedulerClient).
+		builders.NewCertificate().
+			WithName(secretSchedulerClient).
+			WithNamespace(ns).
 			WithSecretName(secretSchedulerClient).
 			WithCommonName(cnSchedulerClient).
 			Issuer(issuerCA).
@@ -254,7 +304,9 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 
 	// admin client (system:masters)
 	objs = append(objs,
-		builders.NewCertificate(ns, secretAdminClient).
+		builders.NewCertificate().
+			WithName(secretAdminClient).
+			WithNamespace(ns).
 			WithSecretName(secretAdminClient).
 			WithCommonName(cnAdminClient).
 			Issuer(issuerCA).

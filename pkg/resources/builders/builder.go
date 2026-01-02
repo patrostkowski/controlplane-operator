@@ -52,6 +52,39 @@ func (m PodTemplateMutator) AddVolumes(vols ...corev1.Volume) {
 	pt.Spec.Volumes = append(pt.Spec.Volumes, vols...)
 }
 
+func (m PodTemplateMutator) WithAffinity(aff corev1.Affinity) {
+	pt := m.obj.GetPodTemplate()
+	pt.Spec.Affinity = &aff
+}
+
+func (m PodTemplateMutator) WithNodeSelector(nodeSelector map[string]string) {
+	pt := m.obj.GetPodTemplate()
+	if nodeSelector == nil {
+		return
+	}
+	n := pt.Spec.NodeSelector
+	if n == nil {
+		n = map[string]string{}
+		pt.Spec.NodeSelector = n
+	}
+	maps.Copy(n, nodeSelector)
+}
+
+func (m PodTemplateMutator) WithTolerations(toleration ...corev1.Toleration) {
+	pt := m.obj.GetPodTemplate()
+	pt.Spec.Tolerations = append(pt.Spec.Tolerations, toleration...)
+}
+
+func (m PodTemplateMutator) WithInitContainers(initContainer ...corev1.Container) {
+	pt := m.obj.GetPodTemplate()
+	pt.Spec.InitContainers = append(pt.Spec.InitContainers, initContainer...)
+}
+
+func (m PodTemplateMutator) WithPriorityClass(name string) {
+	pt := m.obj.GetPodTemplate()
+	pt.Spec.PriorityClassName = name
+}
+
 func (m *PodTemplateMutator) WithLabels(labels map[string]string) {
 	pt := m.obj.GetPodTemplate()
 	if labels == nil {
@@ -60,10 +93,9 @@ func (m *PodTemplateMutator) WithLabels(labels map[string]string) {
 	l := pt.GetLabels()
 	if l == nil {
 		l = map[string]string{}
+		pt.SetLabels(l)
 	}
-
 	maps.Copy(l, labels)
-	pt.SetLabels(l)
 }
 
 func (m *PodTemplateMutator) WithAnnotations(ann map[string]string) {
@@ -74,10 +106,9 @@ func (m *PodTemplateMutator) WithAnnotations(ann map[string]string) {
 	a := pt.GetAnnotations()
 	if a == nil {
 		a = map[string]string{}
+		pt.SetLabels(a)
 	}
-
 	maps.Copy(a, ann)
-	pt.SetLabels(a)
 }
 
 func (m PodTemplateMutator) PatchContainer(name string, fn func(*corev1.Container)) bool {
@@ -91,6 +122,11 @@ func (m PodTemplateMutator) PatchContainer(name string, fn func(*corev1.Containe
 	return false
 }
 
+func (m PodTemplateMutator) WithHostNetwork() {
+	pt := m.obj.GetPodTemplate()
+	pt.Spec.HostNetwork = true
+}
+
 func (m PodTemplateMutator) AddVolumeMounts(containerName string, mounts ...corev1.VolumeMount) bool {
 	return m.PatchContainer(containerName, func(c *corev1.Container) {
 		c.VolumeMounts = append(c.VolumeMounts, mounts...)
@@ -101,18 +137,18 @@ func (m *MetaMutator) WithLabels(labels map[string]string) {
 	l := m.obj.GetLabels()
 	if l == nil {
 		l = map[string]string{}
+		m.obj.SetLabels(l)
 	}
 	maps.Copy(l, labels)
-	m.obj.SetLabels(l)
 }
 
 func (m *MetaMutator) WithAnnotations(ann map[string]string) {
 	a := m.obj.GetAnnotations()
 	if a == nil {
 		a = map[string]string{}
+		m.obj.SetLabels(a)
 	}
 	maps.Copy(a, ann)
-	m.obj.SetLabels(a)
 }
 
 func (m *MetaMutator) WithName(name string) {

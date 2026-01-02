@@ -42,7 +42,12 @@ func TestNewDeployment_SetsBasics(t *testing.T) {
 	labels := map[string]string{"app": "demo"}
 	replicas := int32(2)
 
-	w := NewDeployment("ns1", "name1", labels, replicas)
+	w := NewDeployment().
+		WithName("ns1").
+		WithNamespace("name1").
+		WithLabels(labels).
+		WithSelector(labels).
+		WithReplicas(replicas)
 
 	if w == nil || w.Deployment == nil {
 		t.Fatalf("expected non-nil DeploymentTemplate")
@@ -68,7 +73,14 @@ func TestNewDeployment_SetsBasics(t *testing.T) {
 }
 
 func TestWithServiceAccount(t *testing.T) {
-	w := NewDeployment("ns", "name", map[string]string{"app": "x"}, 1).
+	labels := map[string]string{"app": "x"}
+	replicas := int32(1)
+	w := NewDeployment().
+		WithName("ns").
+		WithNamespace("name").
+		WithLabels(labels).
+		WithSelector(labels).
+		WithReplicas(replicas).
 		WithServiceAccount("sa-demo")
 
 	if got := w.Spec.Template.Spec.ServiceAccountName; got != "sa-demo" {
@@ -77,7 +89,15 @@ func TestWithServiceAccount(t *testing.T) {
 }
 
 func TestWithContainer_Appends(t *testing.T) {
-	w := NewDeployment("ns", "name", map[string]string{"app": "x"}, 1)
+	labels := map[string]string{"app": "x"}
+	replicas := int32(1)
+	w := NewDeployment().
+		WithName("ns").
+		WithNamespace("name").
+		WithLabels(labels).
+		WithSelector(labels).
+		WithReplicas(replicas).
+		WithServiceAccount("sa-demo")
 
 	c1 := corev1.Container{Name: "c1", Image: "img1"}
 	c2 := corev1.Container{Name: "c2", Image: "img2"}
@@ -93,7 +113,15 @@ func TestWithContainer_Appends(t *testing.T) {
 }
 
 func TestAddVolumes_Appends(t *testing.T) {
-	w := NewDeployment("ns", "name", map[string]string{"app": "x"}, 1)
+	labels := map[string]string{"app": "x"}
+	replicas := int32(1)
+	w := NewDeployment().
+		WithName("ns").
+		WithNamespace("name").
+		WithLabels(labels).
+		WithSelector(labels).
+		WithReplicas(replicas).
+		WithServiceAccount("sa-demo")
 
 	v1 := corev1.Volume{Name: "v1"}
 	v2 := corev1.Volume{Name: "v2"}
@@ -109,7 +137,15 @@ func TestAddVolumes_Appends(t *testing.T) {
 }
 
 func TestAddVolumeMounts_Appends(t *testing.T) {
-	w := NewDeployment("ns", "name", map[string]string{"app": "x"}, 1)
+	labels := map[string]string{"app": "x"}
+	replicas := int32(1)
+	w := NewDeployment().
+		WithName("ns").
+		WithNamespace("name").
+		WithLabels(labels).
+		WithSelector(labels).
+		WithReplicas(replicas).
+		WithServiceAccount("sa-demo")
 
 	volMount := corev1.VolumeMount{
 		Name:      "vol",
@@ -128,7 +164,15 @@ func TestAddVolumeMounts_Appends(t *testing.T) {
 }
 
 func TestPatchContainer_PatchesOnlyMatchingContainer(t *testing.T) {
-	w := NewDeployment("ns", "name", map[string]string{"app": "x"}, 1).
+	labels := map[string]string{"app": "x"}
+	replicas := int32(1)
+	w := NewDeployment().
+		WithName("ns").
+		WithNamespace("name").
+		WithLabels(labels).
+		WithSelector(labels).
+		WithReplicas(replicas).
+		WithServiceAccount("sa-demo").
 		WithContainer(corev1.Container{Name: "a", Image: "imgA"}).
 		WithContainer(corev1.Container{Name: "b", Image: "imgB"})
 
@@ -149,7 +193,14 @@ func TestPatchContainer_PatchesOnlyMatchingContainer(t *testing.T) {
 }
 
 func TestPatchContainer_NoOpWhenNotFound(t *testing.T) {
-	w := NewDeployment("ns", "name", map[string]string{"app": "x"}, 1).
+	labels := map[string]string{"app": "x"}
+	replicas := int32(1)
+	w := NewDeployment().
+		WithName("ns").
+		WithNamespace("name").
+		WithLabels(labels).
+		WithSelector(labels).
+		WithReplicas(replicas).
 		WithContainer(corev1.Container{Name: "a", Image: "imgA"})
 
 	before := w.Spec.Template.Spec.Containers[0].DeepCopy()
@@ -165,7 +216,14 @@ func TestPatchContainer_NoOpWhenNotFound(t *testing.T) {
 }
 
 func TestDeploymentBuild_ReturnsDeepCopy(t *testing.T) {
-	w := NewDeployment("ns", "name", map[string]string{"app": "x"}, 1).
+	labels := map[string]string{"app": "x"}
+	replicas := int32(1)
+	w := NewDeployment().
+		WithName("ns").
+		WithNamespace("name").
+		WithLabels(labels).
+		WithSelector(labels).
+		WithReplicas(replicas).
 		WithServiceAccount("sa").
 		WithContainer(corev1.Container{Name: "c", Image: "img"}).
 		AddVolumes(corev1.Volume{Name: "v"})
@@ -209,7 +267,14 @@ func TestDeploymentBuild_ReturnsDeepCopy(t *testing.T) {
 }
 
 func TestNewDeployment_ProducesValidDeploymentKind(t *testing.T) {
-	w := NewDeployment("ns", "name", map[string]string{"app": "x"}, 1)
+	labels := map[string]string{"app": "x"}
+	replicas := int32(1)
+	w := NewDeployment().
+		WithName("ns").
+		WithNamespace("name").
+		WithLabels(labels).
+		WithSelector(labels).
+		WithReplicas(replicas)
 	dep := w.Build()
 
 	if dep.APIVersion == "" || dep.Kind == "" {

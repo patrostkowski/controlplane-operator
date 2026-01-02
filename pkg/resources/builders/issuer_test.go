@@ -22,7 +22,9 @@ import (
 )
 
 func TestNewIssuer_SetsNameNamespace(t *testing.T) {
-	i := NewIssuer("ns1", "iss1")
+	i := NewIssuer().
+		WithName("iss1").
+		WithNamespace("ns1")
 	if i == nil || i.Issuer == nil {
 		t.Fatalf("expected non-nil IssuerTemplate")
 	}
@@ -35,7 +37,9 @@ func TestNewIssuer_SetsNameNamespace(t *testing.T) {
 }
 
 func TestIssuer_WithLabelsAndAnnotations_MergesAndInitializes(t *testing.T) {
-	i := NewIssuer("ns", "iss")
+	i := NewIssuer().
+		WithName("iss").
+		WithNamespace("ns")
 	i.Labels = nil
 	i.Annotations = nil
 
@@ -56,8 +60,10 @@ func TestIssuer_WithLabelsAndAnnotations_MergesAndInitializes(t *testing.T) {
 }
 
 func TestIssuer_SelfSigned_SetsSpec(t *testing.T) {
-	i := NewIssuer("ns", "iss").SelfSigned().Build()
-
+	i := NewIssuer().
+		WithName("iss").
+		WithNamespace("ns").
+		SelfSigned().Build()
 	if i.Spec.SelfSigned == nil {
 		t.Fatalf("expected SelfSigned issuer config to be set")
 	}
@@ -67,8 +73,10 @@ func TestIssuer_SelfSigned_SetsSpec(t *testing.T) {
 }
 
 func TestIssuer_CA_SetsSpec(t *testing.T) {
-	i := NewIssuer("ns", "iss").CA("my-ca-secret").Build()
-
+	i := NewIssuer().
+		WithName("iss").
+		WithNamespace("ns").
+		CA("my-ca-secret").Build()
 	if i.Spec.CA == nil || i.Spec.CA.SecretName != "my-ca-secret" {
 		t.Fatalf("expected CA secret %q, got %#v", "my-ca-secret", i.Spec.CA)
 	}
@@ -78,7 +86,10 @@ func TestIssuer_CA_SetsSpec(t *testing.T) {
 }
 
 func TestIssuer_Build_ReturnsDeepCopy(t *testing.T) {
-	tpl := NewIssuer("ns", "iss").SelfSigned()
+	tpl := NewIssuer().
+		WithName("iss").
+		WithNamespace("ns").
+		SelfSigned()
 	b1 := tpl.Build()
 	b2 := tpl.Build()
 

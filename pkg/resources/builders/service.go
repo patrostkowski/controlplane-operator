@@ -15,6 +15,8 @@
 package builders
 
 import (
+	"net"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -22,41 +24,42 @@ import (
 
 type ServiceTemplate struct {
 	*corev1.Service
+	meta MetaMutator
 }
 
-func NewService(ns, name string) *ServiceTemplate {
-	return &ServiceTemplate{
-		Service: &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: ns,
-			},
-			Spec: corev1.ServiceSpec{
-				Ports:    []corev1.ServicePort{},
-				Selector: map[string]string{},
-				Type:     corev1.ServiceTypeClusterIP,
-			},
-		},
+func NewService() *ServiceTemplate {
+	svc := &corev1.Service{}
+	newSVC := &ServiceTemplate{Service: svc}
+	newSVC.meta = MetaMutator{obj: svc}
+	newSVC.Spec = corev1.ServiceSpec{
+		Ports:    []corev1.ServicePort{},
+		Selector: map[string]string{},
+		Type:     corev1.ServiceTypeClusterIP,
 	}
+	return newSVC
+}
+
+func (s *ServiceTemplate) GetMeta() *metav1.ObjectMeta {
+	return &s.Service.ObjectMeta
 }
 
 func (s *ServiceTemplate) WithLabels(labels map[string]string) *ServiceTemplate {
-	if s.Labels == nil {
-		s.Labels = map[string]string{}
-	}
-	for k, v := range labels {
-		s.Labels[k] = v
-	}
+	s.meta.WithLabels(labels)
 	return s
 }
 
 func (s *ServiceTemplate) WithAnnotations(ann map[string]string) *ServiceTemplate {
-	if s.Annotations == nil {
-		s.Annotations = map[string]string{}
-	}
-	for k, v := range ann {
-		s.Annotations[k] = v
-	}
+	s.meta.WithAnnotations(ann)
+	return s
+}
+
+func (s *ServiceTemplate) WithName(name string) *ServiceTemplate {
+	s.meta.WithName(name)
+	return s
+}
+
+func (s *ServiceTemplate) WithNamespace(ns string) *ServiceTemplate {
+	s.meta.WithNamespace(ns)
 	return s
 }
 
@@ -75,6 +78,11 @@ func (s *ServiceTemplate) WithType(t corev1.ServiceType) *ServiceTemplate {
 	return s
 }
 
+func (s *ServiceTemplate) WithClusterIP(ipaddr net.IP) *ServiceTemplate {
+	s.Spec.ClusterIP = ipaddr.String()
+	return s
+}
+
 // Useful for etcd headless Service
 func (s *ServiceTemplate) Headless() *ServiceTemplate {
 	s.Spec.ClusterIP = corev1.ClusterIPNone
@@ -82,20 +90,21 @@ func (s *ServiceTemplate) Headless() *ServiceTemplate {
 	return s
 }
 
-func (s *ServiceTemplate) AddPorts(ports ...corev1.ServicePort) *ServiceTemplate {
+func (s *ServiceTemplate) AddPorts(ports []corev1.ServicePort) *ServiceTemplate {
 	s.Spec.Ports = append(s.Spec.Ports, ports...)
 	return s
 }
 
 // Convenience: port with targetPort as int
 func (s *ServiceTemplate) AddPort(name string, port int32, targetPort int32, protocol corev1.Protocol) *ServiceTemplate {
-	s.Spec.Ports = append(s.Spec.Ports, corev1.ServicePort{
-		Name:       name,
-		Port:       port,
-		TargetPort: intstr.FromInt(int(targetPort)),
-		Protocol:   protocol,
+	return s.AddPorts([]corev1.ServicePort{
+		{
+			Name:       name,
+			Port:       port,
+			TargetPort: intstr.FromInt(int(targetPort)),
+			Protocol:   protocol,
+		},
 	})
-	return s
 }
 
 func (s *ServiceTemplate) Build() *corev1.Service {
