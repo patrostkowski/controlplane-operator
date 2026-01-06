@@ -28,11 +28,11 @@ type DeploymentTemplate struct {
 }
 
 func NewDeployment() *DeploymentTemplate {
-	dp := &appsv1.Deployment{}
-	newDP := &DeploymentTemplate{Deployment: dp}
-	newDP.meta = MetaMutator{obj: dp}
-	newDP.pod = PodTemplateMutator{obj: newDP}
-	return newDP
+	obj := &appsv1.Deployment{}
+	b := &DeploymentTemplate{Deployment: obj}
+	b.meta = MetaMutator{obj: obj}
+	b.pod = PodTemplateMutator{obj: b}
+	return b
 }
 
 func (w *DeploymentTemplate) GetMeta() *metav1.ObjectMeta {

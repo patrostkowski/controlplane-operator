@@ -25,12 +25,12 @@ type SecretTemplate struct {
 }
 
 func NewSecret() *SecretTemplate {
-	secret := &corev1.Secret{}
-	newSecret := &SecretTemplate{Secret: secret}
-	newSecret.meta = MetaMutator{obj: secret}
-	newSecret.Data = map[string][]byte{}
-	newSecret.StringData = map[string]string{}
-	return newSecret
+	obj := &corev1.Secret{}
+	b := &SecretTemplate{Secret: obj}
+	b.meta = MetaMutator{obj: obj}
+	b.Data = map[string][]byte{}
+	b.StringData = map[string]string{}
+	return b
 }
 
 func (c *SecretTemplate) GetMeta() *metav1.ObjectMeta {

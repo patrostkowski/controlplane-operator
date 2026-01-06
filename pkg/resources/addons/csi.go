@@ -16,6 +16,7 @@ package addons
 
 import (
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -79,101 +80,123 @@ func buildCSIServiceAccount() *corev1.ServiceAccount {
 }
 
 func buildCSIRole() *rbacv1.Role {
-	rules := []rbacv1.PolicyRule{
-		{
-			APIGroups: []string{""},
-			Resources: []string{"pods"},
-			Verbs:     []string{"get", "list", "watch", "create", "patch", "update", "delete"},
-		},
-	}
-
 	return builders.NewRole().
 		WithName(CSIRoleName).
 		WithNamespace(CSINamespaceName).
-		WithRules(rules).
+		WithRules(
+			rbacv1.PolicyRule{
+				APIGroups: []string{common.CoreAPIGroup},
+				Resources: []string{common.ResourcePods},
+				Verbs: []string{
+					common.VerbGet,
+					common.VerbList,
+					common.VerbWatch,
+					common.VerbCreate,
+					common.VerbPatch,
+					common.VerbUpdate,
+					common.VerbDelete,
+				},
+			},
+		).
 		Build()
 }
 
 func buildCSIClusterRole() *rbacv1.ClusterRole {
-	rules := []rbacv1.PolicyRule{
-		{
-			APIGroups: []string{""},
-			Resources: []string{"nodes", "persistentvolumeclaims", "configmaps", "pods", "pods/log"},
-			Verbs:     []string{"get", "list", "watch"},
-		},
-		{
-			APIGroups: []string{""},
-			Resources: []string{"persistentvolumes"},
-			Verbs:     []string{"get", "list", "watch", "create", "patch", "update", "delete"},
-		},
-		{
-			APIGroups: []string{""},
-			Resources: []string{"events"},
-			Verbs:     []string{"create", "patch"},
-		},
-		{
-			APIGroups: []string{"storage.k8s.io"},
-			Resources: []string{"storageclasses"},
-			Verbs:     []string{"get", "list", "watch"},
-		},
-	}
-
 	return builders.NewClusterRole().
 		WithName(CSIClusterRoleName).
-		WithRules(rules).
+		WithRules(
+			rbacv1.PolicyRule{
+				APIGroups: []string{common.CoreAPIGroup},
+				Resources: []string{
+					common.ResourceNodes,
+					common.ResourcePVCs,
+					common.ResourceConfigMaps,
+					common.ResourcePods,
+					common.ResourcePodsLogs,
+				},
+				Verbs: []string{
+					common.VerbGet,
+					common.VerbList,
+					common.VerbWatch,
+				},
+			},
+			rbacv1.PolicyRule{
+				APIGroups: []string{common.CoreAPIGroup},
+				Resources: []string{common.ResourcePVs},
+				Verbs: []string{
+					common.VerbGet,
+					common.VerbList,
+					common.VerbWatch,
+					common.VerbCreate,
+					common.VerbPatch,
+					common.VerbUpdate,
+					common.VerbDelete,
+				},
+			},
+			rbacv1.PolicyRule{
+				APIGroups: []string{common.CoreAPIGroup},
+				Resources: []string{common.ResourceEvents},
+				Verbs: []string{
+					common.VerbCreate,
+					common.VerbPatch,
+				},
+			},
+			rbacv1.PolicyRule{
+				APIGroups: []string{common.StorageAPIGroup},
+				Resources: []string{common.ResourceStorageClasses},
+				Verbs: []string{
+					common.VerbGet,
+					common.VerbList,
+					common.VerbWatch,
+				},
+			},
+		).
 		Build()
 }
 
 func buildCSIRoleBinding() *rbacv1.RoleBinding {
-	roleRef := rbacv1.RoleRef{
-		APIGroup: rbacv1.GroupName,
-		Kind:     "Role",
-		Name:     CSIRoleName,
-	}
-	subjects := []rbacv1.Subject{
-		{
-			Kind:      rbacv1.ServiceAccountKind,
-			Name:      CSIServiceAccountName,
-			Namespace: CSINamespaceName,
-		},
-	}
-
 	return builders.NewRoleBinding().
 		WithName(CSIRoleBindingName).
 		WithNamespace(CSINamespaceName).
-		WithRefs(subjects, roleRef).
+		WithRefs(
+			rbacv1.RoleRef{
+				APIGroup: common.RBACAPIGroup,
+				Kind:     common.KindRole,
+				Name:     CSIRoleName,
+			},
+			rbacv1.Subject{
+				Kind:      rbacv1.ServiceAccountKind,
+				Name:      CSIServiceAccountName,
+				Namespace: CSINamespaceName,
+			},
+		).
 		Build()
 }
 
 func buildCSIClusterRoleBinding() *rbacv1.ClusterRoleBinding {
-	roleRef := rbacv1.RoleRef{
-		APIGroup: rbacv1.GroupName,
-		Kind:     "ClusterRole",
-		Name:     CSIClusterRoleName,
-	}
-	subjects := []rbacv1.Subject{
-		{
-			Kind:      rbacv1.ServiceAccountKind,
-			Name:      CSIServiceAccountName,
-			Namespace: CSINamespaceName,
-		},
-	}
-
 	return builders.NewClusterRoleBinding().
 		WithName(CSIClusterRoleName).
-		WithRefs(subjects, roleRef).
+		WithRefs(
+			rbacv1.RoleRef{
+				APIGroup: common.RBACAPIGroup,
+				Kind:     common.KindClusterRole,
+				Name:     CSIClusterRoleName,
+			},
+			rbacv1.Subject{
+				Kind:      common.KindServiceAccount,
+				Name:      CSIServiceAccountName,
+				Namespace: CSINamespaceName,
+			},
+		).
 		Build()
 }
 
 func buildCSIStorageClass() *storagev1.StorageClass {
-	reclaim := CSIReclaimPolicy
-	mode := CSIVolumeBindingMode
-
 	return builders.NewStorageClass().
 		WithName(CSIStorageClassName).
 		WithProvisioner(CSIProvisionerName).
-		WithPolicy(reclaim).
-		WithBindingMode(mode).
+		WithPolicy(CSIReclaimPolicy).
+		WithBindingMode(CSIVolumeBindingMode).
 		Build()
 }
 

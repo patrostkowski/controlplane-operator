@@ -25,10 +25,10 @@ type IssuerTemplate struct {
 }
 
 func NewIssuer() *IssuerTemplate {
-	iss := &certmanagerv1.Issuer{}
-	newISS := &IssuerTemplate{Issuer: iss}
-	newISS.meta = MetaMutator{obj: iss}
-	return newISS
+	obj := &certmanagerv1.Issuer{}
+	b := &IssuerTemplate{Issuer: obj}
+	b.meta = MetaMutator{obj: obj}
+	return b
 }
 
 func (i *IssuerTemplate) GetMeta() *metav1.ObjectMeta {

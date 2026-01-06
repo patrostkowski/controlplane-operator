@@ -16,6 +16,7 @@ package addons
 
 import (
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -46,58 +47,55 @@ func bootstrapTokenSecret(token BootstrapToken) *corev1.Secret {
 }
 
 func crbNodeClientAutoApprove() *rbacv1.ClusterRoleBinding {
-	roleRef := rbacv1.RoleRef{
-		APIGroup: rbacv1.GroupName,
-		Kind:     "ClusterRole",
-		Name:     RoleNodeClientCSRApprove,
-	}
-	subjects := []rbacv1.Subject{
-		{
-			APIGroup: rbacv1.GroupName,
-			Kind:     "Group",
-			Name:     GroupBootstrappers,
-		},
-	}
 	return builders.NewClusterRoleBinding().
 		WithName(CRBNodeClientAutoApproveName).
-		WithRefs(subjects, roleRef).
+		WithRefs(
+			rbacv1.RoleRef{
+				APIGroup: rbacv1.GroupName,
+				Kind:     common.KindClusterRole,
+				Name:     RoleNodeClientCSRApprove,
+			},
+			rbacv1.Subject{
+				APIGroup: common.RBACAPIGroup,
+				Kind:     common.KindGroup,
+				Name:     GroupBootstrappers,
+			},
+		).
 		Build()
 }
 
 func crbSelfNodeClientRotationAutoApprove() *rbacv1.ClusterRoleBinding {
-	roleRef := rbacv1.RoleRef{
-		APIGroup: rbacv1.GroupName,
-		Kind:     "ClusterRole",
-		Name:     RoleSelfNodeClientCSR,
-	}
-	subjects := []rbacv1.Subject{
-		{
-			APIGroup: rbacv1.GroupName,
-			Kind:     "Group",
-			Name:     GroupNodes,
-		},
-	}
 	return builders.NewClusterRoleBinding().
 		WithName(CRBSelfNodeClientRotationName).
-		WithRefs(subjects, roleRef).
+		WithRefs(
+			rbacv1.RoleRef{
+				APIGroup: rbacv1.GroupName,
+				Kind:     common.KindClusterRole,
+				Name:     RoleSelfNodeClientCSR,
+			},
+			rbacv1.Subject{
+				APIGroup: rbacv1.GroupName,
+				Kind:     common.KindGroup,
+				Name:     GroupNodes,
+			},
+		).
 		Build()
 }
 
 func crbNodeBootstrapper() *rbacv1.ClusterRoleBinding {
-	roleRef := rbacv1.RoleRef{
-		APIGroup: rbacv1.GroupName,
-		Kind:     "ClusterRole",
-		Name:     RoleNodeBootstrapper,
-	}
-	subjects := []rbacv1.Subject{
-		{
-			APIGroup: rbacv1.GroupName,
-			Kind:     "Group",
-			Name:     GroupBootstrappers,
-		},
-	}
 	return builders.NewClusterRoleBinding().
 		WithName(CRBNodeBootstrapperName).
-		WithRefs(subjects, roleRef).
+		WithRefs(
+			rbacv1.RoleRef{
+				APIGroup: rbacv1.GroupName,
+				Kind:     common.KindClusterRole,
+				Name:     RoleNodeBootstrapper,
+			},
+			rbacv1.Subject{
+				APIGroup: rbacv1.GroupName,
+				Kind:     common.KindGroup,
+				Name:     GroupBootstrappers,
+			},
+		).
 		Build()
 }

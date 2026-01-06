@@ -11,10 +11,10 @@ type NamespaceTemplate struct {
 }
 
 func NewNamespace() *NamespaceTemplate {
-	ns := &corev1.Namespace{}
-	newNS := &NamespaceTemplate{Namespace: ns}
-	newNS.meta = MetaMutator{obj: ns}
-	return newNS
+	obj := &corev1.Namespace{}
+	b := &NamespaceTemplate{Namespace: obj}
+	b.meta = MetaMutator{obj: obj}
+	return b
 }
 
 func (n *NamespaceTemplate) GetMeta() *metav1.ObjectMeta {

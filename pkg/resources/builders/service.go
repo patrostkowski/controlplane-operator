@@ -28,15 +28,15 @@ type ServiceTemplate struct {
 }
 
 func NewService() *ServiceTemplate {
-	svc := &corev1.Service{}
-	newSVC := &ServiceTemplate{Service: svc}
-	newSVC.meta = MetaMutator{obj: svc}
-	newSVC.Spec = corev1.ServiceSpec{
+	obj := &corev1.Service{}
+	b := &ServiceTemplate{Service: obj}
+	b.meta = MetaMutator{obj: obj}
+	b.Spec = corev1.ServiceSpec{
 		Ports:    []corev1.ServicePort{},
 		Selector: map[string]string{},
 		Type:     corev1.ServiceTypeClusterIP,
 	}
-	return newSVC
+	return b
 }
 
 func (s *ServiceTemplate) GetMeta() *metav1.ObjectMeta {

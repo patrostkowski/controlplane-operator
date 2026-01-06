@@ -17,6 +17,7 @@ package addons
 import (
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -72,49 +73,50 @@ func buildFlannelNamespace() *corev1.Namespace {
 
 func buildFlannelClusterRole() *rbacv1.ClusterRole {
 	labels := defFlannelLabels()
-	rules := []rbacv1.PolicyRule{
-		{
-			APIGroups: []string{""},
-			Resources: []string{"pods"},
-			Verbs:     []string{"get"},
-		},
-		{
-			APIGroups: []string{""},
-			Resources: []string{"nodes"},
-			Verbs:     []string{"get", "list", "watch"},
-		},
-		{
-			APIGroups: []string{""},
-			Resources: []string{"nodes/status"},
-			Verbs:     []string{"patch"},
-		},
-	}
-
 	return builders.NewClusterRole().
 		WithName(FlannelClusterRoleName).
 		WithLabels(labels).
-		WithRules(rules).
+		WithRules(
+			rbacv1.PolicyRule{
+				APIGroups: []string{common.CoreAPIGroup},
+				Resources: []string{common.ResourcePods},
+				Verbs:     []string{common.VerbGet},
+			},
+			rbacv1.PolicyRule{
+				APIGroups: []string{common.CoreAPIGroup},
+				Resources: []string{common.ResourceNodes},
+				Verbs: []string{
+					common.VerbGet,
+					common.VerbList,
+					common.VerbWatch,
+				},
+			},
+			rbacv1.PolicyRule{
+				APIGroups: []string{common.CoreAPIGroup},
+				Resources: []string{common.ResourceNodesStatus},
+				Verbs:     []string{common.VerbPatch},
+			},
+		).
 		Build()
 }
 
 func buildFLannelClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	labels := defFlannelLabels()
-	roleRef := rbacv1.RoleRef{
-		APIGroup: "rbac.authorization.k8s.io",
-		Kind:     "ClusterRole",
-		Name:     FlannelClusterRoleName,
-	}
-	subjects := []rbacv1.Subject{
-		{
-			Kind:      "ServiceAccount",
-			Name:      FlannelServiceAccountName,
-			Namespace: FlannelNamespaceName,
-		},
-	}
 	return builders.NewClusterRoleBinding().
 		WithName(FlannelClusterRoleBindingName).
 		WithLabels(labels).
-		WithRefs(subjects, roleRef).
+		WithRefs(
+			rbacv1.RoleRef{
+				APIGroup: common.RBACAPIGroup,
+				Kind:     common.KindClusterRole,
+				Name:     FlannelClusterRoleName,
+			},
+			rbacv1.Subject{
+				Kind:      common.KindServiceAccount,
+				Name:      FlannelServiceAccountName,
+				Namespace: FlannelNamespaceName,
+			},
+		).
 		Build()
 }
 
@@ -293,7 +295,7 @@ func buildFlannelDaemonSet() *appsv1.DaemonSet {
 		},
 	}
 
-	return builders.NewDaemonset().
+	return builders.NewDaemonSet().
 		WithName(FlannelDaemonSetName).
 		WithNamespace(FlannelNamespaceName).
 		WithLabels(labels).

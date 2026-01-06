@@ -25,12 +25,12 @@ type ConfigMapTemplate struct {
 }
 
 func NewConfigMap() *ConfigMapTemplate {
-	cm := &corev1.ConfigMap{}
-	newCM := &ConfigMapTemplate{ConfigMap: cm}
-	newCM.meta = MetaMutator{obj: cm}
-	newCM.Data = map[string]string{}
-	newCM.BinaryData = map[string][]byte{}
-	return newCM
+	obj := &corev1.ConfigMap{}
+	b := &ConfigMapTemplate{ConfigMap: obj}
+	b.meta = MetaMutator{obj: obj}
+	b.Data = map[string]string{}
+	b.BinaryData = map[string][]byte{}
+	return b
 }
 
 func (c *ConfigMapTemplate) GetMeta() *metav1.ObjectMeta {

@@ -50,22 +50,20 @@ func buildKubeproxyServiceAccount() *corev1.ServiceAccount {
 }
 
 func buildKubeproxyClusterRoleBinding() *rbacv1.ClusterRoleBinding {
-	roleRef := rbacv1.RoleRef{
-		APIGroup: rbacv1.GroupName,
-		Kind:     "ClusterRole",
-		Name:     "system:node-proxier",
-	}
-	subjects := []rbacv1.Subject{
-		{
-			Kind:      rbacv1.ServiceAccountKind,
-			Name:      "kube-proxy",
-			Namespace: "kube-system",
-		},
-	}
-
 	return builders.NewClusterRoleBinding().
 		WithName(kubeProxyName).
-		WithRefs(subjects, roleRef).
+		WithRefs(
+			rbacv1.RoleRef{
+				APIGroup: rbacv1.GroupName,
+				Kind:     "ClusterRole",
+				Name:     "system:node-proxier",
+			},
+			rbacv1.Subject{
+				Kind:      rbacv1.ServiceAccountKind,
+				Name:      "kube-proxy",
+				Namespace: "kube-system",
+			},
+		).
 		Build()
 }
 
@@ -208,7 +206,7 @@ func buildKubeproxyDaemonSet(ma *mcpv1alpha1.ManagedControlPlane) *appsv1.Daemon
 		},
 	}
 
-	return builders.NewDaemonset().
+	return builders.NewDaemonSet().
 		WithName(kubeProxyName).
 		WithNamespace(kubeProxyNamespaceName).
 		WithLabels(labels).

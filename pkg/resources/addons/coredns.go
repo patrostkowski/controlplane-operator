@@ -17,6 +17,7 @@ package addons
 import (
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -88,86 +89,97 @@ func buildCoreDNSServiceAccount() *corev1.ServiceAccount {
 }
 
 func buildCoreDNSClusterRoleBinding() *rbacv1.ClusterRoleBinding {
-	roleRef := rbacv1.RoleRef{
-		APIGroup: rbacv1.GroupName,
-		Kind:     "ClusterRole",
-		Name:     CoreDNSClusterRoleName,
-	}
-
-	subjects := []rbacv1.Subject{
-		{
-			Kind:      rbacv1.ServiceAccountKind,
-			Name:      CoreDNSServiceAccountName,
-			Namespace: CoreDNSNamespaceName,
-		},
-	}
-
 	return builders.NewClusterRoleBinding().
 		WithName(CoreDNSClusterRoleBindingName).
-		WithRefs(subjects, roleRef).
+		WithRefs(
+			rbacv1.RoleRef{
+				APIGroup: common.RBACAPIGroup,
+				Kind:     common.KindClusterRole,
+				Name:     CoreDNSClusterRoleName,
+			},
+
+			rbacv1.Subject{
+				Kind:      common.KindServiceAccount,
+				Name:      CoreDNSServiceAccountName,
+				Namespace: CoreDNSNamespaceName,
+			},
+		).
 		Build()
 }
 
 func buildCoreDNSClusterRole() *rbacv1.ClusterRole {
-	rules := []rbacv1.PolicyRule{
-		{
-			APIGroups: []string{""},
-			Resources: []string{"endpoints", "services", "pods", "namespaces"},
-			Verbs:     []string{"list", "watch"},
-		},
-		{
-			APIGroups: []string{"discovery.k8s.io"},
-			Resources: []string{"endpointslices"},
-			Verbs:     []string{"list", "watch"},
-		},
-		{
-			APIGroups: []string{""},
-			Resources: []string{"nodes"},
-			Verbs:     []string{"get", "list", "watch"},
-		},
-	}
-
 	return builders.NewClusterRole().
 		WithName(CoreDNSClusterRoleName).
-		WithRules(rules).
+		WithRules(
+			rbacv1.PolicyRule{
+				APIGroups: []string{common.CoreAPIGroup},
+				Resources: []string{
+					common.ResourceEndpoints,
+					common.ResourceServices,
+					common.ResourcePods,
+					common.ResourceNamespaces,
+				},
+				Verbs: []string{
+					common.VerbList,
+					common.VerbWatch,
+				},
+			},
+			rbacv1.PolicyRule{
+				APIGroups: []string{common.DiscoveryAPIGroup},
+				Resources: []string{common.ResourceEndpointSlices},
+				Verbs: []string{
+					common.VerbList,
+					common.VerbWatch,
+				},
+			},
+			rbacv1.PolicyRule{
+				APIGroups: []string{common.CoreAPIGroup},
+				Resources: []string{common.ResourceNodes},
+				Verbs: []string{
+					common.VerbGet,
+					common.VerbList,
+					common.VerbWatch,
+				},
+			},
+		).
 		Build()
 }
 
 func buildCoreDNSRole() *rbacv1.Role {
-	rules := []rbacv1.PolicyRule{
-		{
-			APIGroups:     []string{""},
-			Resources:     []string{"configmaps"},
-			ResourceNames: []string{CoreDNSConfigMapName},
-			Verbs:         []string{"get", "list", "watch"},
-		},
-	}
-
 	return builders.NewRole().
 		WithName(CoreDNSRoleName).
 		WithNamespace(CoreDNSNamespaceName).
-		WithRules(rules).
+		WithRules(
+			rbacv1.PolicyRule{
+				APIGroups:     []string{common.CoreAPIGroup},
+				Resources:     []string{common.ResourceConfigMaps},
+				ResourceNames: []string{CoreDNSConfigMapName},
+				Verbs: []string{
+					common.VerbGet,
+					common.VerbList,
+					common.VerbWatch,
+				},
+			},
+		).
 		Build()
 }
 
 func buildCoreDNSRoleBinding() *rbacv1.RoleBinding {
-	roleRef := rbacv1.RoleRef{
-		APIGroup: rbacv1.GroupName,
-		Kind:     "Role",
-		Name:     CoreDNSRoleName,
-	}
-	subjects := []rbacv1.Subject{
-		{
-			Kind:      rbacv1.ServiceAccountKind,
-			Name:      CoreDNSServiceAccountName,
-			Namespace: CoreDNSNamespaceName,
-		},
-	}
-
 	return builders.NewRoleBinding().
 		WithName(CoreDNSRoleBindingName).
 		WithNamespace(CoreDNSNamespaceName).
-		WithRefs(subjects, roleRef).
+		WithRefs(
+			rbacv1.RoleRef{
+				APIGroup: common.RBACAPIGroup,
+				Kind:     common.KindRole,
+				Name:     CoreDNSRoleName,
+			},
+			rbacv1.Subject{
+				Kind:      rbacv1.ServiceAccountKind,
+				Name:      CoreDNSServiceAccountName,
+				Namespace: CoreDNSNamespaceName,
+			},
+		).
 		Build()
 }
 

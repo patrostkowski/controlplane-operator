@@ -26,12 +26,12 @@ type DaemonsetTemplate struct {
 	meta MetaMutator
 }
 
-func NewDaemonset() *DaemonsetTemplate {
-	ds := &appsv1.DaemonSet{}
-	newDS := &DaemonsetTemplate{DaemonSet: ds}
-	newDS.meta = MetaMutator{obj: ds}
-	newDS.pod = PodTemplateMutator{obj: newDS}
-	return newDS
+func NewDaemonSet() *DaemonsetTemplate {
+	obj := &appsv1.DaemonSet{}
+	b := &DaemonsetTemplate{DaemonSet: obj}
+	b.meta = MetaMutator{obj: obj}
+	b.pod = PodTemplateMutator{obj: b}
+	return b
 }
 
 func (w *DaemonsetTemplate) GetMeta() *metav1.ObjectMeta {

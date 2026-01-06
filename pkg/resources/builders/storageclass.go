@@ -26,10 +26,10 @@ type StorageClassTemplate struct {
 }
 
 func NewStorageClass() *StorageClassTemplate {
-	sc := &storagev1.StorageClass{}
-	newSC := &StorageClassTemplate{StorageClass: sc}
-	newSC.meta = MetaMutator{obj: sc}
-	return newSC
+	obj := &storagev1.StorageClass{}
+	b := &StorageClassTemplate{StorageClass: obj}
+	b.meta = MetaMutator{obj: obj}
+	return b
 }
 
 func (s *StorageClassTemplate) GetMeta() *metav1.ObjectMeta {

@@ -28,11 +28,11 @@ type StatefulSetTemplate struct {
 }
 
 func NewStatefulSet() *StatefulSetTemplate {
-	sts := &appsv1.StatefulSet{}
-	newSTS := &StatefulSetTemplate{StatefulSet: sts}
-	newSTS.meta = MetaMutator{obj: sts}
-	newSTS.pod = PodTemplateMutator{obj: newSTS}
-	return newSTS
+	obj := &appsv1.StatefulSet{}
+	b := &StatefulSetTemplate{StatefulSet: obj}
+	b.meta = MetaMutator{obj: obj}
+	b.pod = PodTemplateMutator{obj: b}
+	return b
 }
 
 func (s *StatefulSetTemplate) GetMeta() *metav1.ObjectMeta {

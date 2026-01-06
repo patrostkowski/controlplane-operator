@@ -16,10 +16,10 @@ type ClusterRoleBindingTemplate struct {
 }
 
 func NewClusterRole() *ClusterRoleTemplate {
-	cr := &rbacv1.ClusterRole{}
-	newCR := &ClusterRoleTemplate{ClusterRole: cr}
-	newCR.meta = MetaMutator{obj: cr}
-	return newCR
+	obj := &rbacv1.ClusterRole{}
+	b := &ClusterRoleTemplate{ClusterRole: obj}
+	b.meta = MetaMutator{obj: obj}
+	return b
 }
 
 func NewClusterRoleBinding() *ClusterRoleBindingTemplate {
@@ -29,7 +29,6 @@ func NewClusterRoleBinding() *ClusterRoleBindingTemplate {
 	return newCRB
 }
 
-// ClusterRole
 func (c *ClusterRoleTemplate) GetMeta() *metav1.ObjectMeta {
 	return &c.ClusterRole.ObjectMeta
 }
@@ -49,7 +48,7 @@ func (c *ClusterRoleTemplate) WithName(name string) *ClusterRoleTemplate {
 	return c
 }
 
-func (c *ClusterRoleTemplate) WithRules(rules []rbacv1.PolicyRule) *ClusterRoleTemplate {
+func (c *ClusterRoleTemplate) WithRules(rules ...rbacv1.PolicyRule) *ClusterRoleTemplate {
 	c.ClusterRole.Rules = append(c.ClusterRole.Rules, rules...)
 	return c
 }
@@ -78,7 +77,7 @@ func (b *ClusterRoleBindingTemplate) WithName(name string) *ClusterRoleBindingTe
 	return b
 }
 
-func (b *ClusterRoleBindingTemplate) WithRefs(subjects []rbacv1.Subject, roleRef rbacv1.RoleRef) *ClusterRoleBindingTemplate {
+func (b *ClusterRoleBindingTemplate) WithRefs(roleRef rbacv1.RoleRef, subjects ...rbacv1.Subject) *ClusterRoleBindingTemplate {
 	b.ClusterRoleBinding.Subjects = append(b.ClusterRoleBinding.Subjects, subjects...)
 	b.ClusterRoleBinding.RoleRef = roleRef
 	return b

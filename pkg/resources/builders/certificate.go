@@ -28,16 +28,16 @@ type CertificateTemplate struct {
 }
 
 func NewCertificate() *CertificateTemplate {
-	crt := &certmanagerv1.Certificate{}
-	newCRT := &CertificateTemplate{Certificate: crt}
-	newCRT.meta = MetaMutator{obj: crt}
-	newCRT.Spec = certmanagerv1.CertificateSpec{
+	obj := &certmanagerv1.Certificate{}
+	b := &CertificateTemplate{Certificate: obj}
+	b.meta = MetaMutator{obj: obj}
+	b.Spec = certmanagerv1.CertificateSpec{
 		PrivateKey: &certmanagerv1.CertificatePrivateKey{
 			Algorithm: certmanagerv1.RSAKeyAlgorithm,
 			Size:      2048,
 		},
 	}
-	return newCRT
+	return b
 }
 
 func (c *CertificateTemplate) GetMeta() *metav1.ObjectMeta {

@@ -16,10 +16,10 @@ type RoleBindingTemplate struct {
 }
 
 func NewRole() *RoleTemplate {
-	r := &rbacv1.Role{}
-	newRole := &RoleTemplate{Role: r}
-	newRole.meta = MetaMutator{obj: r}
-	return newRole
+	obj := &rbacv1.Role{}
+	b := &RoleTemplate{Role: obj}
+	b.meta = MetaMutator{obj: obj}
+	return b
 }
 
 func NewRoleBinding() *RoleBindingTemplate {
@@ -54,7 +54,7 @@ func (r *RoleTemplate) WithNamespace(ns string) *RoleTemplate {
 	return r
 }
 
-func (r *RoleTemplate) WithRules(rules []rbacv1.PolicyRule) *RoleTemplate {
+func (r *RoleTemplate) WithRules(rules ...rbacv1.PolicyRule) *RoleTemplate {
 	r.Role.Rules = append(r.Role.Rules, rules...)
 	return r
 }
@@ -88,7 +88,7 @@ func (b *RoleBindingTemplate) WithNamespace(ns string) *RoleBindingTemplate {
 	return b
 }
 
-func (b *RoleBindingTemplate) WithRefs(subjects []rbacv1.Subject, roleRef rbacv1.RoleRef) *RoleBindingTemplate {
+func (b *RoleBindingTemplate) WithRefs(roleRef rbacv1.RoleRef, subjects ...rbacv1.Subject) *RoleBindingTemplate {
 	b.RoleBinding.Subjects = append(b.RoleBinding.Subjects, subjects...)
 	b.RoleBinding.RoleRef = roleRef
 	return b
