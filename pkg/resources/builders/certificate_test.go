@@ -24,7 +24,9 @@ import (
 )
 
 func TestNewCertificate_SetsNameNamespaceAndPrivateKeyDefaults(t *testing.T) {
-	c := NewCertificate("ns1", "cert1")
+	c := NewCertificate().
+		WithName("cert1").
+		WithNamespace("ns1")
 	if c == nil || c.Certificate == nil {
 		t.Fatalf("expected non-nil CertificateTemplate")
 	}
@@ -43,7 +45,9 @@ func TestCertificate_Basics(t *testing.T) {
 	dur := &metav1.Duration{Duration: 10 * time.Hour}
 	renew := &metav1.Duration{Duration: 1 * time.Hour}
 
-	c := NewCertificate("ns", "cert").
+	c := NewCertificate().
+		WithName("cert").
+		WithNamespace("ns").
 		WithSecretName("s").
 		WithCommonName("cn").
 		IsCA(true).
@@ -81,7 +85,9 @@ func TestCertificate_Basics(t *testing.T) {
 }
 
 func TestCertificate_WithLabelsAndAnnotations_MergesAndInitializes(t *testing.T) {
-	c := NewCertificate("ns", "cert")
+	c := NewCertificate().
+		WithName("cert").
+		WithNamespace("ns")
 	c.Labels = nil
 	c.Annotations = nil
 
@@ -102,7 +108,9 @@ func TestCertificate_WithLabelsAndAnnotations_MergesAndInitializes(t *testing.T)
 }
 
 func TestCertificate_Build_ReturnsDeepCopy(t *testing.T) {
-	tpl := NewCertificate("ns", "cert").
+	tpl := NewCertificate().
+		WithName("cert").
+		WithNamespace("ns").
 		WithSecretName("s").
 		WithDNSNames("a")
 

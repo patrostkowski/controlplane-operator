@@ -21,36 +21,37 @@ import (
 
 type IssuerTemplate struct {
 	*certmanagerv1.Issuer
+	meta MetaMutator
 }
 
-func NewIssuer(ns, name string) *IssuerTemplate {
-	return &IssuerTemplate{
-		Issuer: &certmanagerv1.Issuer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: ns,
-			},
-		},
-	}
+func NewIssuer() *IssuerTemplate {
+	obj := &certmanagerv1.Issuer{}
+	b := &IssuerTemplate{Issuer: obj}
+	b.meta = MetaMutator{obj: obj}
+	return b
+}
+
+func (i *IssuerTemplate) GetMeta() *metav1.ObjectMeta {
+	return &i.Issuer.ObjectMeta
 }
 
 func (i *IssuerTemplate) WithLabels(labels map[string]string) *IssuerTemplate {
-	if i.Labels == nil {
-		i.Labels = map[string]string{}
-	}
-	for k, v := range labels {
-		i.Labels[k] = v
-	}
+	i.meta.WithLabels(labels)
 	return i
 }
 
 func (i *IssuerTemplate) WithAnnotations(ann map[string]string) *IssuerTemplate {
-	if i.Annotations == nil {
-		i.Annotations = map[string]string{}
-	}
-	for k, v := range ann {
-		i.Annotations[k] = v
-	}
+	i.meta.WithAnnotations(ann)
+	return i
+}
+
+func (i *IssuerTemplate) WithName(name string) *IssuerTemplate {
+	i.meta.WithName(name)
+	return i
+}
+
+func (i *IssuerTemplate) WithNamespace(ns string) *IssuerTemplate {
+	i.meta.WithNamespace(ns)
 	return i
 }
 

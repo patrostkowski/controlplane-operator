@@ -40,7 +40,9 @@ func buildService(cp *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 	labels := map[string]string{appLabelKey: appLabelVal}
 	ns := cp.Namespace
 
-	return builders.NewService(ns, nameEtcd).
+	return builders.NewService().
+		WithName(nameEtcd).
+		WithNamespace(ns).
 		Headless().
 		WithLabels(labels).
 		WithSelector(map[string]string(labels)).
@@ -115,7 +117,13 @@ func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
 		},
 	}
 
-	return builders.NewStatefulSet(ns, nameEtcd, labels, replicas, nameEtcd).
+	return builders.NewStatefulSet().
+		WithName(nameEtcd).
+		WithNamespace(ns).
+		WithLabels(labels).
+		WithSelector(labels).
+		WithReplicas(replicas).
+		WithServiceName(nameEtcd).
 		WithContainer(etcdContainer).
 		AddVolumes(p.Volumes()...).
 		WithVolumeClaims(claim).

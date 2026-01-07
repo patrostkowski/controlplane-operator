@@ -20,7 +20,9 @@ import (
 )
 
 func TestNewConfigMap_SetsNameNamespaceAndInitializesMaps(t *testing.T) {
-	c := NewConfigMap("ns1", "cm1")
+	c := NewConfigMap().
+		WithName("cm1").
+		WithNamespace("ns1")
 
 	if c == nil || c.ConfigMap == nil {
 		t.Fatalf("expected non-nil ConfigMapTemplate")
@@ -42,7 +44,9 @@ func TestNewConfigMap_SetsNameNamespaceAndInitializesMaps(t *testing.T) {
 }
 
 func TestWithLabels_MergesAndInitializes(t *testing.T) {
-	c := NewConfigMap("ns", "cm")
+	c := NewConfigMap().
+		WithName("cm").
+		WithNamespace("ns")
 	c.Labels = nil
 
 	c.WithLabels(map[string]string{"a": "1", "b": "2"}).
@@ -55,7 +59,9 @@ func TestWithLabels_MergesAndInitializes(t *testing.T) {
 }
 
 func TestWithAnnotations_MergesAndInitializes(t *testing.T) {
-	c := NewConfigMap("ns", "cm")
+	c := NewConfigMap().
+		WithName("cm").
+		WithNamespace("ns")
 	c.Annotations = nil
 
 	c.WithAnnotations(map[string]string{"x": "y"}).
@@ -68,7 +74,9 @@ func TestWithAnnotations_MergesAndInitializes(t *testing.T) {
 }
 
 func TestPut_SetsDataKey(t *testing.T) {
-	c := NewConfigMap("ns", "cm")
+	c := NewConfigMap().
+		WithName("cm").
+		WithNamespace("ns")
 	c.Data = nil // ensure Put handles nil map
 
 	c.Put("k1", "v1").
@@ -82,7 +90,9 @@ func TestPut_SetsDataKey(t *testing.T) {
 }
 
 func TestPutBytes_SetsBinaryDataKey(t *testing.T) {
-	c := NewConfigMap("ns", "cm")
+	c := NewConfigMap().
+		WithName("cm").
+		WithNamespace("ns")
 	c.BinaryData = nil // ensure PutBytes handles nil map
 
 	c.PutBytes("b1", []byte{1, 2, 3})
@@ -98,7 +108,9 @@ func TestPutBytes_SetsBinaryDataKey(t *testing.T) {
 }
 
 func TestConfigMapBuild_ReturnsDeepCopy(t *testing.T) {
-	c := NewConfigMap("ns", "cm").
+	c := NewConfigMap().
+		WithName("cm").
+		WithNamespace("ns").
 		WithLabels(map[string]string{"app": "x"}).
 		WithAnnotations(map[string]string{"a": "b"}).
 		Put("k", "v").

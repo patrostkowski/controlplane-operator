@@ -24,42 +24,43 @@ const IssuerKind = "Issuer"
 
 type CertificateTemplate struct {
 	*certmanagerv1.Certificate
+	meta MetaMutator
 }
 
-func NewCertificate(ns, name string) *CertificateTemplate {
-	return &CertificateTemplate{
-		Certificate: &certmanagerv1.Certificate{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: ns,
-			},
-			Spec: certmanagerv1.CertificateSpec{
-				PrivateKey: &certmanagerv1.CertificatePrivateKey{
-					Algorithm: certmanagerv1.RSAKeyAlgorithm,
-					Size:      2048,
-				},
-			},
+func NewCertificate() *CertificateTemplate {
+	obj := &certmanagerv1.Certificate{}
+	b := &CertificateTemplate{Certificate: obj}
+	b.meta = MetaMutator{obj: obj}
+	b.Spec = certmanagerv1.CertificateSpec{
+		PrivateKey: &certmanagerv1.CertificatePrivateKey{
+			Algorithm: certmanagerv1.RSAKeyAlgorithm,
+			Size:      2048,
 		},
 	}
+	return b
+}
+
+func (c *CertificateTemplate) GetMeta() *metav1.ObjectMeta {
+	return &c.Certificate.ObjectMeta
 }
 
 func (c *CertificateTemplate) WithLabels(labels map[string]string) *CertificateTemplate {
-	if c.Labels == nil {
-		c.Labels = map[string]string{}
-	}
-	for k, v := range labels {
-		c.Labels[k] = v
-	}
+	c.meta.WithLabels(labels)
 	return c
 }
 
 func (c *CertificateTemplate) WithAnnotations(ann map[string]string) *CertificateTemplate {
-	if c.Annotations == nil {
-		c.Annotations = map[string]string{}
-	}
-	for k, v := range ann {
-		c.Annotations[k] = v
-	}
+	c.meta.WithAnnotations(ann)
+	return c
+}
+
+func (c *CertificateTemplate) WithName(name string) *CertificateTemplate {
+	c.meta.WithName(name)
+	return c
+}
+
+func (c *CertificateTemplate) WithNamespace(ns string) *CertificateTemplate {
+	c.meta.WithNamespace(ns)
 	return c
 }
 

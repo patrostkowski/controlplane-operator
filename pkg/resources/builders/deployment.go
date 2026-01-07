@@ -18,27 +18,63 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 type DeploymentTemplate struct {
 	*appsv1.Deployment
-	pod PodTemplateMutator
+	pod  PodTemplateMutator
+	meta MetaMutator
 }
 
-func NewDeployment(ns, name string, labels map[string]string, replicas int32) *DeploymentTemplate {
-	d := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: labels},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{MatchLabels: labels},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: labels},
-				Spec:       corev1.PodSpec{},
-			},
-		},
+func NewDeployment() *DeploymentTemplate {
+	obj := &appsv1.Deployment{}
+	b := &DeploymentTemplate{Deployment: obj}
+	b.meta = MetaMutator{obj: obj}
+	b.pod = PodTemplateMutator{obj: b}
+	return b
+}
+
+func (w *DeploymentTemplate) GetMeta() *metav1.ObjectMeta {
+	return &w.Deployment.ObjectMeta
+}
+
+func (w *DeploymentTemplate) WithLabels(labels map[string]string) *DeploymentTemplate {
+	w.meta.WithLabels(labels)
+	return w
+}
+
+func (w *DeploymentTemplate) WithSelector(sel map[string]string) *DeploymentTemplate {
+	if w.Spec.Selector == nil {
+		w.Spec.Selector = &metav1.LabelSelector{}
 	}
-	w := &DeploymentTemplate{Deployment: d}
-	w.pod = PodTemplateMutator{obj: w}
+	if w.Spec.Selector.MatchLabels == nil {
+		w.Spec.Selector.MatchLabels = map[string]string{}
+	}
+	for k, v := range sel {
+		w.Spec.Selector.MatchLabels[k] = v
+	}
+	w.pod.WithLabels(sel)
+	return w
+}
+
+func (w *DeploymentTemplate) WithAnnotations(ann map[string]string) *DeploymentTemplate {
+	w.meta.WithAnnotations(ann)
+	return w
+}
+
+func (w *DeploymentTemplate) WithName(name string) *DeploymentTemplate {
+	w.meta.WithName(name)
+	return w
+}
+
+func (w *DeploymentTemplate) WithNamespace(ns string) *DeploymentTemplate {
+	w.meta.WithNamespace(ns)
+	return w
+}
+
+func (w *DeploymentTemplate) WithReplicas(replicas int32) *DeploymentTemplate {
+	w.Deployment.Spec.Replicas = ptr.To(replicas)
 	return w
 }
 

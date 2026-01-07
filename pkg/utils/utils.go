@@ -65,11 +65,10 @@ func IPAtOffset(cidr string, offset uint32) (net.IP, error) {
 
 	network := ipnet.IP.To4()
 
-	base :=
-		uint32(network[0])<<24 |
-			uint32(network[1])<<16 |
-			uint32(network[2])<<8 |
-			uint32(network[3])
+	base := uint32(network[0])<<24 |
+		uint32(network[1])<<16 |
+		uint32(network[2])<<8 |
+		uint32(network[3])
 
 	target := base + offset
 

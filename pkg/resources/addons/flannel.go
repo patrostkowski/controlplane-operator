@@ -17,11 +17,11 @@ package addons
 import (
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -64,82 +64,73 @@ func defFlannelNSLabels() map[string]string {
 }
 
 func buildFlannelNamespace() *corev1.Namespace {
+	labels := defFlannelNSLabels()
 	return builders.NewNamespace().
 		WithName(FlannelNamespaceName).
-		WithLabels(defFlannelNSLabels()).
+		WithLabels(labels).
 		Build()
 }
 
 func buildFlannelClusterRole() *rbacv1.ClusterRole {
-	return &rbacv1.ClusterRole{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "rbac.authorization.k8s.io/v1",
-			Kind:       "ClusterRole",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   FlannelClusterRoleName,
-			Labels: defFlannelLabels(),
-		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups: []string{""},
-				Resources: []string{"pods"},
-				Verbs:     []string{"get"},
+	labels := defFlannelLabels()
+	return builders.NewClusterRole().
+		WithName(FlannelClusterRoleName).
+		WithLabels(labels).
+		WithRules(
+			rbacv1.PolicyRule{
+				APIGroups: []string{common.CoreAPIGroup},
+				Resources: []string{common.ResourcePods},
+				Verbs:     []string{common.VerbGet},
 			},
-			{
-				APIGroups: []string{""},
-				Resources: []string{"nodes"},
-				Verbs:     []string{"get", "list", "watch"},
+			rbacv1.PolicyRule{
+				APIGroups: []string{common.CoreAPIGroup},
+				Resources: []string{common.ResourceNodes},
+				Verbs: []string{
+					common.VerbGet,
+					common.VerbList,
+					common.VerbWatch,
+				},
 			},
-			{
-				APIGroups: []string{""},
-				Resources: []string{"nodes/status"},
-				Verbs:     []string{"patch"},
+			rbacv1.PolicyRule{
+				APIGroups: []string{common.CoreAPIGroup},
+				Resources: []string{common.ResourceNodesStatus},
+				Verbs:     []string{common.VerbPatch},
 			},
-		},
-	}
+		).
+		Build()
 }
 
 func buildFLannelClusterRoleBinding() *rbacv1.ClusterRoleBinding {
-	return &rbacv1.ClusterRoleBinding{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "rbac.authorization.k8s.io/v1",
-			Kind:       "ClusterRoleBinding",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   FlannelClusterRoleBindingName,
-			Labels: defFlannelLabels(),
-		},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: "rbac.authorization.k8s.io",
-			Kind:     "ClusterRole",
-			Name:     FlannelClusterRoleName,
-		},
-		Subjects: []rbacv1.Subject{
-			{
-				Kind:      "ServiceAccount",
+	labels := defFlannelLabels()
+	return builders.NewClusterRoleBinding().
+		WithName(FlannelClusterRoleBindingName).
+		WithLabels(labels).
+		WithRefs(
+			rbacv1.RoleRef{
+				APIGroup: common.RBACAPIGroup,
+				Kind:     common.KindClusterRole,
+				Name:     FlannelClusterRoleName,
+			},
+			rbacv1.Subject{
+				Kind:      common.KindServiceAccount,
 				Name:      FlannelServiceAccountName,
 				Namespace: FlannelNamespaceName,
 			},
-		},
-	}
+		).
+		Build()
 }
 
 func buildFlannelServiceAccount() *corev1.ServiceAccount {
-	return &corev1.ServiceAccount{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "ServiceAccount",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      FlannelServiceAccountName,
-			Namespace: FlannelNamespaceName,
-			Labels:    defFlannelLabels(),
-		},
-	}
+	labels := defFlannelNSLabels()
+	return builders.NewServiceAccount().
+		WithName(FlannelServiceAccountName).
+		WithNamespace(FlannelNamespaceName).
+		WithLabels(labels).
+		Build()
 }
 
 func buildFlannelConfigMap(ma *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
+	labels := defFlannelLabels()
 	cniConf := `{
   "name": "cbr0",
   "cniVersion": "0.3.1",
@@ -168,162 +159,30 @@ func buildFlannelConfigMap(ma *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMa
   }
 }`
 
-	return &corev1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "ConfigMap",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      FlannelConfigMapName,
-			Namespace: FlannelNamespaceName,
-			Labels:    defFlannelLabels(),
-		},
-		Data: map[string]string{
-			"cni-conf.json": cniConf,
-			"net-conf.json": netConf,
-		},
-	}
+	return builders.NewConfigMap().
+		WithName(FlannelConfigMapName).
+		WithNamespace(FlannelNamespaceName).
+		WithLabels(labels).
+		Put("cni-conf.json", cniConf).
+		Put("net-conf.json", netConf).
+		Build()
 }
 
 func buildFlannelDaemonSet() *appsv1.DaemonSet {
 	fileOrCreate := corev1.HostPathFileOrCreate
+	labels := defFlannelLabels()
+	priorityClass := "system-node-critical"
 
-	return &appsv1.DaemonSet{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "apps/v1",
-			Kind:       "DaemonSet",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      FlannelDaemonSetName,
-			Namespace: FlannelNamespaceName,
-			Labels:    defFlannelLabels(),
-		},
-		Spec: appsv1.DaemonSetSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: defFlannelLabels(),
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: defFlannelLabels()},
-				Spec: corev1.PodSpec{
-					HostNetwork:        true,
-					PriorityClassName:  "system-node-critical",
-					ServiceAccountName: FlannelServiceAccountName,
-					Affinity: &corev1.Affinity{
-						NodeAffinity: &corev1.NodeAffinity{
-							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-								NodeSelectorTerms: []corev1.NodeSelectorTerm{
-									{
-										MatchExpressions: []corev1.NodeSelectorRequirement{
-											{
-												Key:      "kubernetes.io/os",
-												Operator: corev1.NodeSelectorOpIn,
-												Values:   []string{"linux"},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-					Tolerations: []corev1.Toleration{
-						{Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
-					},
-					InitContainers: []corev1.Container{
-						{
-							Name:    "install-cni-plugin",
-							Image:   CNIPluginImage,
-							Command: []string{"cp"},
-							Args:    []string{"-f", "/flannel", "/opt/cni/bin/flannel"},
-							VolumeMounts: []corev1.VolumeMount{
-								{Name: "cni-plugin", MountPath: "/opt/cni/bin"},
-							},
-						},
-						{
-							Name:    "install-cni",
-							Image:   FlannelImage,
-							Command: []string{"cp"},
-							Args:    []string{"-f", "/etc/kube-flannel/cni-conf.json", "/etc/cni/net.d/10-flannel.conflist"},
-							VolumeMounts: []corev1.VolumeMount{
-								{Name: "cni", MountPath: "/etc/cni/net.d"},
-								{Name: "flannel-cfg", MountPath: "/etc/kube-flannel/"},
-							},
-						},
-					},
-					Containers: []corev1.Container{
-						{
-							Name:    "kube-flannel",
-							Image:   FlannelImage,
-							Command: []string{"/opt/bin/flanneld"},
-							Args:    []string{"--ip-masq", "--kube-subnet-mgr"},
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("100m"),
-									corev1.ResourceMemory: resource.MustParse("50Mi"),
-								},
-							},
-							SecurityContext: &corev1.SecurityContext{
-								Privileged: ptr.To(false),
-								Capabilities: &corev1.Capabilities{
-									Add: []corev1.Capability{"NET_ADMIN", "NET_RAW"},
-								},
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name: "POD_NAME",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"},
-									},
-								},
-								{
-									Name: "POD_NAMESPACE",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"},
-									},
-								},
-								{Name: "EVENT_QUEUE_DEPTH", Value: "5000"},
-								{Name: "CONT_WHEN_CACHE_NOT_READY", Value: "false"},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{Name: "run", MountPath: "/run/flannel"},
-								{Name: "flannel-cfg", MountPath: "/etc/kube-flannel/"},
-								{Name: "xtables-lock", MountPath: "/run/xtables.lock"},
-							},
-						},
-					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "run",
-							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{Path: "/run/flannel"},
-							},
-						},
-						{
-							Name: "cni-plugin",
-							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{Path: "/opt/cni/bin"},
-							},
-						},
-						{
-							Name: "cni",
-							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{Path: "/etc/cni/net.d"},
-							},
-						},
-						{
-							Name: "flannel-cfg",
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{Name: FlannelConfigMapName},
-								},
-							},
-						},
-						{
-							Name: "xtables-lock",
-							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{
-									Path: "/run/xtables.lock",
-									Type: &fileOrCreate,
-								},
+	affinity := corev1.Affinity{
+		NodeAffinity: &corev1.NodeAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+				NodeSelectorTerms: []corev1.NodeSelectorTerm{
+					{
+						MatchExpressions: []corev1.NodeSelectorRequirement{
+							{
+								Key:      "kubernetes.io/os",
+								Operator: corev1.NodeSelectorOpIn,
+								Values:   []string{"linux"},
 							},
 						},
 					},
@@ -331,4 +190,125 @@ func buildFlannelDaemonSet() *appsv1.DaemonSet {
 			},
 		},
 	}
+
+	toleration := corev1.Toleration{
+		Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule,
+	}
+
+	initContainers := []corev1.Container{
+		{
+			Name:    "install-cni-plugin",
+			Image:   CNIPluginImage,
+			Command: []string{"cp"},
+			Args:    []string{"-f", "/flannel", "/opt/cni/bin/flannel"},
+			VolumeMounts: []corev1.VolumeMount{
+				{Name: "cni-plugin", MountPath: "/opt/cni/bin"},
+			},
+		},
+		{
+			Name:    "install-cni",
+			Image:   FlannelImage,
+			Command: []string{"cp"},
+			Args:    []string{"-f", "/etc/kube-flannel/cni-conf.json", "/etc/cni/net.d/10-flannel.conflist"},
+			VolumeMounts: []corev1.VolumeMount{
+				{Name: "cni", MountPath: "/etc/cni/net.d"},
+				{Name: "flannel-cfg", MountPath: "/etc/kube-flannel/"},
+			},
+		},
+	}
+
+	c := corev1.Container{
+		Name:    "kube-flannel",
+		Image:   FlannelImage,
+		Command: []string{"/opt/bin/flanneld"},
+		Args:    []string{"--ip-masq", "--kube-subnet-mgr"},
+		Resources: corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("100m"),
+				corev1.ResourceMemory: resource.MustParse("50Mi"),
+			},
+		},
+		SecurityContext: &corev1.SecurityContext{
+			Privileged: ptr.To(false),
+			Capabilities: &corev1.Capabilities{
+				Add: []corev1.Capability{"NET_ADMIN", "NET_RAW"},
+			},
+		},
+		Env: []corev1.EnvVar{
+			{
+				Name: "POD_NAME",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"},
+				},
+			},
+			{
+				Name: "POD_NAMESPACE",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"},
+				},
+			},
+			{Name: "EVENT_QUEUE_DEPTH", Value: "5000"},
+			{Name: "CONT_WHEN_CACHE_NOT_READY", Value: "false"},
+		},
+	}
+
+	volumeMounts := []corev1.VolumeMount{
+		{Name: "run", MountPath: "/run/flannel"},
+		{Name: "flannel-cfg", MountPath: "/etc/kube-flannel/"},
+		{Name: "xtables-lock", MountPath: "/run/xtables.lock"},
+	}
+	volumes := []corev1.Volume{
+		{
+			Name: "run",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{Path: "/run/flannel"},
+			},
+		},
+		{
+			Name: "cni-plugin",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{Path: "/opt/cni/bin"},
+			},
+		},
+		{
+			Name: "cni",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{Path: "/etc/cni/net.d"},
+			},
+		},
+		{
+			Name: "flannel-cfg",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: FlannelConfigMapName},
+				},
+			},
+		},
+		{
+			Name: "xtables-lock",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/run/xtables.lock",
+					Type: &fileOrCreate,
+				},
+			},
+		},
+	}
+
+	return builders.NewDaemonSet().
+		WithName(FlannelDaemonSetName).
+		WithNamespace(FlannelNamespaceName).
+		WithLabels(labels).
+		WithSelector(labels).
+		WithPodLabels(labels).
+		WithServiceAccount(FlannelServiceAccountName).
+		WithHostNetwork().
+		WithPriorityClass(priorityClass).
+		WithAffinity(affinity).
+		WithTolerations(toleration).
+		WithInitContainers(initContainers...).
+		WithContainer(c).
+		AddVolumes(volumes...).
+		AddVolumeMounts(c.Name, volumeMounts...).
+		Build()
 }

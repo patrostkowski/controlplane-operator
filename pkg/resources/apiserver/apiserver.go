@@ -47,7 +47,9 @@ func buildService(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 	ns := mcp.Namespace
 	labels := map[string]string{appLabelKey: appLabelVal}
 
-	return builders.NewService(ns, KubeAPIServerSvcName).
+	return builders.NewService().
+		WithName(KubeAPIServerSvcName).
+		WithNamespace(ns).
 		WithLabels(labels).
 		WithSelector(labels).
 		AddPort("https", 6443, 6443, corev1.ProtocolTCP).
@@ -119,7 +121,12 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 		ReadinessProbe: utils.HttpsHealthProbe(securePort, common.ReadyzPath, 5, 5, 5, 5),
 	}
 
-	return builders.NewDeployment(ns, apiServerName, labels, replicas).
+	return builders.NewDeployment().
+		WithName(apiServerName).
+		WithNamespace(ns).
+		WithLabels(labels).
+		WithSelector(labels).
+		WithReplicas(replicas).
 		WithContainer(c).
 		AddVolumes(
 			p.ClientCA.Volume(),

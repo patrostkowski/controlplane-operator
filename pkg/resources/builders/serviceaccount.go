@@ -26,10 +26,10 @@ type ServiceAccountTemplate struct {
 
 // TODO: add automount token & pull secrets
 func NewServiceAccount() *ServiceAccountTemplate {
-	sa := &corev1.ServiceAccount{}
-	newSA := &ServiceAccountTemplate{ServiceAccount: sa}
-	newSA.meta = MetaMutator{obj: sa}
-	return newSA
+	obj := &corev1.ServiceAccount{}
+	b := &ServiceAccountTemplate{ServiceAccount: obj}
+	b.meta = MetaMutator{obj: obj}
+	return b
 }
 
 func (s *ServiceAccountTemplate) GetMeta() *metav1.ObjectMeta {
