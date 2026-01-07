@@ -45,6 +45,9 @@ func (w *DeploymentTemplate) WithLabels(labels map[string]string) *DeploymentTem
 }
 
 func (w *DeploymentTemplate) WithSelector(sel map[string]string) *DeploymentTemplate {
+	if w.Spec.Selector == nil {
+		w.Spec.Selector = &metav1.LabelSelector{}
+	}
 	if w.Spec.Selector.MatchLabels == nil {
 		w.Spec.Selector.MatchLabels = map[string]string{}
 	}

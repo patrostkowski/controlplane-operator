@@ -106,7 +106,7 @@ func (m *PodTemplateMutator) WithAnnotations(ann map[string]string) {
 	a := pt.GetAnnotations()
 	if a == nil {
 		a = map[string]string{}
-		pt.SetLabels(a)
+		pt.SetAnnotations(a)
 	}
 	maps.Copy(a, ann)
 }
@@ -146,7 +146,7 @@ func (m *MetaMutator) WithAnnotations(ann map[string]string) {
 	a := m.obj.GetAnnotations()
 	if a == nil {
 		a = map[string]string{}
-		m.obj.SetLabels(a)
+		m.obj.SetAnnotations(a)
 	}
 	maps.Copy(a, ann)
 }

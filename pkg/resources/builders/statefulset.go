@@ -55,6 +55,9 @@ func (s *StatefulSetTemplate) WithReplicas(replicas int32) *StatefulSetTemplate 
 }
 
 func (s *StatefulSetTemplate) WithSelector(sel map[string]string) *StatefulSetTemplate {
+	if s.Spec.Selector == nil {
+		s.Spec.Selector = &metav1.LabelSelector{}
+	}
 	if s.Spec.Selector.MatchLabels == nil {
 		s.Spec.Selector.MatchLabels = map[string]string{}
 	}

@@ -44,6 +44,9 @@ func (w *DaemonsetTemplate) WithLabels(labels map[string]string) *DaemonsetTempl
 }
 
 func (w *DaemonsetTemplate) WithSelector(sel map[string]string) *DaemonsetTemplate {
+	if w.Spec.Selector == nil {
+		w.Spec.Selector = &metav1.LabelSelector{}
+	}
 	if w.Spec.Selector.MatchLabels == nil {
 		w.Spec.Selector.MatchLabels = map[string]string{}
 	}

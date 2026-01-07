@@ -43,8 +43,8 @@ func TestNewDeployment_SetsBasics(t *testing.T) {
 	replicas := int32(2)
 
 	w := NewDeployment().
-		WithName("ns1").
-		WithNamespace("name1").
+		WithName("name1").
+		WithNamespace("ns1").
 		WithLabels(labels).
 		WithSelector(labels).
 		WithReplicas(replicas)
