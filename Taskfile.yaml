@@ -32,7 +32,6 @@ tasks:
     cmds:
       - kind load docker-image patrostkowski/controlplane-operator:latest --name controlplane
 
-
   docs:
     desc: "Serve controlplane MkDocs from ./docs/"
     cmds:
@@ -73,10 +72,14 @@ tasks:
     cmds:
       - go run main.go
 
-  dev:build:
+  dev:docker-build:
     desc: "Build controlplane operator Docker image"
     cmds:
       - docker build . -t patrostkowski/controlplane-operator:latest
+
+  dev:build:
+    cmds:
+      - go build -o bin/controlplane-operator ./cmd/controlplane-operator/
 
   dev:build-tesseractd:
     cmds:
@@ -86,61 +89,8 @@ tasks:
     cmds:
       - go build -o bin/tesseractl ./cmd/tesseractl/
 
-  os:builder:
-    desc: Build MCPos builder image
-    dir: ./os
-    cmds:
-      - docker build -t mcpos-builder -f Dockerfile .
-
-  os:fetch-binaries:
-    desc: Fetch kubelet/containerd/etc into rootfs using mcpos-builder
+  dev:build-all:
     deps:
-      - os:builder
-    cmds:
-      - >
-        docker run --rm
-        -v "$(pwd)/os:/workspace/os"
-        mcpos-builder
-        bash -lc "cd /workspace/os && ./scripts/fetch-binaries.sh && ./scripts/fetch-glibc.sh"
-
-  os:build-kernel:
-    desc: Build MCPos kernel using mcpos-builder
-    deps:
-      - os:builder
-    cmds:
-      - >
-        docker run --rm
-        -v "$(pwd)/os:/workspace/os"
-        mcpos-builder
-        bash -lc "cd /workspace/os && ./scripts/build-kernel.sh"
-
-  os:build-initramfs:
-    desc: Build MCPos initramfs using mcpos-builder
-    deps:
-      - os:builder
-    cmds:
-      - >
-        docker run --rm
-        -v "$(pwd)/os:/workspace/os"
-        mcpos-builder
-        bash -lc "cd /workspace/os && ./scripts/build-initramfs.sh"
-
-  os:run-qemu:
-    desc: "Run MCPos kernel + initramfs in QEMU (inside mcpos-builder)"
-    deps:
-      - os:builder
-      - os:build-kernel
-      - os:build-initramfs
-    cmds:
-      - >
-        docker run --rm -it
-        -v "$(pwd)/os:/workspace/os"
-        mcpos-builder
-        bash -lc "cd /workspace/os && ./scripts/run-qemu.sh"
-
-  os:build:
-    desc: Build MCPos kernel + rootfs (inside mcpos-builder)
-    deps:
-      - os:fetch-binaries
-      - os:build-kernel
-      - os:build-initramfs
+      - dev:build
+      - dev:build-tesseractd
+      - dev:build-tesseractl
