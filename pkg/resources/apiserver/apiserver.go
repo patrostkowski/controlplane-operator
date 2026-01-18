@@ -15,6 +15,10 @@
 package apiserver
 
 import (
+	"fmt"
+	"path/filepath"
+	"strconv"
+
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
@@ -25,22 +29,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Resources returns Service + Deployment for the kube-apiserver.
-func Resources(mcp *mcpv1alpha1.ManagedControlPlane) []client.Object {
+// EndpointResources returns only the Service (LB) for kube-apiserver
+// and Service for Konnectivity server(sidecar)
+func EndpointResources(mcp *mcpv1alpha1.ManagedControlPlane) []client.Object {
 	return []client.Object{
 		buildService(mcp),
-		buildDeployment(mcp),
 	}
 }
 
-// EndpointResources returns only the Service (LB) for kube-apiserver.
-func EndpointResources(mcp *mcpv1alpha1.ManagedControlPlane) []client.Object {
-	return []client.Object{buildService(mcp)}
-}
-
-// WorkloadResources returns only the Deployment for kube-apiserver.
+// WorkloadResources returns only the Deployment for kube-apiserver
 func WorkloadResources(mcp *mcpv1alpha1.ManagedControlPlane) []client.Object {
-	return []client.Object{buildDeployment(mcp)}
+	return []client.Object{
+		buildDeployment(mcp),
+		buildKonnectivityConfigMap(mcp),
+	}
 }
 
 func buildService(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
@@ -48,14 +50,44 @@ func buildService(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 	labels := map[string]string{appLabelKey: appLabelVal}
 
 	return builders.NewService().
-		WithName(KubeAPIServerSvcName).
+		WithName(apiServerName).
 		WithNamespace(ns).
 		WithLabels(labels).
 		WithSelector(labels).
 		AddPort("https", 6443, 6443, corev1.ProtocolTCP).
+		AddPort("grpc", 8132, 8132, corev1.ProtocolTCP).
 		WithType(corev1.ServiceTypeLoadBalancer).
 		Build()
 }
+
+func buildKonnectivityConfigMap(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
+	ns := mcp.Namespace
+	socketPath := filepath.Join(common.PKIMountRoot, konnectivityConfigMapName+".socket")
+
+	egressSelector := fmt.Sprintf(`apiVersion: apiserver.k8s.io/v1beta1
+kind: EgressSelectorConfiguration
+egressSelections:
+- name: cluster
+  connection:
+    proxyProtocol: GRPC
+    transport:
+      uds:
+        udsName: %s
+- name: controlplane
+  connection:
+    proxyProtocol: Direct
+`, socketPath)
+
+	return builders.NewConfigMap().
+		WithName(konnectivityConfigMapName).
+		WithNamespace(ns).
+		Put("konnectivity-egress-selector.yaml", egressSelector).
+		Build()
+}
+
+const (
+	konnectivityUDS = "konnectivity-uds"
+)
 
 func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	p := pki.New(mcp).APIServer()
@@ -65,6 +97,35 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	replicas := int32(1)
 
 	version := mcp.Spec.Version
+
+	konnPath := filepath.Join(common.PKIMountRoot, konnectivityConfigMapName+".yaml")
+	cm := common.ConfigMapMount{
+		ConfigmapName: konnectivityConfigMapName,
+		MountDir:      konnPath,
+		SubDir:        konnectivityConfigMapName + ".yaml",
+	}
+	udsPath := filepath.Join(common.PKIMountRoot, konnectivityUDS)
+	uds := common.EmptyDirMount{
+		EmptyDirName: konnectivityUDS,
+		MountDir:     udsPath,
+	}
+
+	k := corev1.Container{
+		Name: konnectivityServerName,
+		// TODO: make it compatible with k8s-api version
+		Image: "registry.k8s.io/kas-network-proxy/proxy-server:v0.1.3",
+		Args: []string{
+			"--mode=grpc",
+			"--uds-name=" + udsPath + ".sock",
+			"--delete-existing-uds-file=true",
+			"--cluster-cert=" + p.KonnectivityServing.CertPath(),
+			"--cluster-key=" + p.KonnectivityServing.KeyPath(),
+			"--cluster-ca-cert=" + p.KonnectivityCA.CertPath(),
+			"--agent-port=" + strconv.Itoa(int(konnectivityServerPort)),
+			"--server-port=0",
+			"--v=2",
+		},
+	}
 
 	c := corev1.Container{
 		Name:            "apiserver",
@@ -103,6 +164,9 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 
 			"--allow-privileged=true",
 
+			// konnectivity
+			"--egress-selector-config-file=" + konnPath,
+
 			// front-proxy
 			// "--proxy-client-cert-file=" + p.FrontProxyClient.CertPath(),
 			// "--proxy-client-key-file=" + p.FrontProxyClient.KeyPath(),
@@ -129,6 +193,8 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 		WithReplicas(replicas).
 		WithContainer(c).
 		AddVolumes(
+			uds.Volume(),
+			cm.Volume(),
 			p.ClientCA.Volume(),
 			p.Serving.Volume(),
 			p.EtcdClient.Volume(),
@@ -137,8 +203,12 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			p.EtcdCA.Volume(),
 			p.FrontProxyCA.Volume(),
 			p.FrontProxyClient.Volume(),
+			p.KonnectivityServing.Volume(),
+			p.KonnectivityCA.Volume(),
 		).
 		AddVolumeMounts(c.Name,
+			uds.Mount(),
+			cm.Mount(true),
 			p.ClientCA.Mount(true),
 			p.Serving.Mount(true),
 			p.EtcdClient.Mount(true),
@@ -147,6 +217,12 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			p.EtcdCA.Mount(true),
 			p.FrontProxyCA.Mount(true),
 			p.FrontProxyClient.Mount(true),
+		).
+		WithContainer(k).
+		AddVolumeMounts(k.Name,
+			uds.Mount(),
+			p.KonnectivityServing.Mount(true),
+			p.KonnectivityCA.Mount(true),
 		).
 		Build()
 }

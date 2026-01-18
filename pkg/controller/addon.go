@@ -43,6 +43,10 @@ func (a *Addons) Ensure(ctx context.Context, resources []client.Object) error {
 	return a.Apply(ctx, a.mcp, resources...)
 }
 
+func (a *Addons) konnectivityAgentManifests() []client.Object {
+	return addons.KonnectivityAgentResources(a.mcp)
+}
+
 // todo: think how to rotate the token
 func (r *ManagedControlPlaneReconciler) ensureBootstrapToken(
 	ctx context.Context,

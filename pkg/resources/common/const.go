@@ -33,3 +33,31 @@ const (
 	AdminConfigName          = "admin-config"
 	AdminConfigKubeconfigKey = "config"
 )
+
+// API server vars
+const (
+	KubeAPIServerName  = "kube-apiserver"
+	KubeAPIAppLabelKey = "app"
+	KubeAPIAppLabelVal = "kube-apiserver"
+
+	KonnectivityServerName = "konnectivity-server"
+	KonnectivityAgentName  = "konnectivity-agent"
+
+	KubeAPISecurePort int32 = 6443
+)
+
+// Konnectivity vars
+const (
+	KonnectivityCASecretName       = "konnectivity-ca"
+	KonnectivityTLSSecretName      = "konnectivity-server-tls"
+	KonnectivityAgentTLSSecretName = "konnectivity-agent-tls"
+
+	KonnectivityCACN     = "konnectivity-ca"
+	KonnectivityServerCN = "konnectivity-server"
+	KonnectivityAgentCN  = "konnectivity-agent"
+
+	KonnectivityServerPort     int32 = 8132
+	KonnectivityAgentNamespace       = "kube-system"
+	KonnectivityConfigMapName        = "konnectivity-egress-selector"
+	KonnectivityAgentDSName          = "konnectivity-agent"
+)

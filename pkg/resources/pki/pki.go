@@ -84,6 +84,18 @@ func issuerResources(ns string) []client.Object {
 			WithNamespace(ns).
 			CA(secretFrontProxyCA).
 			Build(),
+
+		// konnectivity
+		builders.NewIssuer().
+			WithName(issuerKonnectivitySelf).
+			WithNamespace(ns).
+			SelfSigned().
+			Build(),
+		builders.NewIssuer().
+			WithName(issuerKonnectivityCA).
+			WithNamespace(ns).
+			CA(secretKonnectivityCA).
+			Build(),
 	}
 }
 
@@ -117,6 +129,15 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 			WithCommonName(cnFrontProxyCA).
 			IsCA(true).
 			Issuer(issuerFrontProxySelf).
+			Build(),
+
+		builders.NewCertificate().
+			WithName(secretKonnectivityCA).
+			WithNamespace(ns).
+			WithSecretName(secretKonnectivityCA).
+			WithCommonName(cnKonnectivityCA).
+			IsCA(true).
+			Issuer(issuerKonnectivitySelf).
 			Build(),
 	)
 
@@ -158,6 +179,27 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 			Build(),
 	)
 
+	// konnectivity-server cert
+	konnDNS, konnIPs := konnectivityServerSANs(mcp, ns)
+	objs = append(objs,
+		builders.NewCertificate().
+			WithName(secretKonnectivityTLS).
+			WithNamespace(ns).
+			WithSecretName(secretKonnectivityTLS).
+			WithCommonName(cnKonnectivityServer).
+			Issuer(issuerKonnectivityCA).
+			WithDuration(&d.tenYears).
+			WithRenewBefore(&d.thirtyDays).
+			WithUsages(
+				certmanagerv1.UsageDigitalSignature,
+				certmanagerv1.UsageKeyEncipherment,
+				certmanagerv1.UsageServerAuth,
+			).
+			WithDNSNames(konnDNS...).
+			WithIPAddresses(konnIPs...).
+			Build(),
+	)
+
 	// apiserver -> kubelet client
 	objs = append(objs,
 		builders.NewCertificate().
@@ -174,6 +216,24 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 				certmanagerv1.UsageClientAuth,
 			).
 			WithOrganizations(orgSystemMasters).
+			Build(),
+	)
+
+	// konnectivity-agent client cert
+	objs = append(objs,
+		builders.NewCertificate().
+			WithName(secretKonnectivityAgentTLS).
+			WithNamespace(ns).
+			WithSecretName(secretKonnectivityAgentTLS).
+			WithCommonName(cnKonnectivityAgent).
+			Issuer(issuerKonnectivityCA).
+			WithDuration(&d.tenYears).
+			WithRenewBefore(&d.thirtyDays).
+			WithUsages(
+				certmanagerv1.UsageDigitalSignature,
+				certmanagerv1.UsageKeyEncipherment,
+				certmanagerv1.UsageClientAuth,
+			).
 			Build(),
 	)
 
@@ -324,6 +384,32 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 	return objs
 }
 
+func konnectivityServerSANs(mcp *mcpv1alpha1.ManagedControlPlane, ns string) (dns []string, ips []string) {
+	dns = []string{
+		"konnectivity-server",
+		"konnectivity-server." + ns,
+		"konnectivity-server." + ns + ".svc",
+	}
+
+	if mcp.Spec.Networking != nil {
+		if svcIP, ok := firstServiceIP(mcp.Spec.Networking.ServiceCIDR); ok {
+			ips = append(ips, svcIP)
+		}
+	}
+
+	addr := mcp.Status.Address
+	if addr != "" {
+		if net.ParseIP(addr) != nil {
+			ips = append(ips, addr)
+		} else {
+			dns = append(dns, addr)
+		}
+	}
+
+	ips = append(ips, "127.0.0.1")
+	return dns, ips
+}
+
 func apiserverSANs(mcp *mcpv1alpha1.ManagedControlPlane, ns string) (dns []string, ips []string) {
 	dns = []string{
 		"kube-apiserver." + ns + ".svc",
@@ -332,6 +418,9 @@ func apiserverSANs(mcp *mcpv1alpha1.ManagedControlPlane, ns string) (dns []strin
 		"kubernetes.default",
 		"kubernetes.default.svc",
 		"kubernetes.default.svc.cluster.local",
+		"konnectivity-server",
+		"konnectivity-server." + ns,
+		"konnectivity-server." + ns + ".svc",
 		"localhost",
 	}
 

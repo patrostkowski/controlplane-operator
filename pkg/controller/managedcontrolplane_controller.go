@@ -17,6 +17,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	"maps"
 	"time"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
@@ -170,7 +171,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
-	if res, err := r.reconcileAdminConfig(ctx, mcpObj, mcpObj.Namespace); err != nil {
+	if res, err := r.reconcileAdminConfig(ctx, mcpObj); err != nil {
 		_ = r.statusFailed(ctx, mcpObj, state.MessagePKIFailed)
 		log.Error(err, "failed to ensure admin kubeconfig")
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
@@ -217,6 +218,22 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
+	if res, err := r.reconcileKonnectivityTLSData(ctx, mcpObj, cp); err != nil {
+		_ = r.statusFailed(ctx, mcpObj, state.MessageAddonsFailed)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
+	} else if !res.IsZero() {
+		_ = r.statusWaiting(ctx, mcpObj, state.MessageAddonsWaiting)
+		return res, nil
+	}
+
+	if res, err := r.reconcileKonnectivityAgent(ctx, mcpObj, cp); err != nil {
+		_ = r.statusFailed(ctx, mcpObj, state.MessageAddonsFailed)
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
+	} else if !res.IsZero() {
+		_ = r.statusWaiting(ctx, mcpObj, state.MessageAddonsWaiting)
+		return res, nil
+	}
+
 	if res, err := r.reconcileAddons(ctx, mcpObj, cp); err != nil {
 		_ = r.statusFailed(ctx, mcpObj, state.MessageAddonsFailed)
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
@@ -248,7 +265,7 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServiceSvc(
 		return ctrl.Result{}, err
 	}
 
-	addr, err := api.tryEndpointAddress(ctx)
+	addr, err := api.tryEndpointAddress(ctx, common.KubeAPIServerName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
@@ -256,6 +273,7 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServiceSvc(
 		log.Error(err, "failed to read API Service address (best-effort)")
 		return ctrl.Result{}, err
 	}
+
 	if addr != "" && mcp.Status.Address != addr {
 		if err := r.UpdateMCPAddress(ctx, mcp, addr); err != nil {
 			log.Error(err, "failed to update address")
@@ -343,6 +361,71 @@ func (r *ManagedControlPlaneReconciler) reconcileAddons(
 	return ctrl.Result{}, nil
 }
 
+func (r *ManagedControlPlaneReconciler) reconcileKonnectivityAgent(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+	c *controlplane.ControlPlaneClient,
+) (ctrl.Result, error) {
+	log := r.Log.WithValues("konnectivity-agent", mcp.GetObjectMeta().GetNamespace())
+	a := NewAddons(mcp, c.Client, r.Scheme, log)
+
+	if err := a.Ensure(ctx, a.konnectivityAgentManifests()); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *ManagedControlPlaneReconciler) reconcileKonnectivityTLSData(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+	c *controlplane.ControlPlaneClient,
+) (ctrl.Result, error) {
+	ns := mcp.Namespace
+	log := r.Log.WithValues("konnectivity-agent-tls", mcp.GetObjectMeta().GetNamespace())
+	a := NewAddons(mcp, c.Client, r.Scheme, log)
+
+	srcAgent := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Name: common.KonnectivityAgentTLSSecretName, Namespace: ns}, srcAgent); err != nil {
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, client.IgnoreNotFound(err)
+	}
+
+	srcCA := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Name: common.KonnectivityCASecretName, Namespace: ns}, srcCA); err != nil {
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, client.IgnoreNotFound(err)
+	}
+
+	dstAgent := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        srcAgent.Name,
+			Namespace:   common.KonnectivityAgentNamespace,
+			Labels:      map[string]string{},
+			Annotations: map[string]string{},
+		},
+		Type: srcAgent.Type,
+		Data: maps.Clone(srcAgent.Data),
+	}
+
+	dstCA := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        srcCA.Name,
+			Namespace:   common.KonnectivityAgentNamespace,
+			Labels:      map[string]string{},
+			Annotations: map[string]string{},
+		},
+		Type: srcCA.Type,
+		Data: maps.Clone(srcCA.Data),
+	}
+
+	objs := []client.Object{dstAgent, dstCA}
+
+	if err := a.Ensure(ctx, objs); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
 // TODO: decide separate it from addons or
 // bundle them together
 func (r *ManagedControlPlaneReconciler) reconcileKubeletJoinResources(
@@ -384,8 +467,9 @@ func (r *ManagedControlPlaneReconciler) reconcilePKI(ctx context.Context, mcp *m
 func (r *ManagedControlPlaneReconciler) reconcileAdminConfig(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
-	ns string,
 ) (ctrl.Result, error) {
+	ns := mcp.Namespace
+
 	if mcp.Status.Address == "" {
 		r.Log.Info("API address not set yet")
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil

@@ -12,19 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package apiserver
+package common
 
-import "github.com/patrostkowski/controlplane-operator/pkg/resources/common"
+import corev1 "k8s.io/api/core/v1"
 
-const (
-	apiServerName = common.KubeAPIServerName
-	appLabelKey   = common.KubeAPIAppLabelKey
-	appLabelVal   = common.KubeAPIAppLabelVal
+type EmptyDirMount struct {
+	EmptyDirName string
+	MountDir     string
+}
 
-	konnectivityServerName = common.KonnectivityServerName
+func (e EmptyDirMount) Volume() corev1.Volume {
+	return corev1.Volume{
+		Name:         e.EmptyDirName,
+		VolumeSource: corev1.VolumeSource{},
+	}
+}
 
-	securePort = common.KubeAPISecurePort
-
-	konnectivityServerPort    = common.KonnectivityServerPort
-	konnectivityConfigMapName = common.KonnectivityConfigMapName
-)
+func (e EmptyDirMount) Mount() corev1.VolumeMount {
+	return corev1.VolumeMount{
+		Name:      e.EmptyDirName,
+		MountPath: e.MountDir,
+	}
+}
