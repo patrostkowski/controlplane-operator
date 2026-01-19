@@ -137,7 +137,7 @@ case "${subcmd}" in
         --dhcp-range="${DEFAULT_DHCP_RANGE}" >/dev/null
     fi
     task dev:install
-
+    kubectl apply -f ../mcp.yaml
     br="$(docker_bridge_name "${net}")"
     echo
     echo "Bridge for docker network '${net}': ${br}"

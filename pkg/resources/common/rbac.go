@@ -49,6 +49,7 @@ const (
 	VerbDelete = "delete"
 
 	KindGroup = rbacv1.GroupKind
+	KindUser  = rbacv1.UserKind
 )
 
 var (

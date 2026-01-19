@@ -373,13 +373,40 @@ func (r *ManagedControlPlaneReconciler) reconcileKubeletJoinResources(
 		return ctrl.Result{}, err
 	}
 
-	resources := addons.BootstrapKubeletJoinResources(tok)
+	caPEM, err := r.getClusterCA(ctx, mcp)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if len(caPEM) == 0 {
+		// CA not ready yet
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+	}
+
+	resources := addons.BootstrapKubeletJoinResources(mcp, tok, caPEM)
 
 	if err := k.Ensure(ctx, resources); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *ManagedControlPlaneReconciler) getClusterCA(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+) ([]byte, error) {
+	caSecretName := pki.New(mcp).APIServer().ClientCA.SecretName
+
+	sec := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: mcp.Namespace, Name: caSecretName}, sec); err != nil {
+		return nil, client.IgnoreNotFound(err)
+	}
+
+	ca := sec.Data[common.CACrtKey]
+	if len(ca) == 0 {
+		return nil, nil // not ready yet
+	}
+	return ca, nil
 }
 
 func (r *ManagedControlPlaneReconciler) reconcilePKI(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {

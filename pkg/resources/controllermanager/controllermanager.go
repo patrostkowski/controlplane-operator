@@ -100,8 +100,9 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			"--service-account-private-key-file=" + p.ServiceAccountSigner.KeyPath(),
 
 			// cluster signing
-			"--cluster-signing-cert-file=" + p.ClientCA.CertPath(),
-			"--cluster-signing-key-file=" + p.ClientCA.KeyPath(),
+			"--cluster-signing-cert-file=" + p.ClientCA.CertPath(), // check if its exposing actual cluster CA
+			"--cluster-signing-key-file=" + p.ClientCA.KeyPath(),   // check if its exposing actual cluster CA
+			"--feature-gates=RotateKubeletServerCertificate=true",
 			// CA wiring
 			"--client-ca-file=" + p.ClientCA.CertPath(),
 			"--root-ca-file=" + p.ClientCA.CertPath(),

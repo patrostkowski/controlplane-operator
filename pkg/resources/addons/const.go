@@ -28,12 +28,12 @@ const (
 	BootstrapUsageAuth = "true"
 	BootstrapUsageSign = "true"
 
-	GroupBootstrappers = "system:bootstrappers:kubelet-bootstrap"
+	GroupBootstrappers = "system:bootstrappers"
 	GroupNodes         = "system:nodes"
 
-	CRBNodeClientAutoApproveName  = "kubelet-bootstrap-auto-approve-node-client-certs"
-	CRBSelfNodeClientRotationName = "kubelet-auto-approve-node-client-cert-rotation"
-	CRBNodeBootstrapperName       = "kubelet-bootstrap"
+	CRBKubeadmNodeAutoapproveBootstrap = "kubeadm:node-autoapprove-bootstrap"
+	CRBKubeadmNodeAutoapproveRotation  = "kubeadm:node-autoapprove-rotation"
+	CRBNodeBootstrapperName            = "kubelet-bootstrap"
 
 	RoleNodeClientCSRApprove = "system:certificates.k8s.io:certificatesigningrequests:nodeclient"
 	RoleSelfNodeClientCSR    = "system:certificates.k8s.io:certificatesigningrequests:selfnodeclient"

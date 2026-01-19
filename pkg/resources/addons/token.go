@@ -15,14 +15,10 @@
 package addons
 
 import (
-	"crypto/rand"
 	"fmt"
-)
+	"strings"
 
-const (
-	tokenIDLen     = 6
-	tokenSecretLen = 16
-	tokenAlphabet  = "abcdefghijklmnopqrstuvwxyz0123456789"
+	bootstraphandle "k8s.io/cluster-bootstrap/token/util"
 )
 
 type BootstrapToken struct {
@@ -31,27 +27,15 @@ type BootstrapToken struct {
 }
 
 func NewBootstrapToken() (BootstrapToken, error) {
-	id, err := randString(tokenIDLen)
+	tok, err := bootstraphandle.GenerateBootstrapToken()
 	if err != nil {
 		return BootstrapToken{}, err
 	}
-	sec, err := randString(tokenSecretLen)
-	if err != nil {
-		return BootstrapToken{}, err
+	parts := strings.Split(tok, ".")
+	if len(parts) != 2 {
+		return BootstrapToken{}, fmt.Errorf("unexpected token format: %q", tok)
 	}
-	return BootstrapToken{ID: id, Secret: sec}, nil
-}
-
-func randString(n int) (string, error) {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	out := make([]byte, n)
-	for i := 0; i < n; i++ {
-		out[i] = tokenAlphabet[int(b[i])%len(tokenAlphabet)]
-	}
-	return string(out), nil
+	return BootstrapToken{ID: parts[0], Secret: parts[1]}, nil
 }
 
 func (t BootstrapToken) String() string {

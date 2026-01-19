@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -105,4 +106,26 @@ func PortString(p int32) string {
 
 func IntstrFromInt(port int32) intstr.IntOrString {
 	return intstr.IntOrString{Type: intstr.Int, IntVal: port}
+}
+
+func GetMajorMinorString(version string) string {
+	if len(version) < 2 {
+		return ""
+	}
+
+	v := version[1:]
+
+	firstDot := strings.IndexByte(v, '.')
+	if firstDot == -1 {
+		return ""
+	}
+
+	secondDot := strings.IndexByte(v[firstDot+1:], '.')
+	if secondDot == -1 {
+		return ""
+	}
+
+	secondDot += firstDot + 1
+
+	return v[:secondDot]
 }

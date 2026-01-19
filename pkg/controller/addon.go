@@ -60,6 +60,8 @@ func (r *ManagedControlPlaneReconciler) ensureBootstrapToken(
 		Name:      addons.BootstrapTokenMgmtSecretName,
 	}
 
+	// basically check token already exists if exists
+	// if true, return whatever was generated
 	err := r.Get(ctx, key, sec)
 	if err == nil {
 		return addons.BootstrapToken{
