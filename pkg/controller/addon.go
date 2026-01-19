@@ -7,11 +7,13 @@ package controller
 
 import (
 	"context"
+	"maps"
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	applier "github.com/patrostkowski/controlplane-operator/pkg/controller/apply"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/addons"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -95,4 +97,47 @@ func (r *ManagedControlPlaneReconciler) ensureBootstrapToken(
 	}
 
 	return tok, nil
+}
+
+func (r *ManagedControlPlaneReconciler) ensureKonnectivityTLSData(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+) ([]client.Object, error) {
+	ns := mcp.Namespace
+
+	controlPlaneAgentTLSSecret := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Name: common.KonnectivityAgentTLSSecretName, Namespace: ns}, controlPlaneAgentTLSSecret); err != nil {
+		return nil, client.IgnoreNotFound(err)
+	}
+
+	controlPlaneCASecret := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Name: common.KonnectivityCASecretName, Namespace: ns}, controlPlaneCASecret); err != nil {
+		return nil, client.IgnoreNotFound(err)
+	}
+
+	workloadAgentTLSSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        controlPlaneAgentTLSSecret.Name,
+			Namespace:   common.KonnectivityAgentNamespace,
+			Labels:      map[string]string{},
+			Annotations: map[string]string{},
+		},
+		Type: controlPlaneAgentTLSSecret.Type,
+		Data: maps.Clone(controlPlaneAgentTLSSecret.Data),
+	}
+
+	workloadCASecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        controlPlaneCASecret.Name,
+			Namespace:   common.KonnectivityAgentNamespace,
+			Labels:      map[string]string{},
+			Annotations: map[string]string{},
+		},
+		Type: controlPlaneCASecret.Type,
+		Data: maps.Clone(controlPlaneCASecret.Data),
+	}
+
+	objs := []client.Object{workloadAgentTLSSecret, workloadCASecret}
+
+	return objs, nil
 }

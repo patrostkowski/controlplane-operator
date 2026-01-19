@@ -19,6 +19,7 @@ import (
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
+	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -31,6 +32,10 @@ func KonnectivityAgentResources(mcp *mcpv1alpha1.ManagedControlPlane) []client.O
 	}
 }
 
+const (
+	konnectivityAgentVolumeName = "agent-certs"
+)
+
 func buildKonnectivityAgentDaemonSet(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.DaemonSet {
 	p := pki.New(mcp).KonnectivityAgentView()
 	policy := corev1.DNSClusterFirstWithHostNet
@@ -38,13 +43,13 @@ func buildKonnectivityAgentDaemonSet(mcp *mcpv1alpha1.ManagedControlPlane) *apps
 		"app": konnectivityAgentName,
 	}
 
-	k := corev1.Container{
+	c := corev1.Container{
 		Name: konnectivityAgentName,
 		// TODO: make it compatible with k8s-api version
 		Image: "registry.k8s.io/kas-network-proxy/proxy-agent:v0.1.3",
 		Args: []string{
 			"--proxy-server-host=" + mcp.Status.Address,
-			"--proxy-server-port=" + string(konnectivityServerPort),
+			"--proxy-server-port=" + utils.PortString(konnectivityServerPort),
 
 			"--ca-cert=" + p.KonnectivityCA.CertPath(),
 			"--agent-cert=" + p.KonnectivityAgent.CertPath(),
@@ -54,7 +59,7 @@ func buildKonnectivityAgentDaemonSet(mcp *mcpv1alpha1.ManagedControlPlane) *apps
 	}
 
 	volume := corev1.Volume{
-		Name: "agent-certs",
+		Name: konnectivityAgentVolumeName,
 		VolumeSource: corev1.VolumeSource{
 			Projected: &corev1.ProjectedVolumeSource{
 				Sources: []corev1.VolumeProjection{
@@ -94,7 +99,7 @@ func buildKonnectivityAgentDaemonSet(mcp *mcpv1alpha1.ManagedControlPlane) *apps
 	}
 
 	volumeMounts := corev1.VolumeMount{
-		Name:      "agent-certs",
+		Name:      konnectivityAgentVolumeName,
 		MountPath: p.KonnectivityAgent.MountDir,
 	}
 
@@ -104,10 +109,10 @@ func buildKonnectivityAgentDaemonSet(mcp *mcpv1alpha1.ManagedControlPlane) *apps
 		WithLabels(labels).
 		WithSelector(labels).
 		WithPodLabels(labels).
-		WithContainer(k).
+		WithContainer(c).
 		WithDNSPolicy(policy).
 		WithHostNetwork().
 		AddVolumes(volume).
-		AddVolumeMounts(k.Name, volumeMounts).
+		AddVolumeMounts(c.Name, volumeMounts).
 		Build()
 }

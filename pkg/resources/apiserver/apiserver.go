@@ -17,7 +17,6 @@ package apiserver
 import (
 	"fmt"
 	"path/filepath"
-	"strconv"
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
@@ -25,6 +24,7 @@ import (
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
+
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -81,13 +81,9 @@ egressSelections:
 	return builders.NewConfigMap().
 		WithName(konnectivityConfigMapName).
 		WithNamespace(ns).
-		Put("konnectivity-egress-selector.yaml", egressSelector).
+		Put(konnectivityConfigMapKey, egressSelector).
 		Build()
 }
-
-const (
-	konnectivityUDS = "konnectivity-uds"
-)
 
 func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	p := pki.New(mcp).APIServer()
@@ -98,33 +94,24 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 
 	version := mcp.Spec.Version
 
-	konnPath := filepath.Join(common.PKIMountRoot, konnectivityConfigMapName+".yaml")
-	cm := common.ConfigMapMount{
-		ConfigmapName: konnectivityConfigMapName,
-		MountDir:      konnPath,
-		SubDir:        konnectivityConfigMapName + ".yaml",
-	}
-	udsPath := filepath.Join(common.PKIMountRoot, konnectivityUDS)
-	uds := common.EmptyDirMount{
-		EmptyDirName: konnectivityUDS,
-		MountDir:     udsPath,
+	konnectivityServerVolume := utils.ConfigMapVolume(
+		konnectivityConfigVolumeName,
+		konnectivityConfigMapName,
+		konnectivityConfigMapKey,
+		konnectivityConfFileName,
+	)
+	konnectivityServerVolumeMount := corev1.VolumeMount{
+		Name:      konnectivityConfigVolumeName,
+		ReadOnly:  true,
+		MountPath: konnectivityServerMountDir,
 	}
 
-	k := corev1.Container{
-		Name: konnectivityServerName,
-		// TODO: make it compatible with k8s-api version
-		Image: "registry.k8s.io/kas-network-proxy/proxy-server:v0.1.3",
-		Args: []string{
-			"--mode=grpc",
-			"--uds-name=" + udsPath + ".sock",
-			"--delete-existing-uds-file=true",
-			"--cluster-cert=" + p.KonnectivityServing.CertPath(),
-			"--cluster-key=" + p.KonnectivityServing.KeyPath(),
-			"--cluster-ca-cert=" + p.KonnectivityCA.CertPath(),
-			"--agent-port=" + strconv.Itoa(int(konnectivityServerPort)),
-			"--server-port=0",
-			"--v=2",
-		},
+	konnectivityUDSPath := filepath.Join(common.PKIMountRoot, konnectivityServerUDS)
+	konnectivityUDSVolume := utils.EmptyDirVolume(konnectivityServerUDS)
+	konnectivityUDSVolumeMount := corev1.VolumeMount{
+		Name:      konnectivityServerUDS,
+		ReadOnly:  true,
+		MountPath: konnectivityUDSPath,
 	}
 
 	c := corev1.Container{
@@ -165,7 +152,7 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			"--allow-privileged=true",
 
 			// konnectivity
-			"--egress-selector-config-file=" + konnPath,
+			"--egress-selector-config-file=" + konnectivityConfFilePath,
 
 			// front-proxy
 			// "--proxy-client-cert-file=" + p.FrontProxyClient.CertPath(),
@@ -185,6 +172,23 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 		ReadinessProbe: utils.HttpsHealthProbe(securePort, common.ReadyzPath, 5, 5, 5, 5),
 	}
 
+	c2 := corev1.Container{
+		Name: konnectivityServerName,
+		// TODO: make it compatible with k8s-api version
+		Image: "registry.k8s.io/kas-network-proxy/proxy-server:v0.1.3",
+		Args: []string{
+			"--mode=grpc",
+			"--uds-name=" + konnectivityUDSPath + ".sock",
+			"--delete-existing-uds-file=true",
+			"--cluster-cert=" + p.KonnectivityServing.CertPath(),
+			"--cluster-key=" + p.KonnectivityServing.KeyPath(),
+			"--cluster-ca-cert=" + p.KonnectivityCA.CertPath(),
+			"--agent-port=" + utils.PortString(konnectivityServerPort),
+			"--server-port=0",
+			"--v=2",
+		},
+	}
+
 	return builders.NewDeployment().
 		WithName(apiServerName).
 		WithNamespace(ns).
@@ -193,8 +197,8 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 		WithReplicas(replicas).
 		WithContainer(c).
 		AddVolumes(
-			uds.Volume(),
-			cm.Volume(),
+			konnectivityUDSVolume,
+			konnectivityServerVolume,
 			p.ClientCA.Volume(),
 			p.Serving.Volume(),
 			p.EtcdClient.Volume(),
@@ -207,8 +211,7 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			p.KonnectivityCA.Volume(),
 		).
 		AddVolumeMounts(c.Name,
-			uds.Mount(),
-			cm.Mount(true),
+			konnectivityServerVolumeMount,
 			p.ClientCA.Mount(true),
 			p.Serving.Mount(true),
 			p.EtcdClient.Mount(true),
@@ -218,9 +221,9 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			p.FrontProxyCA.Mount(true),
 			p.FrontProxyClient.Mount(true),
 		).
-		WithContainer(k).
-		AddVolumeMounts(k.Name,
-			uds.Mount(),
+		WithContainer(c2).
+		AddVolumeMounts(c2.Name,
+			konnectivityUDSVolumeMount,
 			p.KonnectivityServing.Mount(true),
 			p.KonnectivityCA.Mount(true),
 		).

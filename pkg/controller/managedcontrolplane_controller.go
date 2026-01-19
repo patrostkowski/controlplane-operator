@@ -17,7 +17,6 @@ package controller
 import (
 	"bytes"
 	"context"
-	"maps"
 	"time"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
@@ -218,22 +217,6 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
-	if res, err := r.reconcileKonnectivityTLSData(ctx, mcpObj, cp); err != nil {
-		_ = r.statusFailed(ctx, mcpObj, state.MessageAddonsFailed)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
-	} else if !res.IsZero() {
-		_ = r.statusWaiting(ctx, mcpObj, state.MessageAddonsWaiting)
-		return res, nil
-	}
-
-	if res, err := r.reconcileKonnectivityAgent(ctx, mcpObj, cp); err != nil {
-		_ = r.statusFailed(ctx, mcpObj, state.MessageAddonsFailed)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
-	} else if !res.IsZero() {
-		_ = r.statusWaiting(ctx, mcpObj, state.MessageAddonsWaiting)
-		return res, nil
-	}
-
 	if res, err := r.reconcileAddons(ctx, mcpObj, cp); err != nil {
 		_ = r.statusFailed(ctx, mcpObj, state.MessageAddonsFailed)
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
@@ -353,73 +336,22 @@ func (r *ManagedControlPlaneReconciler) reconcileAddons(
 	a := NewAddons(mcp, c.Client, r.Scheme, log)
 
 	resources := addons.Resources(mcp)
-
 	if err := a.Ensure(ctx, resources); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
-}
+	secrets, err := r.ensureKonnectivityTLSData(ctx, mcp)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return ctrl.Result{RequeueAfter: RequeueAfterFailure}, client.IgnoreNotFound(err)
+		}
+	}
 
-func (r *ManagedControlPlaneReconciler) reconcileKonnectivityAgent(
-	ctx context.Context,
-	mcp *mcpv1alpha1.ManagedControlPlane,
-	c *controlplane.ControlPlaneClient,
-) (ctrl.Result, error) {
-	log := r.Log.WithValues("konnectivity-agent", mcp.GetObjectMeta().GetNamespace())
-	a := NewAddons(mcp, c.Client, r.Scheme, log)
-
-	if err := a.Ensure(ctx, a.konnectivityAgentManifests()); err != nil {
+	if err := a.Ensure(ctx, secrets); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
-}
-
-func (r *ManagedControlPlaneReconciler) reconcileKonnectivityTLSData(
-	ctx context.Context,
-	mcp *mcpv1alpha1.ManagedControlPlane,
-	c *controlplane.ControlPlaneClient,
-) (ctrl.Result, error) {
-	ns := mcp.Namespace
-	log := r.Log.WithValues("konnectivity-agent-tls", mcp.GetObjectMeta().GetNamespace())
-	a := NewAddons(mcp, c.Client, r.Scheme, log)
-
-	srcAgent := &corev1.Secret{}
-	if err := r.Get(ctx, client.ObjectKey{Name: common.KonnectivityAgentTLSSecretName, Namespace: ns}, srcAgent); err != nil {
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, client.IgnoreNotFound(err)
-	}
-
-	srcCA := &corev1.Secret{}
-	if err := r.Get(ctx, client.ObjectKey{Name: common.KonnectivityCASecretName, Namespace: ns}, srcCA); err != nil {
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, client.IgnoreNotFound(err)
-	}
-
-	dstAgent := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        srcAgent.Name,
-			Namespace:   common.KonnectivityAgentNamespace,
-			Labels:      map[string]string{},
-			Annotations: map[string]string{},
-		},
-		Type: srcAgent.Type,
-		Data: maps.Clone(srcAgent.Data),
-	}
-
-	dstCA := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        srcCA.Name,
-			Namespace:   common.KonnectivityAgentNamespace,
-			Labels:      map[string]string{},
-			Annotations: map[string]string{},
-		},
-		Type: srcCA.Type,
-		Data: maps.Clone(srcCA.Data),
-	}
-
-	objs := []client.Object{dstAgent, dstCA}
-
-	if err := a.Ensure(ctx, objs); err != nil {
+	if err := a.Ensure(ctx, a.konnectivityAgentManifests()); err != nil {
 		return ctrl.Result{}, err
 	}
 

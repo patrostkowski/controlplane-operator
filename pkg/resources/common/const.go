@@ -48,6 +48,8 @@ const (
 
 // Konnectivity vars
 const (
+	EgressSelectorKind             = "EgressSelectorConfiguration"
+	EgressSelectorAPIVersion       = "apiserver.k8s.io/v1beta1"
 	KonnectivityCASecretName       = "konnectivity-ca"
 	KonnectivityTLSSecretName      = "konnectivity-server-tls"
 	KonnectivityAgentTLSSecretName = "konnectivity-agent-tls"
@@ -56,8 +58,12 @@ const (
 	KonnectivityServerCN = "konnectivity-server"
 	KonnectivityAgentCN  = "konnectivity-agent"
 
-	KonnectivityServerPort     int32 = 8132
-	KonnectivityAgentNamespace       = "kube-system"
-	KonnectivityConfigMapName        = "konnectivity-egress-selector"
-	KonnectivityAgentDSName          = "konnectivity-agent"
+	KonnectivityServerPort       int32 = 8132
+	KonnectivityAgentNamespace         = "kube-system"
+	KonnectivityConfigMapName          = "konnectivity-egress-selector"
+	KonnectivityConfigVolumeName       = "egress-selector"
+	KonnectivityConfigMapKey           = "konnectivity-egress-selector.yaml"
+	KonnectivityAgentDSName            = "konnectivity-agent"
+
+	KonnectivityServerUDS = "konnectivity-uds"
 )

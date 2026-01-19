@@ -25,6 +25,13 @@ const (
 
 	securePort = common.KubeAPISecurePort
 
-	konnectivityServerPort    = common.KonnectivityServerPort
-	konnectivityConfigMapName = common.KonnectivityConfigMapName
+	konnectivityServerPort       = common.KonnectivityServerPort
+	konnectivityConfigMapName    = common.KonnectivityConfigMapName
+	konnectivityConfigVolumeName = common.KonnectivityConfigVolumeName
+	konnectivityConfigMapKey     = common.KonnectivityConfigMapKey
+	konnectivityConfFileName     = "konnectivity-egress-selector.yaml"
+
+	konnectivityServerMountDir = "/etc/konnectivity"
+	konnectivityConfFilePath   = konnectivityServerMountDir + "/" + konnectivityConfFileName
+	konnectivityServerUDS      = common.KonnectivityServerUDS
 )
