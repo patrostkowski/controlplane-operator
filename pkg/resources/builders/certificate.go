@@ -35,6 +35,8 @@ func NewCertificate() *CertificateTemplate {
 		PrivateKey: &certmanagerv1.CertificatePrivateKey{
 			Algorithm: certmanagerv1.RSAKeyAlgorithm,
 			Size:      2048,
+			// In cert-manager >= v1.18.0, the default value changed from Never to Always
+			RotationPolicy: certmanagerv1.RotationPolicyAlways,
 		},
 	}
 	return b

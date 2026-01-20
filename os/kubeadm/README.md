@@ -37,7 +37,7 @@ docker run -d --name mcp-worker1   --hostname mcp-worker1   --privileged   --net
 ## 3. Get Bootstrap Token
 
 ```bash
-SECRET_NAME=$(KUBECONFIG=~/.kube/mcp kubectl -n kube-system get secret   | grep bootstrap-token | cut -d " " -f1)
+SECRET_NAME=$(KUBECONFIG=~/.kube/mcp kubectl -n kube-system get secret --sort-by=.metadata.creationTimestamp | grep bootstrap-token | tail -n 1 | cut -d " " -f1)
 
 TOKEN_SECRET=$(KUBECONFIG=~/.kube/mcp kubectl -n kube-system get secret $SECRET_NAME   -o jsonpath='{.data.token-secret}' | base64 -d)
 

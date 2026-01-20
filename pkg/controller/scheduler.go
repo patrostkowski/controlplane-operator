@@ -8,27 +8,27 @@ package controller
 import (
 	"context"
 
-	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	applier "github.com/patrostkowski/controlplane-operator/pkg/controller/apply"
-	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/scheduler"
+	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-type Scheduler struct {
-	*applier.Applier
-	mcp *mcpv1alpha1.ManagedControlPlane
-	log logr.Logger
-}
+func (r *ManagedControlPlaneReconciler) reconcileScheduler(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+) (ctrl.Result, error) {
+	log := r.Log.WithValues("scheduler", mcp.Namespace)
 
-func NewScheduler(mcp *mcpv1alpha1.ManagedControlPlane, k8s client.Client, scheme *runtime.Scheme, log logr.Logger) *Scheduler {
-	return &Scheduler{
-		Applier: applier.NewApplier(k8s, scheme, log, fieldOwner),
-		mcp:     mcp,
-		log:     log.WithName("scheduler"),
+	if err := apply(
+		ctx,
+		r.Client,
+		r.Scheme,
+		r.applyOpts(mcp),
+		scheduler.Resources(mcp)...,
+	); err != nil {
+		log.Error(err, "failed to apply scheduler resources")
+		return ctrl.Result{}, err
 	}
-}
 
-func (a *Scheduler) Ensure(ctx context.Context, resources []client.Object) error {
-	return a.Apply(ctx, a.mcp, resources...)
+	return ctrl.Result{}, nil
 }
