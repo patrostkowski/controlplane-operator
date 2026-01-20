@@ -29,6 +29,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+var KonnectivityServerVersion = "v0.1.3"
+
 // EndpointResources returns only the Service (LB) for kube-apiserver
 // and Service for Konnectivity server(sidecar)
 func EndpointResources(mcp *mcpv1alpha1.ManagedControlPlane) []client.Object {
@@ -175,7 +177,7 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	c2 := corev1.Container{
 		Name: konnectivityServerName,
 		// TODO: make it compatible with k8s-api version
-		Image: "registry.k8s.io/kas-network-proxy/proxy-server:v0.1.3",
+		Image: "registry.k8s.io/kas-network-proxy/proxy-server:" + KonnectivityServerVersion,
 		Args: []string{
 			"--mode=grpc",
 			"--uds-name=" + konnectivityUDSPath + ".sock",

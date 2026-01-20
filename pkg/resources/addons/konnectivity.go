@@ -36,6 +36,8 @@ const (
 	konnectivityAgentVolumeName = "agent-certs"
 )
 
+var KonnecivityAgentVersion = "v0.1.3"
+
 func buildKonnectivityAgentDaemonSet(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.DaemonSet {
 	p := pki.New(mcp).KonnectivityAgentView()
 	policy := corev1.DNSClusterFirstWithHostNet
@@ -46,7 +48,7 @@ func buildKonnectivityAgentDaemonSet(mcp *mcpv1alpha1.ManagedControlPlane) *apps
 	c := corev1.Container{
 		Name: konnectivityAgentName,
 		// TODO: make it compatible with k8s-api version
-		Image: "registry.k8s.io/kas-network-proxy/proxy-agent:v0.1.3",
+		Image: "registry.k8s.io/kas-network-proxy/proxy-agent:" + KonnecivityAgentVersion,
 		Args: []string{
 			"--proxy-server-host=" + mcp.Status.Address,
 			"--proxy-server-port=" + utils.PortString(konnectivityServerPort),
