@@ -19,43 +19,17 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	applier "github.com/patrostkowski/controlplane-operator/pkg/controller/apply"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/apiserver"
-	"k8s.io/apimachinery/pkg/runtime"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type APIServer struct {
-	*applier.Applier
-	mcp *mcpv1alpha1.ManagedControlPlane
-	log logr.Logger
-}
-
-func NewAPIServer(mcp *mcpv1alpha1.ManagedControlPlane, k8s client.Client, scheme *runtime.Scheme, log logr.Logger) *APIServer {
-	return &APIServer{
-		Applier: applier.NewApplier(k8s, scheme, log, fieldOwner),
-		mcp:     mcp,
-		log:     log.WithName("apiserver"),
-	}
-}
-
-func (a *APIServer) Ensure(ctx context.Context, resources []client.Object) error {
-	return a.Apply(ctx, a.mcp, resources...)
-}
-
-func (a *APIServer) endpointManifests() []client.Object {
-	return apiserver.EndpointResources(a.mcp)
-}
-
-func (a *APIServer) workloadManifests() []client.Object {
-	return apiserver.WorkloadResources(a.mcp)
-}
-
-func (a *APIServer) tryEndpointAddress(ctx context.Context, name string) (string, error) {
+func (r *ManagedControlPlaneReconciler) tryEndpointAddress(ctx context.Context, name, namespace string) (string, error) {
 	svc := &corev1.Service{}
-	if err := a.Get(ctx, client.ObjectKey{Namespace: a.mcp.Namespace, Name: name}, svc); err != nil {
+	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, svc); err != nil {
 		return "", err
 	}
 	if len(svc.Status.LoadBalancer.Ingress) == 0 {
@@ -69,4 +43,48 @@ func (a *APIServer) tryEndpointAddress(ctx context.Context, name string) (string
 		return ing.Hostname, nil
 	}
 	return "", nil
+}
+
+func (r *ManagedControlPlaneReconciler) reconcileAPIServiceSvc(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+) (ctrl.Result, error) {
+	log := r.Log.WithValues("api-endpoint", mcp.Namespace)
+
+	if err := apply(ctx, r.Client, r.Scheme, r.applyOpts(mcp), apiserver.EndpointResources(mcp)...); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	addr, err := r.tryEndpointAddress(ctx, common.KubeAPIServerName, mcp.Namespace)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		log.Error(err, "failed to read API Service address")
+		return ctrl.Result{}, err
+	}
+
+	if addr == "" {
+		log.Info("API server address is empty, requeue")
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+	}
+
+	if mcp.Status.Address != addr {
+		if err := r.UpdateMCPAddress(ctx, mcp, addr); err != nil {
+			log.Error(err, "failed to update address")
+			return ctrl.Result{}, err
+		}
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *ManagedControlPlaneReconciler) reconcileAPIServer(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+) (ctrl.Result, error) {
+	if err := apply(ctx, r.Client, r.Scheme, r.applyOpts(mcp), apiserver.WorkloadResources(mcp)...); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, nil
 }
