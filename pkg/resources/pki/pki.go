@@ -418,9 +418,6 @@ func apiserverSANs(mcp *mcpv1alpha1.ManagedControlPlane, ns string) (dns []strin
 		"kubernetes.default",
 		"kubernetes.default.svc",
 		"kubernetes.default.svc.cluster.local",
-		"konnectivity-server",
-		"konnectivity-server." + ns,
-		"konnectivity-server." + ns + ".svc",
 		"localhost",
 	}
 
