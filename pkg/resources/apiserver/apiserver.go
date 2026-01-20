@@ -145,6 +145,7 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 
 			"--authorization-mode=Node,RBAC",
 			"--enable-bootstrap-token-auth=true",
+			"--enable-admission-plugins=NodeRestriction",
 
 			// service account signing
 			"--service-account-issuer=https://kubernetes.default.svc.cluster.local",
