@@ -47,6 +47,11 @@ func (m PodTemplateMutator) WithContainer(c corev1.Container) {
 	pt.Spec.Containers = append(pt.Spec.Containers, c)
 }
 
+func (m PodTemplateMutator) WithDNSPolicy(policy corev1.DNSPolicy) {
+	pt := m.obj.GetPodTemplate()
+	pt.Spec.DNSPolicy = policy
+}
+
 func (m PodTemplateMutator) AddVolumes(vols ...corev1.Volume) {
 	pt := m.obj.GetPodTemplate()
 	pt.Spec.Volumes = append(pt.Spec.Volumes, vols...)

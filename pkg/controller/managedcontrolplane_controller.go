@@ -170,7 +170,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
-	if res, err := r.reconcileAdminConfig(ctx, mcpObj, mcpObj.Namespace); err != nil {
+	if res, err := r.reconcileAdminConfig(ctx, mcpObj); err != nil {
 		_ = r.statusFailed(ctx, mcpObj, state.MessagePKIFailed)
 		log.Error(err, "failed to ensure admin kubeconfig")
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
@@ -248,7 +248,7 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServiceSvc(
 		return ctrl.Result{}, err
 	}
 
-	addr, err := api.tryEndpointAddress(ctx)
+	addr, err := api.tryEndpointAddress(ctx, common.KubeAPIServerName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
@@ -256,6 +256,7 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServiceSvc(
 		log.Error(err, "failed to read API Service address (best-effort)")
 		return ctrl.Result{}, err
 	}
+
 	if addr != "" && mcp.Status.Address != addr {
 		if err := r.UpdateMCPAddress(ctx, mcp, addr); err != nil {
 			log.Error(err, "failed to update address")
@@ -335,8 +336,22 @@ func (r *ManagedControlPlaneReconciler) reconcileAddons(
 	a := NewAddons(mcp, c.Client, r.Scheme, log)
 
 	resources := addons.Resources(mcp)
-
 	if err := a.Ensure(ctx, resources); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	secrets, err := r.ensureKonnectivityTLSData(ctx, mcp)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return ctrl.Result{RequeueAfter: RequeueAfterFailure}, client.IgnoreNotFound(err)
+		}
+	}
+
+	if err := a.Ensure(ctx, secrets); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if err := a.Ensure(ctx, a.konnectivityAgentManifests()); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -384,8 +399,9 @@ func (r *ManagedControlPlaneReconciler) reconcilePKI(ctx context.Context, mcp *m
 func (r *ManagedControlPlaneReconciler) reconcileAdminConfig(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
-	ns string,
 ) (ctrl.Result, error) {
+	ns := mcp.Namespace
+
 	if mcp.Status.Address == "" {
 		r.Log.Info("API address not set yet")
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil

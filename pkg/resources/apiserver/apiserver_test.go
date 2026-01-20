@@ -41,8 +41,8 @@ func TestBuildService_APIServer(t *testing.T) {
 	svc := buildService(api)
 
 	// metadata
-	if svc.Name != KubeAPIServerSvcName {
-		t.Fatalf("expected service name %q, got %q", KubeAPIServerSvcName, svc.Name)
+	if svc.Name != apiServerName {
+		t.Fatalf("expected service name %q, got %q", apiServerName, svc.Name)
 	}
 	if svc.Namespace != api.Namespace {
 		t.Fatalf("expected service namespace %q, got %q", api.Namespace, svc.Namespace)

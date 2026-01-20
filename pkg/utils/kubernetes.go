@@ -84,6 +84,15 @@ func ConfigMapVolume(mountName, cmName, cmKey, path string) corev1.Volume {
 	}
 }
 
+func EmptyDirVolume(mountName string) corev1.Volume {
+	return corev1.Volume{
+		Name: mountName,
+		VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		},
+	}
+}
+
 func BuildComponentKubeconfig(
 	namespace string,
 	apiServerService string,
@@ -92,12 +101,11 @@ func BuildComponentKubeconfig(
 	ca common.SecretMount,
 	client common.SecretMount,
 ) *api.Config {
-	serverURL :=
-		"https://" +
-			apiServerService +
-			"." + namespace +
-			".svc:" +
-			strconv.Itoa(int(apiServerPort))
+	serverURL := "https://" +
+		apiServerService +
+		"." + namespace +
+		".svc:" +
+		strconv.Itoa(int(apiServerPort))
 
 	cfg := api.NewConfig()
 

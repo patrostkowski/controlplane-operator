@@ -16,7 +16,6 @@ package controllermanager
 
 import (
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/apiserver"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
@@ -41,8 +40,8 @@ func buildConfigMap(cm *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 	ns := cm.Namespace
 	kcfg := utils.BuildComponentKubeconfig(
 		ns,
-		apiserver.KubeAPIServerSvcName,
-		apiserver.KubeAPIServerSecurePort,
+		common.KubeAPIServerName,
+		common.KubeAPISecurePort,
 		"cm",
 		p.ClientCA,
 		p.Client,

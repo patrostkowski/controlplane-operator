@@ -30,16 +30,19 @@ type Bundle struct {
 	caFile   string
 
 	// CAs
-	clusterCA    common.SecretMount
-	etcdCA       common.SecretMount
-	frontProxyCA common.SecretMount
+	clusterCA      common.SecretMount
+	etcdCA         common.SecretMount
+	frontProxyCA   common.SecretMount
+	konnectivityCA common.SecretMount
 
 	// ETCD serving/peer
 	etcdServer common.SecretMount
 	etcdPeer   common.SecretMount
 
 	// Serving
-	apiServerServing common.SecretMount
+	apiServerServing          common.SecretMount
+	konnectivityServerServing common.SecretMount
+	konnectivityAgent         common.SecretMount
 
 	// Clients
 	apiServerEtcdClient     common.SecretMount
@@ -72,14 +75,17 @@ func New(_ *mcpv1alpha1.ManagedControlPlane) Bundle {
 		keyFile:  common.TLSKeyKey,
 		caFile:   common.CACrtKey,
 
-		clusterCA:    m(secretManagedCA),
-		etcdCA:       m(secretEtcdCA),
-		frontProxyCA: m(secretFrontProxyCA),
+		clusterCA:      m(secretManagedCA),
+		etcdCA:         m(secretEtcdCA),
+		frontProxyCA:   m(secretFrontProxyCA),
+		konnectivityCA: m(secretKonnectivityCA),
 
 		etcdServer: m(secretEtcdServerTLS),
 		etcdPeer:   m(secretEtcdPeerTLS),
 
-		apiServerServing: m(secretAPIServerTLS),
+		apiServerServing:          m(secretAPIServerTLS),
+		konnectivityServerServing: m(secretKonnectivityTLS),
+		konnectivityAgent:         m(secretKonnectivityAgentTLS),
 
 		apiServerEtcdClient:    m(secretAPIServerEtcd),
 		apiServerKubeletClient: m(secretAPIServerKubelet),
@@ -96,9 +102,11 @@ func New(_ *mcpv1alpha1.ManagedControlPlane) Bundle {
 
 // APIServerView is what apiserver needs. It’s explicit, self-documenting and hard to misuse.
 type APIServerView struct {
-	ClientCA common.SecretMount
+	ClientCA       common.SecretMount
+	KonnectivityCA common.SecretMount
 
-	Serving common.SecretMount
+	Serving             common.SecretMount
+	KonnectivityServing common.SecretMount
 
 	EtcdCA     common.SecretMount
 	EtcdClient common.SecretMount
@@ -113,9 +121,11 @@ type APIServerView struct {
 
 func (b Bundle) APIServer() APIServerView {
 	return APIServerView{
-		ClientCA: b.clusterCA,
+		ClientCA:       b.clusterCA,
+		KonnectivityCA: b.konnectivityCA,
 
-		Serving: b.apiServerServing,
+		Serving:             b.apiServerServing,
+		KonnectivityServing: b.konnectivityServerServing,
 
 		EtcdCA:     b.etcdCA,
 		EtcdClient: b.apiServerEtcdClient,
@@ -247,5 +257,48 @@ type AdminView struct {
 func (b Bundle) Admin() AdminView {
 	return AdminView{
 		Client: b.adminClient,
+	}
+}
+
+const (
+	konnectivityAgentMountRoot = "/certs"
+	konnectivityAgentCAFile    = "ca.crt"
+	konnectivityAgentCertFile  = "tls.crt"
+	konnectivityAgentKeyFile   = "tls.key"
+)
+
+type KonnectivityAgentView struct {
+	KonnectivityCA    common.SecretMount
+	KonnectivityAgent common.SecretMount
+}
+
+func (b Bundle) KonnectivityAgentView() KonnectivityAgentView {
+	m := func(secret, dir string) common.SecretMount {
+		return common.SecretMount{
+			SecretName: secret,
+			MountDir:   dir,
+			CertFile:   konnectivityAgentCertFile,
+			KeyFile:    konnectivityAgentKeyFile,
+			CAFile:     konnectivityAgentCAFile,
+		}
+	}
+
+	return KonnectivityAgentView{
+		KonnectivityCA:    m(b.konnectivityCA.SecretName, konnectivityAgentMountRoot),
+		KonnectivityAgent: m(b.konnectivityAgent.SecretName, konnectivityAgentMountRoot),
+	}
+}
+
+func (k KonnectivityAgentView) Volumes() []corev1.Volume {
+	return []corev1.Volume{
+		k.KonnectivityCA.Volume(),
+		k.KonnectivityAgent.Volume(),
+	}
+}
+
+func (k KonnectivityAgentView) Mounts(readOnly bool) []corev1.VolumeMount {
+	return []corev1.VolumeMount{
+		k.KonnectivityCA.Mount(readOnly),
+		k.KonnectivityAgent.Mount(readOnly),
 	}
 }

@@ -49,6 +49,9 @@ const (
 	MessageAPIServerSvcFailed  mcpv1alpha1.Message = "Failed to reconcile API Server service IP address"
 	MessageAPIServerSvcWaiting mcpv1alpha1.Message = "Waiting for API Server IP address"
 
+	MessageKonnectivityServerSvcFailed  mcpv1alpha1.Message = "Failed to reconcile Konnectivity Server service IP address"
+	MessageKonnectivityServerSvcWaiting mcpv1alpha1.Message = "Waiting for Konnectivity Server IP address"
+
 	MessageAPIServerFailed  mcpv1alpha1.Message = "Failed to reconcile API Server"
 	MessageAPIServerWaiting mcpv1alpha1.Message = "Waiting for API Server"
 

@@ -14,13 +14,24 @@
 
 package apiserver
 
+import "github.com/patrostkowski/controlplane-operator/pkg/resources/common"
+
 const (
-	KubeAPIServerSvcName    = apiServerName
-	KubeAPIServerSecurePort = securePort
+	apiServerName = common.KubeAPIServerName
+	appLabelKey   = common.KubeAPIAppLabelKey
+	appLabelVal   = common.KubeAPIAppLabelVal
 
-	apiServerName = "kube-apiserver"
-	appLabelKey   = "app"
-	appLabelVal   = "kube-apiserver"
+	konnectivityServerName = common.KonnectivityServerName
 
-	securePort int32 = 6443
+	securePort = common.KubeAPISecurePort
+
+	konnectivityServerPort       = common.KonnectivityServerPort
+	konnectivityConfigMapName    = common.KonnectivityConfigMapName
+	konnectivityConfigVolumeName = common.KonnectivityConfigVolumeName
+	konnectivityConfigMapKey     = common.KonnectivityConfigMapKey
+	konnectivityConfFileName     = "konnectivity-egress-selector.yaml"
+
+	konnectivityServerMountDir = "/etc/konnectivity"
+	konnectivityConfFilePath   = konnectivityServerMountDir + "/" + konnectivityConfFileName
+	konnectivityServerUDS      = common.KonnectivityServerUDS
 )

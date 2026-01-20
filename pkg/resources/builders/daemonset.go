@@ -110,6 +110,11 @@ func (w *DaemonsetTemplate) WithHostNetwork() *DaemonsetTemplate {
 	return w
 }
 
+func (w *DaemonsetTemplate) WithDNSPolicy(policy corev1.DNSPolicy) *DaemonsetTemplate {
+	w.pod.WithDNSPolicy(policy)
+	return w
+}
+
 func (w *DaemonsetTemplate) WithPriorityClass(name string) *DaemonsetTemplate {
 	w.pod.WithPriorityClass(name)
 	return w

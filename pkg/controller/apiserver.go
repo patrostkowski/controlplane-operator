@@ -53,9 +53,9 @@ func (a *APIServer) workloadManifests() []client.Object {
 	return apiserver.WorkloadResources(a.mcp)
 }
 
-func (a *APIServer) tryEndpointAddress(ctx context.Context) (string, error) {
+func (a *APIServer) tryEndpointAddress(ctx context.Context, name string) (string, error) {
 	svc := &corev1.Service{}
-	if err := a.Get(ctx, client.ObjectKey{Namespace: a.mcp.Namespace, Name: apiserver.KubeAPIServerSvcName}, svc); err != nil {
+	if err := a.Get(ctx, client.ObjectKey{Namespace: a.mcp.Namespace, Name: name}, svc); err != nil {
 		return "", err
 	}
 	if len(svc.Status.LoadBalancer.Ingress) == 0 {

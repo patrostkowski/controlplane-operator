@@ -14,6 +14,8 @@
 
 package addons
 
+import "github.com/patrostkowski/controlplane-operator/pkg/resources/common"
+
 const (
 	KubeSystemNamespace = "kube-system"
 
@@ -36,4 +38,9 @@ const (
 	RoleNodeClientCSRApprove = "system:certificates.k8s.io:certificatesigningrequests:nodeclient"
 	RoleSelfNodeClientCSR    = "system:certificates.k8s.io:certificatesigningrequests:selfnodeclient"
 	RoleNodeBootstrapper     = "system:node-bootstrapper"
+
+	konnectivityAgentName      = common.KonnectivityAgentName
+	konnectivityServerPort     = common.KonnectivityServerPort
+	konnectivityAgentDSName    = common.KonnectivityAgentDSName
+	konnectivityAgentNamespace = common.KonnectivityAgentNamespace
 )
