@@ -18,11 +18,11 @@ set -euo pipefail
 
 # Defaults
 DEFAULT_DOCKER_NET="shared-docker-libvirt"
-DEFAULT_SUBNET="172.30.0.0/24"
+DEFAULT_SUBNET="172.18.0.0/16"
 
 DEFAULT_DHCP_CONTAINER="dhcp-shared-net"
 DEFAULT_DHCP_IMAGE="andyshinn/dnsmasq"
-DEFAULT_DHCP_RANGE="172.30.0.100,172.30.0.150,12h"
+DEFAULT_DHCP_RANGE="172.18.0.100,172.18.0.150,12h"
 
 DEFAULT_KIND_CLUSTER="kind"          # default kind cluster name
 DEFAULT_BRIDGE=""                    # if empty, auto-detect from docker network
@@ -117,6 +117,11 @@ case "${subcmd}" in
       KIND_EXPERIMENTAL_DOCKER_NETWORK="${net}" kind create cluster --name "${cluster}"
     fi
 
+    # Assume that cluster was created successfully/already exists
+    # Kind creates cluster with prefix "kind"
+    echo "Switching to the kind cluster context"
+    kubectl config use-context kind-${cluster}
+
     # 3) DHCP container on that network
     if docker ps -a --format '{{.Names}}' | grep -qx "${dhcp_name}"; then
       # start if stopped
@@ -137,7 +142,7 @@ case "${subcmd}" in
         --dhcp-range="${DEFAULT_DHCP_RANGE}" >/dev/null
     fi
     task dev:install
-    kubectl apply -f ../mcp.yaml
+    kubectl apply -f ../kubeadm/mcp.yaml
     br="$(docker_bridge_name "${net}")"
     echo
     echo "Bridge for docker network '${net}': ${br}"
