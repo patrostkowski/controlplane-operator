@@ -20,7 +20,9 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-  - 172.18.0.250-172.18.0.255
+    # shouldn't overlap with dnsmasq
+    # dhcp range
+  - 172.18.1.240-172.18.1.250
   autoAssign: true
 ---
 apiVersion: metallb.io/v1beta1
