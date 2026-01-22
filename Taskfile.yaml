@@ -62,6 +62,7 @@ tasks:
         --create-namespace
         --set crds.enabled=true
       - kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
+      - kubectl apply -f config/crd/
 
   dev:run:
     desc: "Run the controlplane operator locally (for development)"
