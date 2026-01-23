@@ -15,7 +15,6 @@
 package apiserver
 
 import (
-	"fmt"
 	"path/filepath"
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
@@ -24,6 +23,9 @@ import (
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	apiserverv1beta "k8s.io/apiserver/pkg/apis/apiserver/v1beta1"
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -62,28 +64,49 @@ func buildService(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 		Build()
 }
 
+const (
+	egressConnectionNameCluster      = "cluster"
+	egressConnectionNameControlPlane = "controlplane"
+	egressConnectionGRPCType         = apiserverv1beta.ProtocolGRPC
+	egressConnectionDirectType       = apiserverv1beta.ProtocolDirect
+)
+
 func buildKonnectivityConfigMap(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 	ns := mcp.Namespace
 	socketPath := filepath.Join(common.PKIMountRoot, konnectivityConfigMapName+".socket")
 
-	egressSelector := fmt.Sprintf(`apiVersion: apiserver.k8s.io/v1beta1
-kind: EgressSelectorConfiguration
-egressSelections:
-- name: cluster
-  connection:
-    proxyProtocol: GRPC
-    transport:
-      uds:
-        udsName: %s
-- name: controlplane
-  connection:
-    proxyProtocol: Direct
-`, socketPath)
+	e := apiserverv1beta.EgressSelectorConfiguration{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       common.EgressSelectorKind,
+			APIVersion: common.EgressSelectorAPIVersion,
+		},
+		EgressSelections: []apiserverv1beta.EgressSelection{
+			{
+				Name: egressConnectionNameCluster,
+				Connection: apiserverv1beta.Connection{
+					ProxyProtocol: egressConnectionGRPCType,
+					Transport: &apiserverv1beta.Transport{
+						UDS: &apiserverv1beta.UDSTransport{
+							UDSName: socketPath,
+						},
+					},
+				},
+			},
+			{
+				Name: egressConnectionNameControlPlane,
+				Connection: apiserverv1beta.Connection{
+					ProxyProtocol: egressConnectionDirectType,
+				},
+			},
+		},
+	}
+
+	y := utils.GetObjYaml(&e)
 
 	return builders.NewConfigMap().
 		WithName(konnectivityConfigMapName).
 		WithNamespace(ns).
-		Put(konnectivityConfigMapKey, egressSelector).
+		Put(konnectivityConfigMapKey, y).
 		Build()
 }
 

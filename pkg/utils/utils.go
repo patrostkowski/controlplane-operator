@@ -15,6 +15,7 @@
 package utils
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -22,7 +23,9 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/apis/meta/internalversion/scheme"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -128,4 +131,22 @@ func GetMajorMinorString(version string) string {
 	secondDot += firstDot + 1
 
 	return v[:secondDot]
+}
+
+// Serialize k8s object to yaml
+func GetObjYaml(obj runtime.Object) string {
+	s := json.NewSerializerWithOptions(
+		json.DefaultMetaFactory,
+		scheme.Scheme, scheme.Scheme,
+		json.SerializerOptions{Yaml: true})
+
+	b := new(bytes.Buffer)
+
+	err := s.Encode(obj, b)
+	// should never happen
+	if err != nil {
+		panic("unexpected error: " + err.Error())
+	}
+
+	return b.String()
 }
