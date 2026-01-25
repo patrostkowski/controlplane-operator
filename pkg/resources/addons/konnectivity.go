@@ -15,6 +15,8 @@
 package addons
 
 import (
+	"path/filepath"
+
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
@@ -44,6 +46,7 @@ func buildKonnectivityAgentDaemonSet(mcp *mcpv1alpha1.ManagedControlPlane) *apps
 	labels := map[string]string{
 		"app": konnectivityAgentName,
 	}
+	caPath := filepath.Join(p.KonnectivityAgent.MountDir, p.KonnectivityCA.CAFile)
 
 	c := corev1.Container{
 		Name: konnectivityAgentName,
@@ -53,7 +56,7 @@ func buildKonnectivityAgentDaemonSet(mcp *mcpv1alpha1.ManagedControlPlane) *apps
 			"--proxy-server-host=" + mcp.Status.Address,
 			"--proxy-server-port=" + utils.PortString(konnectivityServerPort),
 
-			"--ca-cert=" + p.KonnectivityCA.CertPath(),
+			"--ca-cert=" + caPath,
 			"--agent-cert=" + p.KonnectivityAgent.CertPath(),
 			"--agent-key=" + p.KonnectivityAgent.KeyPath(),
 			"--v=2",
