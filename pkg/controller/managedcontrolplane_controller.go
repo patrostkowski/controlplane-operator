@@ -208,7 +208,7 @@ func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
 		Complete(&ManagedControlPlaneReconciler{
 			BaseReconciler: BaseReconciler{
 				Client:   mgr.GetClient(),
-				Log:      ctrl.Log.WithName("controller").WithName("ManagedControlPlane"),
+				Log:      ctrl.Log.WithName("controller").WithName(mcpv1alpha1.KindManagedControlPlane),
 				Recorder: mgr.GetEventRecorderFor("managedcontrolplane"),
 				Scheme:   mgr.GetScheme(),
 			},

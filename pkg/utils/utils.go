@@ -150,3 +150,26 @@ func GetObjYaml(obj runtime.Object) string {
 
 	return b.String()
 }
+
+func GetObjJSON(obj runtime.Object) string {
+	s := json.NewSerializerWithOptions(
+		json.DefaultMetaFactory,
+		scheme.Scheme,
+		scheme.Scheme,
+		json.SerializerOptions{
+			Yaml:   false,
+			Pretty: true,
+			Strict: false,
+		},
+	)
+
+	b := new(bytes.Buffer)
+
+	err := s.Encode(obj, b)
+	// should never happen
+	if err != nil {
+		panic("unexpected error: " + err.Error())
+	}
+
+	return b.String()
+}
