@@ -37,6 +37,8 @@ const (
 
 	CSIDeploymentName = "local-path-provisioner"
 
+	CSIDefaultStorageClassAnnotation = "storageclass.kubernetes.io/is-default-class"
+
 	CSIStorageClassName  = "local-path"
 	CSIProvisionerName   = "rancher.io/local-path"
 	CSIReclaimPolicy     = corev1.PersistentVolumeReclaimDelete
@@ -193,6 +195,9 @@ func buildCSIClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 
 func buildCSIStorageClass() *storagev1.StorageClass {
 	return builders.NewStorageClass().
+		WithAnnotations(map[string]string{
+			CSIDefaultStorageClassAnnotation: "true",
+		}).
 		WithName(CSIStorageClassName).
 		WithProvisioner(CSIProvisionerName).
 		WithPolicy(CSIReclaimPolicy).
