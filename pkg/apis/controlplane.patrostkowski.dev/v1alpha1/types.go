@@ -18,6 +18,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	KindManagedControlPlane     = "ManagedControlPlane"
+	KindManagedControlPlaneList = "ManagedControlPlaneList"
+)
+
 // ManagedControlPlaneSpec defines the desired state of ManagedControlPlane.
 type ManagedControlPlaneSpec struct {
 	// Version is the desired Kubernetes control plane version, e.g. "v1.34.0".

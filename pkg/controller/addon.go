@@ -265,7 +265,7 @@ func (r *ManagedControlPlaneReconciler) ensureBootstrapToken(
 			Name:      addons.BootstrapTokenMgmtSecretName,
 			Namespace: mcp.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(mcp, mcpv1alpha1.SchemeGroupVersion.WithKind("ManagedControlPlane")),
+				*metav1.NewControllerRef(mcp, mcpv1alpha1.SchemeGroupVersion.WithKind(mcpv1alpha1.KindManagedControlPlane)),
 			},
 		},
 		Type: corev1.SecretTypeOpaque,
