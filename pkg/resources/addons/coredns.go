@@ -252,6 +252,7 @@ func buildCoreDNSDeployment() *appsv1.Deployment {
 		WithName(CoreDNSDeploymentName).
 		WithNamespace(CoreDNSNamespaceName).
 		WithLabels(CoreDNSPodLabels).
+		WithServiceAccount(CoreDNSServiceAccountName).
 		WithSelector(CoreDNSPodLabels).
 		WithReplicas(CoreDNSReplicas).
 		WithContainer(c).
