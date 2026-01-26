@@ -45,3 +45,4 @@ tmp
 bin
 .build*
 manifest-qcow2.json
+.cache
