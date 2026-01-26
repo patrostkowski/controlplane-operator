@@ -190,7 +190,7 @@ func kubeletConfigUnversioned(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Conf
 
 	kc := &kubeletconfigv1beta1.KubeletConfiguration{
 		RotateCertificates: true,
-		ServerTLSBootstrap: true,
+		ServerTLSBootstrap: false,
 		ClusterDNS:         []string{clusterDNS.String()},
 		ClusterDomain:      "cluster.local",
 		Authentication: kubeletconfigv1beta1.KubeletAuthentication{
@@ -225,7 +225,7 @@ func kubeletConfigVersioned(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Config
 
 	kc := &kubeletconfigv1beta1.KubeletConfiguration{
 		RotateCertificates: true,
-		ServerTLSBootstrap: true,
+		ServerTLSBootstrap: false,
 		ClusterDNS:         []string{clusterDNS.String()},
 		ClusterDomain:      "cluster.local",
 		Authentication: kubeletconfigv1beta1.KubeletAuthentication{

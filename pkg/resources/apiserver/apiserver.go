@@ -33,6 +33,14 @@ import (
 
 var KonnectivityServerVersion = "v0.1.3"
 
+const (
+	egressConnectionNameCluster      = "cluster"
+	egressConnectionNameControlPlane = "controlplane"
+	egressConnectionGRPCType         = apiserverv1beta.ProtocolGRPC
+	egressConnectionDirectType       = apiserverv1beta.ProtocolDirect
+	konnectivityUDSFile              = "konnectivity-uds.sock"
+)
+
 // EndpointResources returns only the Service (LB) for kube-apiserver
 // and Service for Konnectivity server(sidecar)
 func EndpointResources(mcp *mcpv1alpha1.ManagedControlPlane) []client.Object {
@@ -64,16 +72,9 @@ func buildService(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 		Build()
 }
 
-const (
-	egressConnectionNameCluster      = "cluster"
-	egressConnectionNameControlPlane = "controlplane"
-	egressConnectionGRPCType         = apiserverv1beta.ProtocolGRPC
-	egressConnectionDirectType       = apiserverv1beta.ProtocolDirect
-)
-
 func buildKonnectivityConfigMap(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 	ns := mcp.Namespace
-	socketPath := filepath.Join(common.PKIMountRoot, konnectivityConfigMapName+".socket")
+	socketPath := filepath.Join(common.PKIMountRoot, konnectivityServerUDS, konnectivityUDSFile)
 
 	e := apiserverv1beta.EgressSelectorConfiguration{
 		TypeMeta: metav1.TypeMeta{
@@ -116,27 +117,28 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	ns := mcp.Namespace
 	labels := map[string]string{appLabelKey: appLabelVal}
 	replicas := int32(1)
-
 	version := mcp.Spec.Version
 
-	konnectivityServerVolume := utils.ConfigMapVolume(
+	konnectivityConfigVolume := utils.ConfigMapVolume(
 		konnectivityConfigVolumeName,
 		konnectivityConfigMapName,
 		konnectivityConfigMapKey,
 		konnectivityConfFileName,
 	)
-	konnectivityServerVolumeMount := corev1.VolumeMount{
+	konnectivityConfigVolumeMount := corev1.VolumeMount{
 		Name:      konnectivityConfigVolumeName,
 		ReadOnly:  true,
 		MountPath: konnectivityServerMountDir,
 	}
 
-	konnectivityUDSPath := filepath.Join(common.PKIMountRoot, konnectivityServerUDS)
+	konnectivityUDSDir := filepath.Join(common.PKIMountRoot, konnectivityServerUDS)
+	udsFile := filepath.Join(konnectivityUDSDir, konnectivityUDSFile)
 	konnectivityUDSVolume := utils.EmptyDirVolume(konnectivityServerUDS)
+
 	konnectivityUDSVolumeMount := corev1.VolumeMount{
 		Name:      konnectivityServerUDS,
-		ReadOnly:  true,
-		MountPath: konnectivityUDSPath,
+		ReadOnly:  false,
+		MountPath: konnectivityUDSDir,
 	}
 
 	c := corev1.Container{
@@ -177,17 +179,7 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 
 			"--allow-privileged=true",
 
-			// konnectivity
 			"--egress-selector-config-file=" + konnectivityConfFilePath,
-
-			// front-proxy
-			// "--proxy-client-cert-file=" + p.FrontProxyClient.CertPath(),
-			// "--proxy-client-key-file=" + p.FrontProxyClient.KeyPath(),
-			// "--requestheader-allowed-names=" + pki.CNFrontProxyClient,
-			// "--requestheader-client-ca-file=" + p.FrontProxyCA.CertPath(),
-			// "--requestheader-extra-headers-prefix=X-Remote-Extra-",
-			// "--requestheader-group-headers=X-Remote-Group",
-			// "--requestheader-username-headers=X-Remote-User",
 
 			"--logging-format=json",
 		},
@@ -199,12 +191,11 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	}
 
 	c2 := corev1.Container{
-		Name: konnectivityServerName,
-		// TODO: make it compatible with k8s-api version
+		Name:  konnectivityServerName,
 		Image: "registry.k8s.io/kas-network-proxy/proxy-server:" + KonnectivityServerVersion,
 		Args: []string{
 			"--mode=grpc",
-			"--uds-name=" + konnectivityUDSPath + ".sock",
+			"--uds-name=" + udsFile,
 			"--delete-existing-uds-file=true",
 			"--cluster-cert=" + p.KonnectivityServing.CertPath(),
 			"--cluster-key=" + p.KonnectivityServing.KeyPath(),
@@ -224,7 +215,7 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 		WithContainer(c).
 		AddVolumes(
 			konnectivityUDSVolume,
-			konnectivityServerVolume,
+			konnectivityConfigVolume,
 			p.ClientCA.Volume(),
 			p.Serving.Volume(),
 			p.EtcdClient.Volume(),
@@ -237,7 +228,8 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			p.KonnectivityCA.Volume(),
 		).
 		AddVolumeMounts(c.Name,
-			konnectivityServerVolumeMount,
+			konnectivityConfigVolumeMount,
+			konnectivityUDSVolumeMount,
 			p.ClientCA.Mount(true),
 			p.Serving.Mount(true),
 			p.EtcdClient.Mount(true),
