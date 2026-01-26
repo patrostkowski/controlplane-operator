@@ -117,7 +117,7 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	ns := mcp.Namespace
 	labels := map[string]string{appLabelKey: appLabelVal}
 	replicas := int32(1)
-	version := mcp.Spec.Version
+	version := mcp.Spec.Kubernetes.Version
 
 	konnectivityConfigVolume := utils.ConfigMapVolume(
 		konnectivityConfigVolumeName,
@@ -150,7 +150,7 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			"--advertise-address=" + mcp.Status.Address,
 			"--bind-address=0.0.0.0",
 			"--secure-port=6443",
-			"--service-cluster-ip-range=" + mcp.Spec.Networking.ServiceCIDR,
+			"--service-cluster-ip-range=" + mcp.Spec.Kubernetes.Networking.ServiceCIDR,
 
 			// etcd
 			"--etcd-servers=https://etcd-0.etcd." + ns + ".svc:2379",

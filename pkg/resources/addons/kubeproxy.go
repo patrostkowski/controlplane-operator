@@ -75,7 +75,7 @@ func buildKubeproxyConfigMap(ma *mcpv1alpha1.ManagedControlPlane) *corev1.Config
 	configConf := `apiVersion: kubeproxy.config.k8s.io/v1alpha1
 kind: KubeProxyConfiguration
 mode: "iptables"
-clusterCIDR: "` + ma.Spec.Networking.ServiceCIDR + `"
+clusterCIDR: "` + ma.Spec.Kubernetes.Networking.ServiceCIDR + `"
 bindAddress: "0.0.0.0"
 metricsBindAddress: "127.0.0.1:10249"
 healthzBindAddress: "0.0.0.0:10256"
@@ -116,7 +116,7 @@ current-context: default
 }
 
 func buildKubeproxyDaemonSet(ma *mcpv1alpha1.ManagedControlPlane) *appsv1.DaemonSet {
-	version := ma.Spec.Version
+	version := ma.Spec.Kubernetes.Version
 	priv := true
 	fileOrCreate := corev1.HostPathFileOrCreate
 	dir := corev1.HostPathDirectory

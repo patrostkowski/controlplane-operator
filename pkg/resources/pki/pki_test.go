@@ -127,8 +127,10 @@ func TestResources_CountsAndKeyFields(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: mcpv1alpha1.ManagedControlPlaneSpec{
-			Networking: &mcpv1alpha1.NetworkingSpec{
-				ServiceCIDR: "10.96.0.0/12",
+			Kubernetes: mcpv1alpha1.KubernetesSpec{
+				Networking: &mcpv1alpha1.NetworkingSpec{
+					ServiceCIDR: "10.96.0.0/12",
+				},
 			},
 		},
 	}
@@ -209,8 +211,10 @@ func TestAPIServerSANs_HostnameAddressGoesToDNS(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: mcpv1alpha1.ManagedControlPlaneSpec{
-			Networking: &mcpv1alpha1.NetworkingSpec{
-				ServiceCIDR: "10.96.0.0/12",
+			Kubernetes: mcpv1alpha1.KubernetesSpec{
+				Networking: &mcpv1alpha1.NetworkingSpec{
+					ServiceCIDR: "10.96.0.0/12",
+				},
 			},
 		},
 	}
@@ -236,8 +240,10 @@ func TestCertificate_IssuerRefKindIsIssuerEverywhere(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: mcpv1alpha1.ManagedControlPlaneSpec{
-			Networking: &mcpv1alpha1.NetworkingSpec{
-				ServiceCIDR: "10.96.0.0/12",
+			Kubernetes: mcpv1alpha1.KubernetesSpec{
+				Networking: &mcpv1alpha1.NetworkingSpec{
+					ServiceCIDR: "10.96.0.0/12",
+				},
 			},
 		},
 	}

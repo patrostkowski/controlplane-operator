@@ -16,6 +16,8 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	corev1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -23,11 +25,17 @@ const (
 	KindManagedControlPlaneList = "ManagedControlPlaneList"
 )
 
+// TODO: add kubebuilder tags for validations
+
 // ManagedControlPlaneSpec defines the desired state of ManagedControlPlane.
 type ManagedControlPlaneSpec struct {
 	// Version is the desired Kubernetes control plane version, e.g. "v1.34.0".
-	Version    string          `json:"version"`
-	Networking *NetworkingSpec `json:"networking,omitempty"`
+	Kubernetes        KubernetesSpec        `json:"kubernetes"`
+	Addons            AddonsSpec            `json:"addons"`
+	APIServer         APIServerSpec         `json:"apiserver"`
+	ControllerManager ControllerManagerSpec `json:"controllerManager"`
+	Scheduler         SchedulerSpec         `json:"ccheduler"`
+	ETCD              ETCDSpec              `json:"etcd"`
 }
 
 // ManagedControlPlaneStatus defines the observed state of ManagedControlPlane.
@@ -38,6 +46,65 @@ type ManagedControlPlaneStatus struct {
 	Status                   `json:",inline,omitempty"`
 	Address                  string                   `json:"address,omitempty"`
 	AdminKubeconfigSecretRef AdminKubeconfigSecretRef `json:"adminKubeconfigSecretRef,omitempty"`
+}
+
+type APIServerSpec struct {
+	AvailabilitySpec `json:",inline"`
+}
+
+type ControllerManagerSpec struct {
+	AvailabilitySpec `json:",inline"`
+}
+
+type SchedulerSpec struct {
+	AvailabilitySpec `json:",inline"`
+}
+
+type ETCDSpec struct {
+	AvailabilitySpec `json:",inline"`
+}
+
+type AddonsSpec struct {
+	CoreDNS      CoreDNS      `json:"coredns"`
+	CSI          CSI          `json:"csi"`
+	Flannel      Flannel      `json:"flannel"`
+	Konnectivity Konnectivity `json:"konnectivity"`
+	Kubeproxy    Kubeproxy    `json:"kubeproxy"`
+}
+
+type CoreDNS struct {
+	Enabled *bool `json:"enabled"`
+}
+
+type CSI struct {
+	Enabled *bool `json:"enabled"`
+}
+
+type Flannel struct {
+	Enabled *bool `json:"enabled"`
+}
+
+type Konnectivity struct {
+	Enabled *bool `json:"enabled"`
+}
+
+type Kubeproxy struct {
+	Enabled *bool `json:"enabled"`
+}
+
+type KubernetesSpec struct {
+	Version    string          `json:"version"`
+	Networking *NetworkingSpec `json:"networking,omitempty"`
+}
+
+type NetworkingSpec struct {
+	// +kubebuilder:validation:Items:Pattern=`^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$`
+	// +optional
+	PodCIDR string `json:"podCIDR,omitempty"`
+
+	// +kubebuilder:validation:Items:Pattern=`^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$`
+	// +optional
+	ServiceCIDR string `json:"serviceCIDR,omitempty"`
 }
 
 // ManagedControlPlane is the root CR that “owns” the other managed components.
@@ -57,23 +124,13 @@ type ManagedControlPlane struct {
 	Status ManagedControlPlaneStatus `json:"status,omitempty"`
 }
 
-// +kubebuilder:object:root=true
 // ManagedControlPlaneList contains a list of ManagedControlPlane.
+// +kubebuilder:object:root=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type ManagedControlPlaneList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ManagedControlPlane `json:"items"`
-}
-
-type NetworkingSpec struct {
-	// +kubebuilder:validation:Items:Pattern=`^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$`
-	// +optional
-	PodCIDR string `json:"podCIDR,omitempty"`
-
-	// +kubebuilder:validation:Items:Pattern=`^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$`
-	// +optional
-	ServiceCIDR string `json:"serviceCIDR,omitempty"`
 }
 
 type Status struct {
@@ -83,6 +140,13 @@ type Status struct {
 
 type AdminKubeconfigSecretRef struct {
 	Name string `json:"name"`
+}
+
+type AvailabilitySpec struct {
+	Replicas                 *int32                          `json:"replicas"`
+	Resources                corev1.ResourceRequirements     `json:"resources"`
+	TopologySpreadConstraint corev1.TopologySpreadConstraint `json:"topologySpreadConstraint"`
+	corev1.Affinity          `json:",inline"`
 }
 
 type (

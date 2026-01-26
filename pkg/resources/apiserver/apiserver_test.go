@@ -31,7 +31,9 @@ func TestBuildService_APIServer(t *testing.T) {
 			Namespace: "demo-ns",
 		},
 		Spec: mcpv1alpha1.ManagedControlPlaneSpec{
-			Version: "v1.34.0",
+			Kubernetes: mcpv1alpha1.KubernetesSpec{
+				Version: "v1.34.0",
+			},
 		},
 		Status: mcpv1alpha1.ManagedControlPlaneStatus{
 			Address: "192.0.2.10",
@@ -92,9 +94,11 @@ func TestBuildDeployment_APIServer(t *testing.T) {
 			Namespace: "demo-ns",
 		},
 		Spec: mcpv1alpha1.ManagedControlPlaneSpec{
-			Version: "v1.34.0",
-			Networking: &mcpv1alpha1.NetworkingSpec{
-				ServiceCIDR: "10.96.0.0/12",
+			Kubernetes: mcpv1alpha1.KubernetesSpec{
+				Version: "v1.34.0",
+				Networking: &mcpv1alpha1.NetworkingSpec{
+					ServiceCIDR: "10.96.0.0/12",
+				},
 			},
 		},
 		Status: mcpv1alpha1.ManagedControlPlaneStatus{
@@ -126,14 +130,14 @@ func TestBuildDeployment_APIServer(t *testing.T) {
 	if c.Name != "apiserver" {
 		t.Fatalf("expected container name %q, got %q", "apiserver", c.Name)
 	}
-	wantImage := "registry.k8s.io/kube-apiserver:" + api.Spec.Version
+	wantImage := "registry.k8s.io/kube-apiserver:" + api.Spec.Kubernetes.Version
 	if c.Image != wantImage {
 		t.Fatalf("expected image %q, got %q", wantImage, c.Image)
 	}
 
 	// key args
 	mustContainArg(t, c.Args, "--advertise-address="+api.Status.Address)
-	mustContainArg(t, c.Args, "--service-cluster-ip-range="+api.Spec.Networking.ServiceCIDR)
+	mustContainArg(t, c.Args, "--service-cluster-ip-range="+api.Spec.Kubernetes.Networking.ServiceCIDR)
 	mustContainArg(t, c.Args, "--etcd-servers=https://etcd-0.etcd."+api.Namespace+".svc:2379")
 
 	mustContainArg(t, c.Args, "--client-ca-file="+p.ClientCA.CertPath())

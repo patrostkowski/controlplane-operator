@@ -211,7 +211,7 @@ func buildCoreDNSService(ma *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 		{Name: "dns", Port: 53, Protocol: corev1.ProtocolUDP, TargetPort: intstr.FromInt(53)},
 		{Name: "dns-tcp", Port: 53, Protocol: corev1.ProtocolTCP, TargetPort: intstr.FromInt(53)},
 	}
-	ip, _ := utils.IPAtOffset(ma.Spec.Networking.ServiceCIDR, 10)
+	ip, _ := utils.IPAtOffset(ma.Spec.Kubernetes.Networking.ServiceCIDR, 10)
 	return builders.NewService().
 		WithName(CoreDNSServiceName).
 		WithNamespace(CoreDNSNamespaceName).
