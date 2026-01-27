@@ -19,8 +19,26 @@ import (
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/etcd"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/state"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
+
+type ETCDComponent struct {
+	r *ManagedControlPlaneReconciler
+}
+
+func (c *ETCDComponent) Name() string {
+	return "etcd"
+}
+func (c *ETCDComponent) Reconcile(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
+	return c.r.reconcileETCD(ctx, mcp)
+}
+func (c *ETCDComponent) WaitingMessage() mcpv1alpha1.Message {
+	return state.MessageETCDWaiting
+}
+func (c *ETCDComponent) FailedMessage() mcpv1alpha1.Message {
+	return state.MessageETCDFailed
+}
 
 func (r *ManagedControlPlaneReconciler) reconcileETCD(
 	ctx context.Context,
@@ -28,10 +46,9 @@ func (r *ManagedControlPlaneReconciler) reconcileETCD(
 ) (ctrl.Result, error) {
 	log := r.Log.WithValues("etcd", mcp.Namespace)
 
-	if err := apply(
+	if err := r.apply(
 		ctx,
 		r.Client,
-		r.Scheme,
 		r.applyOpts(mcp),
 		etcd.Resources(mcp)...,
 	); err != nil {

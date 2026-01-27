@@ -16,45 +16,16 @@ package utils
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"net"
 	"strconv"
 	"strings"
 
-	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/apis/meta/internalversion/scheme"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/util/retry"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
-
-func EnsureCreatedAndOwned(
-	ctx context.Context,
-	c client.Client,
-	scheme *runtime.Scheme,
-	owner client.Object,
-	template client.Object,
-	log logr.Logger,
-	mutate func(obj client.Object) error,
-) error {
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		obj := template.DeepCopyObject().(client.Object)
-		_, err := controllerutil.CreateOrUpdate(ctx, c, obj, func() error {
-			if err := controllerutil.SetControllerReference(owner, obj, scheme); err != nil {
-				return err
-			}
-			if mutate != nil {
-				return mutate(obj)
-			}
-			return nil
-		})
-		return err
-	})
-}
 
 func IPAtOffset(cidr string, offset uint32) (net.IP, error) {
 	ip, ipnet, err := net.ParseCIDR(cidr)

@@ -18,67 +18,22 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
+	"github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 type BaseReconciler struct {
-	client.Client
 	Log      logr.Logger
 	Recorder record.EventRecorder
 	Scheme   *runtime.Scheme
 }
 
-func (r *BaseReconciler) GetOrIgnoreNotFound(
-	ctx context.Context,
-	key client.ObjectKey,
-	obj client.Object,
-) error {
-	if err := r.Get(ctx, key, obj); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-	return nil
-}
-
-func (r *BaseReconciler) UpdateMCPAddress(
-	ctx context.Context,
-	mcp *mcpv1alpha1.ManagedControlPlane,
-	address string,
-) error {
-	key := client.ObjectKeyFromObject(mcp)
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		latest := mcp.DeepCopyObject().(*mcpv1alpha1.ManagedControlPlane)
-		if err := r.Get(ctx, key, latest); err != nil {
-			return err
-		}
-
-		latest.Status.Address = address
-
-		return r.Status().Update(ctx, latest)
-	})
-}
-
-func (r *BaseReconciler) UpdateMCPAdminSecretRef(
-	ctx context.Context,
-	mcp *mcpv1alpha1.ManagedControlPlane,
-	secretName string,
-) error {
-	key := client.ObjectKeyFromObject(mcp)
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		latest := mcp.DeepCopyObject().(*mcpv1alpha1.ManagedControlPlane)
-		if err := r.Get(ctx, key, latest); err != nil {
-			return err
-		}
-
-		latest.Status.AdminKubeconfigSecretRef.Name = secretName
-
-		return r.Status().Update(ctx, latest)
-	})
+type Component interface {
+	Name() string
+	Reconcile(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error)
+	WaitingMessage() v1alpha1.Message
+	FailedMessage() v1alpha1.Message
 }

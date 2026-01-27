@@ -18,14 +18,55 @@ import (
 	"context"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/apiserver"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/state"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+type APIServerServiceComponent struct {
+	r *ManagedControlPlaneReconciler
+}
+
+func (c *APIServerServiceComponent) Name() string {
+	return "apiserver-service"
+}
+
+func (c *APIServerServiceComponent) Reconcile(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
+	return c.r.reconcileAPIServiceSvc(ctx, mcp)
+}
+
+func (c *APIServerServiceComponent) WaitingMessage() mcpv1alpha1.Message {
+	return state.MessageAPIServerSvcWaiting
+}
+
+func (c *APIServerServiceComponent) FailedMessage() mcpv1alpha1.Message {
+	return state.MessageAPIServerSvcFailed
+}
+
+type APIServerComponent struct {
+	r *ManagedControlPlaneReconciler
+}
+
+func (c *APIServerComponent) Name() string {
+	return "apiserver"
+}
+
+func (c *APIServerComponent) Reconcile(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
+	return c.r.reconcileAPIServer(ctx, mcp)
+}
+
+func (c *APIServerComponent) WaitingMessage() mcpv1alpha1.Message {
+	return state.MessageAPIServerWaiting
+}
+
+func (c *APIServerComponent) FailedMessage() mcpv1alpha1.Message {
+	return state.MessageAPIServerFailed
+}
 
 func (r *ManagedControlPlaneReconciler) tryEndpointAddress(ctx context.Context, name, namespace string) (string, error) {
 	svc := &corev1.Service{}
@@ -51,7 +92,7 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServiceSvc(
 ) (ctrl.Result, error) {
 	log := r.Log.WithValues("api-endpoint", mcp.Namespace)
 
-	if err := apply(ctx, r.Client, r.Scheme, r.applyOpts(mcp), apiserver.EndpointResources(mcp)...); err != nil {
+	if err := r.apply(ctx, r.Client, r.applyOpts(mcp), apiserver.EndpointResources(mcp)...); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -70,7 +111,7 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServiceSvc(
 	}
 
 	if mcp.Status.Address != addr {
-		if err := r.UpdateMCPAddress(ctx, mcp, addr); err != nil {
+		if err := r.updateMCPAddress(ctx, mcp, addr); err != nil {
 			log.Error(err, "failed to update address")
 			return ctrl.Result{}, err
 		}
@@ -83,7 +124,12 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServer(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
 ) (ctrl.Result, error) {
-	if err := apply(ctx, r.Client, r.Scheme, r.applyOpts(mcp), apiserver.WorkloadResources(mcp)...); err != nil {
+	if err := r.apply(
+		ctx,
+		r.Client,
+		r.applyOpts(mcp),
+		apiserver.WorkloadResources(mcp)...,
+	); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil

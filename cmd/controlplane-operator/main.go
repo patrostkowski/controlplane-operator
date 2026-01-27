@@ -70,6 +70,9 @@ func main() {
 	if err := controller.SetupManagedControlPlaneController(mgr); err != nil {
 		panic(err)
 	}
+	if err := controller.SetupManagedAddonController(mgr); err != nil {
+		panic(err)
+	}
 
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		os.Exit(1)

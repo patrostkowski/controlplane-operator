@@ -19,10 +19,8 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -73,108 +71,6 @@ func newConfigMapTemplate(ns, name string) *corev1.ConfigMap {
 			Name:      name,
 			Namespace: ns,
 		},
-	}
-}
-
-func TestEnsureCreatedAndOwned_CreatesAndSetsOwnerRefAndMutates(t *testing.T) {
-	t.Parallel()
-
-	env := newTestEnv(t)
-
-	owner := newOwnerPod("ns", "owner-pod")
-	template := newConfigMapTemplate("ns", "cm")
-
-	err := EnsureCreatedAndOwned(env.ctx, env.c, env.scheme, owner, template, env.log, func(obj client.Object) error {
-		cm, ok := obj.(*corev1.ConfigMap)
-		if !ok {
-			t.Fatalf("expected *corev1.ConfigMap, got %T", obj)
-		}
-		if cm.Data == nil {
-			cm.Data = map[string]string{}
-		}
-		cm.Data["k"] = "v1"
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("EnsureCreatedAndOwned: %v", err)
-	}
-
-	var got corev1.ConfigMap
-	if err := env.c.Get(env.ctx, types.NamespacedName{Name: "cm", Namespace: "ns"}, &got); err != nil {
-		t.Fatalf("Get created configmap: %v", err)
-	}
-	if got.Data["k"] != "v1" {
-		t.Fatalf("expected Data[k]=v1, got %q", got.Data["k"])
-	}
-
-	if len(got.OwnerReferences) != 1 {
-		t.Fatalf("expected 1 ownerReference, got %d", len(got.OwnerReferences))
-	}
-	ref := got.OwnerReferences[0]
-	if ref.Name != owner.Name {
-		t.Fatalf("expected ownerReference name %q, got %q", owner.Name, ref.Name)
-	}
-	if ref.Kind != "Pod" {
-		t.Fatalf("expected ownerReference kind %q, got %q", "Pod", ref.Kind)
-	}
-	if ref.Controller == nil || !*ref.Controller {
-		t.Fatalf("expected ownerReference controller=true, got %#v", ref.Controller)
-	}
-}
-
-func TestEnsureCreatedAndOwned_UpdatesOnSecondCall(t *testing.T) {
-	t.Parallel()
-
-	env := newTestEnv(t)
-
-	owner := newOwnerPod("ns", "owner")
-	template := newConfigMapTemplate("ns", "cm")
-
-	// First create
-	if err := EnsureCreatedAndOwned(env.ctx, env.c, env.scheme, owner, template, env.log, func(obj client.Object) error {
-		cm := obj.(*corev1.ConfigMap)
-		cm.Data = map[string]string{"k": "v1"}
-		return nil
-	}); err != nil {
-		t.Fatalf("first EnsureCreatedAndOwned: %v", err)
-	}
-
-	// Second call should update
-	if err := EnsureCreatedAndOwned(env.ctx, env.c, env.scheme, owner, template, env.log, func(obj client.Object) error {
-		cm := obj.(*corev1.ConfigMap)
-		if cm.Data == nil {
-			cm.Data = map[string]string{}
-		}
-		cm.Data["k"] = "v2"
-		return nil
-	}); err != nil {
-		t.Fatalf("second EnsureCreatedAndOwned: %v", err)
-	}
-
-	var got corev1.ConfigMap
-	if err := env.c.Get(env.ctx, types.NamespacedName{Name: "cm", Namespace: "ns"}, &got); err != nil {
-		t.Fatalf("Get updated configmap: %v", err)
-	}
-	if got.Data["k"] != "v2" {
-		t.Fatalf("expected Data[k]=v2, got %q", got.Data["k"])
-	}
-}
-
-func TestEnsureCreatedAndOwned_MutateNilDoesNotError(t *testing.T) {
-	t.Parallel()
-
-	env := newTestEnv(t)
-
-	owner := newOwnerPod("ns", "owner")
-	template := newConfigMapTemplate("ns", "cm")
-
-	if err := EnsureCreatedAndOwned(env.ctx, env.c, env.scheme, owner, template, env.log, nil); err != nil {
-		t.Fatalf("EnsureCreatedAndOwned with nil mutate: %v", err)
-	}
-
-	var got corev1.ConfigMap
-	if err := env.c.Get(env.ctx, types.NamespacedName{Name: "cm", Namespace: "ns"}, &got); err != nil {
-		t.Fatalf("Get created configmap: %v", err)
 	}
 }
 
@@ -270,21 +166,4 @@ func TestIntstrFromInt(t *testing.T) {
 	if got.Type != intstr.Int || got.IntValue() != 8080 {
 		t.Fatalf("unexpected IntOrString: %#v", got)
 	}
-}
-
-func TestEnsureCreatedAndOwned_InvalidSchemeFails(t *testing.T) {
-	t.Parallel()
-
-	// Intentionally no corev1.AddToScheme here.
-	scheme := runtime.NewScheme()
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-	owner := newOwnerPod("ns", "owner")
-	template := newConfigMapTemplate("ns", "cm")
-
-	err := EnsureCreatedAndOwned(context.Background(), c, scheme, owner, template, logr.Discard(), nil)
-	if err == nil {
-		t.Fatalf("expected error, got nil")
-	}
-	_ = apierrors.IsInvalid(err)
 }

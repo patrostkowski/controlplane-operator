@@ -19,8 +19,29 @@ import (
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/state"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
+
+type PKIComponent struct {
+	r *ManagedControlPlaneReconciler
+}
+
+func (c *PKIComponent) Name() string {
+	return "pki"
+}
+
+func (c *PKIComponent) Reconcile(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
+	return c.r.reconcilePKI(ctx, mcp)
+}
+
+func (c *PKIComponent) WaitingMessage() mcpv1alpha1.Message {
+	return state.MessagePKIWaiting
+}
+
+func (c *PKIComponent) FailedMessage() mcpv1alpha1.Message {
+	return state.MessagePKIFailed
+}
 
 func (r *ManagedControlPlaneReconciler) reconcilePKI(
 	ctx context.Context,
@@ -28,10 +49,9 @@ func (r *ManagedControlPlaneReconciler) reconcilePKI(
 ) (ctrl.Result, error) {
 	log := r.Log.WithValues("pki", mcp.Namespace)
 
-	if err := apply(
+	if err := r.apply(
 		ctx,
 		r.Client,
-		r.Scheme,
 		r.applyOpts(mcp),
 		pki.Resources(mcp)...,
 	); err != nil {
