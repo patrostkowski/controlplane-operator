@@ -51,7 +51,7 @@ func (r *ManagedAddonsReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, err
 	}
 
-	log.Info("Reconciling addons", "version", mcpObj.Spec.Version)
+	log.Info("Reconciling addons", "version", mcpObj.Spec.Kubernetes.Version)
 
 	r.cp, err = r.getControlPlaneClient(ctx, mcpObj)
 	if err != nil {
