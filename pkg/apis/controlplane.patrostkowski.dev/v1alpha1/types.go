@@ -30,12 +30,12 @@ const (
 // ManagedControlPlaneSpec defines the desired state of ManagedControlPlane.
 type ManagedControlPlaneSpec struct {
 	// Version is the desired Kubernetes control plane version, e.g. "v1.34.0".
-	Kubernetes        KubernetesSpec        `json:"kubernetes"`
-	Addons            AddonsSpec            `json:"addons"`
-	APIServer         APIServerSpec         `json:"apiserver"`
-	ControllerManager ControllerManagerSpec `json:"controllerManager"`
-	Scheduler         SchedulerSpec         `json:"ccheduler"`
-	ETCD              ETCDSpec              `json:"etcd"`
+	Kubernetes        KubernetesSpec         `json:"kubernetes"`
+	Addons            *AddonsSpec            `json:"addons,omitempty"`
+	APIServer         *APIServerSpec         `json:"apiserver,omitempty"`
+	ControllerManager *ControllerManagerSpec `json:"controllerManager,omitempty"`
+	Scheduler         *SchedulerSpec         `json:"scheduler,omitempty"`
+	ETCD              *ETCDSpec              `json:"etcd,omitempty"`
 }
 
 // ManagedControlPlaneStatus defines the observed state of ManagedControlPlane.
@@ -65,11 +65,11 @@ type ETCDSpec struct {
 }
 
 type AddonsSpec struct {
-	CoreDNS      CoreDNS      `json:"coredns"`
-	CSI          CSI          `json:"csi"`
-	Flannel      Flannel      `json:"flannel"`
-	Konnectivity Konnectivity `json:"konnectivity"`
-	Kubeproxy    Kubeproxy    `json:"kubeproxy"`
+	CoreDNS      *CoreDNS      `json:"coredns,omitempty"`
+	CSI          *CSI          `json:"csi,omitempty"`
+	Flannel      *Flannel      `json:"flannel,omitempty"`
+	Konnectivity *Konnectivity `json:"konnectivity,omitempty"`
+	Kubeproxy    *Kubeproxy    `json:"kubeproxy,omitempty"`
 }
 
 type CoreDNS struct {
@@ -143,10 +143,10 @@ type AdminKubeconfigSecretRef struct {
 }
 
 type AvailabilitySpec struct {
-	Replicas                 *int32                          `json:"replicas"`
-	Resources                corev1.ResourceRequirements     `json:"resources"`
-	TopologySpreadConstraint corev1.TopologySpreadConstraint `json:"topologySpreadConstraint"`
-	corev1.Affinity          `json:",inline"`
+	Replicas                 *int32                           `json:"replicas,omitempty"`
+	Resources                *corev1.ResourceRequirements     `json:"resources,omitempty"`
+	TopologySpreadConstraint *corev1.TopologySpreadConstraint `json:"topologySpreadConstraint,omitempty"`
+	*corev1.Affinity         `json:",inline,omitempty"`
 }
 
 type (

@@ -19,8 +19,29 @@ import (
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/controllermanager"
+	"github.com/patrostkowski/controlplane-operator/pkg/resources/state"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
+
+type ControllerManagerComponent struct {
+	r *ManagedControlPlaneReconciler
+}
+
+func (c *ControllerManagerComponent) Name() string {
+	return "controller-manager"
+}
+
+func (c *ControllerManagerComponent) Reconcile(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
+	return c.r.reconcileControllerManager(ctx, mcp)
+}
+
+func (c *ControllerManagerComponent) WaitingMessage() mcpv1alpha1.Message {
+	return state.MessageControllerManagerWaiting
+}
+
+func (c *ControllerManagerComponent) FailedMessage() mcpv1alpha1.Message {
+	return state.MessageControllerManagerFailed
+}
 
 func (r *ManagedControlPlaneReconciler) reconcileControllerManager(
 	ctx context.Context,
@@ -28,10 +49,9 @@ func (r *ManagedControlPlaneReconciler) reconcileControllerManager(
 ) (ctrl.Result, error) {
 	log := r.Log.WithValues("controllermanager", mcp.Namespace)
 
-	if err := apply(
+	if err := r.apply(
 		ctx,
 		r.Client,
-		r.Scheme,
 		r.applyOpts(mcp),
 		controllermanager.Resources(mcp)...,
 	); err != nil {

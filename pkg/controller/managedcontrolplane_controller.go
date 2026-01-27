@@ -20,14 +20,13 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/state"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -40,12 +39,11 @@ const ManagedControlPlaneFinalizer = "controlplane.patrostkowski.dev/finalizer"
 
 type ManagedControlPlaneReconciler struct {
 	BaseReconciler
-	cp *controlplane.ControlPlaneClient
+	client.Client
 }
 
 func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("managedcontrolplane", req.NamespacedName)
-	var err error
+	log := r.Log.WithValues("control-plane", req.NamespacedName)
 
 	mcpObj := &mcpv1alpha1.ManagedControlPlane{}
 	if err := r.Get(ctx, req.NamespacedName, mcpObj); err != nil {
@@ -87,96 +85,27 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	// API Server Service
-	if res, err := r.reconcileAPIServiceSvc(ctx, mcpObj); err != nil {
-		_ = r.statusFailed(ctx, mcpObj, state.MessageAPIServerSvcFailed)
-		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{}, err
-	} else if !res.IsZero() {
-		_ = r.statusWaiting(ctx, mcpObj, state.MessageAPIServerSvcWaiting)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+	components := []Component{
+		&APIServerServiceComponent{r: r},
+		&PKIComponent{r: r},
+		&ETCDComponent{r: r},
+		&APIServerComponent{r: r},
+		&ControllerManagerComponent{r: r},
+		&SchedulerComponent{r: r},
+		&AdminConfigComponent{r: r},
 	}
 
-	// PKI
-	if res, err := r.reconcilePKI(ctx, mcpObj); err != nil {
-		_ = r.statusFailed(ctx, mcpObj, state.MessagePKIFailed)
-		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{}, err
-	} else if !res.IsZero() {
-		_ = r.statusWaiting(ctx, mcpObj, state.MessagePKIWaiting)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
-	}
-
-	// ETCD
-	if res, err := r.reconcileETCD(ctx, mcpObj); err != nil {
-		_ = r.statusFailed(ctx, mcpObj, state.MessageETCDFailed)
-		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{}, err
-	} else if !res.IsZero() {
-		_ = r.statusWaiting(ctx, mcpObj, state.MessageETCDWaiting)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
-	}
-
-	// APIServer
-	if res, err := r.reconcileAPIServer(ctx, mcpObj); err != nil {
-		_ = r.statusFailed(ctx, mcpObj, state.MessageAPIServerFailed)
-		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{}, err
-	} else if !res.IsZero() {
-		_ = r.statusWaiting(ctx, mcpObj, state.MessageAPIServerWaiting)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
-	}
-
-	// ControllerManager
-	if res, err := r.reconcileControllerManager(ctx, mcpObj); err != nil {
-		_ = r.statusFailed(ctx, mcpObj, state.MessageControllerManagerFailed)
-		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{}, err
-	} else if !res.IsZero() {
-		_ = r.statusWaiting(ctx, mcpObj, state.MessageControllerManagerWaiting)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
-	}
-
-	// Scheduler
-	if res, err := r.reconcileScheduler(ctx, mcpObj); err != nil {
-		_ = r.statusFailed(ctx, mcpObj, state.MessageSchedulerFailed)
-		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{}, err
-	} else if !res.IsZero() {
-		_ = r.statusWaiting(ctx, mcpObj, state.MessageSchedulerWaiting)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
-	}
-
-	if res, err := r.reconcileAdminConfig(ctx, mcpObj); err != nil {
-		_ = r.statusFailed(ctx, mcpObj, state.MessagePKIFailed)
-		log.Error(err, "failed to ensure admin kubeconfig")
-		return ctrl.Result{}, err
-	} else if !res.IsZero() {
-		_ = r.statusWaiting(ctx, mcpObj, state.MessageSchedulerWaiting)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
-	}
-
-	r.cp, err = r.controlPlaneClient(ctx, mcpObj)
-	if err != nil {
-		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
-	}
-
-	if res, err := r.reconcileKubeletJoinResources(ctx, mcpObj); err != nil {
-		_ = r.statusFailed(ctx, mcpObj, state.MessageKubeResourcesFailed)
-		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
-		return ctrl.Result{}, err
-	} else if !res.IsZero() {
-		_ = r.statusWaiting(ctx, mcpObj, state.MessageKubeResourcesWaiting)
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
-	}
-
-	if res, err := r.reconcileAddons(ctx, mcpObj); err != nil {
-		_ = r.statusFailed(ctx, mcpObj, state.MessageAddonsFailed)
-		return ctrl.Result{}, err
-	} else if !res.IsZero() {
-		_ = r.statusWaiting(ctx, mcpObj, state.MessageAddonsWaiting)
-		return res, nil
+	for _, c := range components {
+		res, err := c.Reconcile(ctx, mcpObj)
+		if err != nil {
+			_ = r.statusFailed(ctx, mcpObj, c.FailedMessage())
+			log.Error(err, "component failed", "component", c.Name(), "after", RequeueAfterFailure)
+			return ctrl.Result{}, err
+		}
+		if !res.IsZero() {
+			_ = r.statusWaiting(ctx, mcpObj, c.WaitingMessage())
+			return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+		}
 	}
 
 	_ = r.statusReady(ctx, mcpObj)
@@ -188,6 +117,7 @@ func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
 	certPred := predicate.GenerationChangedPredicate{}
 	issuerPred := predicate.GenerationChangedPredicate{}
 	return ctrl.NewControllerManagedBy(mgr).
+		Named("control-plane-controller").
 		For(&mcpv1alpha1.ManagedControlPlane{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&corev1.Service{}).
 		Owns(&appsv1.Deployment{}).
@@ -207,10 +137,10 @@ func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
 		).
 		Complete(&ManagedControlPlaneReconciler{
 			BaseReconciler: BaseReconciler{
-				Client:   mgr.GetClient(),
 				Log:      ctrl.Log.WithName("controller").WithName(mcpv1alpha1.KindManagedControlPlane),
 				Recorder: mgr.GetEventRecorderFor("managedcontrolplane"),
 				Scheme:   mgr.GetScheme(),
 			},
+			Client: mgr.GetClient(),
 		})
 }

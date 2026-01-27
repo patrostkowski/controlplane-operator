@@ -1,38 +1,46 @@
 // Copyright 2025 Patryk Rostkowski
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
-// ...
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package controller
 
 import (
-	"bytes"
 	"context"
+	"fmt"
 	"maps"
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/controlplane"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/addons"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
-	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // TODO: find a way to watch & act on managed resources
-func (r *ManagedControlPlaneReconciler) reconcileAddons(
+func (r *ManagedAddonsReconciler) reconcileAddons(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
 ) (ctrl.Result, error) {
-	if err := apply(
+	if err := r.apply(
 		ctx,
 		r.cp.Client,
-		r.managedScheme(),
 		r.managedApplyOpts(),
 		addons.Resources(mcp)...,
 	); err != nil {
@@ -47,20 +55,18 @@ func (r *ManagedControlPlaneReconciler) reconcileAddons(
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
-	if err := apply(
+	if err := r.apply(
 		ctx,
 		r.cp.Client,
-		r.managedScheme(),
 		r.managedApplyOpts(),
 		secrets...,
 	); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	if err := apply(
+	if err := r.apply(
 		ctx,
 		r.cp.Client,
-		r.managedScheme(),
 		r.managedApplyOpts(),
 		addons.KonnectivityAgentResources(mcp)...,
 	); err != nil {
@@ -70,12 +76,12 @@ func (r *ManagedControlPlaneReconciler) reconcileAddons(
 	return ctrl.Result{}, nil
 }
 
-func (r *ManagedControlPlaneReconciler) controlPlaneClient(
+func (r *ManagedAddonsReconciler) getControlPlaneClient(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
-) (*controlplane.ControlPlaneClient, error) {
+) (*ControlPlaneClient, error) {
 	log := r.Log.WithValues("addons", mcp.GetObjectMeta().GetNamespace())
-	cp, err := controlplane.NewFromKubeconfigSecret(ctx, r.Client, r.Scheme, mcp.Namespace)
+	cp, err := r.newFromKubeconfigSecret(ctx, r.Client, mcp.Namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +113,7 @@ func (r *ManagedControlPlaneReconciler) controlPlaneClient(
 
 // TODO: decide separate it from addons or
 // bundle them together
-func (r *ManagedControlPlaneReconciler) reconcileKubeletJoinResources(
+func (r *ManagedAddonsReconciler) reconcileKubeletJoinResources(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
 ) (ctrl.Result, error) {
@@ -126,10 +132,9 @@ func (r *ManagedControlPlaneReconciler) reconcileKubeletJoinResources(
 
 	resources := addons.BootstrapKubeletJoinResources(mcp, tok, caPEM)
 
-	if err := apply(
+	if err := r.apply(
 		ctx,
 		r.cp.Client,
-		r.managedScheme(),
 		r.managedApplyOpts(),
 		resources...,
 	); err != nil {
@@ -139,7 +144,7 @@ func (r *ManagedControlPlaneReconciler) reconcileKubeletJoinResources(
 	return ctrl.Result{}, nil
 }
 
-func (r *ManagedControlPlaneReconciler) getClusterCA(
+func (r *ManagedAddonsReconciler) getClusterCA(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
 ) ([]byte, error) {
@@ -157,81 +162,8 @@ func (r *ManagedControlPlaneReconciler) getClusterCA(
 	return ca, nil
 }
 
-// Still it doesnt look perfect
-func (r *ManagedControlPlaneReconciler) reconcileAdminConfig(
-	ctx context.Context,
-	mcp *mcpv1alpha1.ManagedControlPlane,
-) (ctrl.Result, error) {
-	ns := mcp.Namespace
-
-	if mcp.Status.Address == "" {
-		r.Log.Info("API address not set yet")
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
-	}
-
-	serverURL := "https://" + mcp.Status.Address + ":6443"
-
-	p := pki.New(mcp).Admin()
-
-	// get admin-client secret
-	adminClient := &corev1.Secret{}
-	if err := r.Get(ctx, client.ObjectKey{Name: p.Client.SecretName, Namespace: ns}, adminClient); err != nil {
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, client.IgnoreNotFound(err)
-	}
-
-	ca := adminClient.Data[common.CACrtKey]
-	crt := adminClient.Data[common.TLSCrtKey]
-	key := adminClient.Data[common.TLSKeyKey]
-
-	if len(ca) == 0 || len(crt) == 0 || len(key) == 0 {
-		r.Log.Info("admin config secret not ready yet")
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
-	}
-
-	// build kubeconfig (data-embedded)
-	cfg := utils.BuildKubeconfigWithCertData(serverURL, "local", ca, crt, key)
-
-	kubeconfigBytes, err := clientcmd.Write(*cfg)
-	if err != nil {
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
-	}
-
-	// ensure admin-config secret
-	s := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      common.AdminConfigName,
-			Namespace: ns,
-		},
-		Type: corev1.SecretTypeOpaque,
-	}
-
-	err = utils.EnsureCreatedAndOwned(ctx, r.Client, r.Scheme, mcp, s, r.Log, func(obj client.Object) error {
-		sec := obj.(*corev1.Secret)
-		if sec.Data == nil {
-			sec.Data = map[string][]byte{}
-		}
-		if bytes.Equal(sec.Data[common.AdminConfigKubeconfigKey], kubeconfigBytes) {
-			return nil
-		}
-		sec.Data[common.AdminConfigKubeconfigKey] = kubeconfigBytes
-
-		return nil
-	})
-	if err != nil {
-		r.Log.Error(err, "failed to ensure Admin config secret", "name", s.GetName())
-		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
-	}
-
-	// updating MCP status with sercet ref
-	if err = r.UpdateMCPAdminSecretRef(ctx, mcp, common.AdminConfigName); err != nil {
-		r.Log.Error(err, "failed to update admin config secret ref")
-		return ctrl.Result{}, err
-	}
-	return ctrl.Result{}, nil
-}
-
 // todo: think how to rotate the token
-func (r *ManagedControlPlaneReconciler) ensureBootstrapToken(
+func (r *ManagedAddonsReconciler) ensureBootstrapToken(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
 ) (addons.BootstrapToken, error) {
@@ -282,7 +214,7 @@ func (r *ManagedControlPlaneReconciler) ensureBootstrapToken(
 	return tok, nil
 }
 
-func (r *ManagedControlPlaneReconciler) ensureKonnectivityTLSData(
+func (r *ManagedAddonsReconciler) ensureKonnectivityTLSData(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
 ) ([]client.Object, error) {
@@ -323,4 +255,67 @@ func (r *ManagedControlPlaneReconciler) ensureKonnectivityTLSData(
 	objs := []client.Object{workloadAgentTLSSecret, workloadCASecret}
 
 	return objs, nil
+}
+
+type ControlPlaneClient struct {
+	client.Client
+	Discovery discovery.DiscoveryInterface
+	REST      *rest.Config
+}
+
+func New(c client.Client, d discovery.DiscoveryInterface, r *rest.Config) *ControlPlaneClient {
+	return &ControlPlaneClient{
+		Client:    c,
+		Discovery: d,
+		REST:      r,
+	}
+}
+
+func (r *ManagedAddonsReconciler) newFromKubeconfigSecret(
+	ctx context.Context,
+	mgmt client.Reader,
+	secretNS string,
+) (*ControlPlaneClient, error) {
+	sec := &corev1.Secret{}
+	if err := mgmt.Get(ctx, client.ObjectKey{Namespace: secretNS, Name: common.AdminConfigName}, sec); err != nil {
+		return nil, err
+	}
+
+	kubeconfigBytes, ok := sec.Data[common.AdminConfigKubeconfigKey]
+	if !ok || len(kubeconfigBytes) == 0 {
+		return nil, fmt.Errorf("secret %s/%s missing key %q or it is empty", secretNS, common.AdminConfigName, common.AdminConfigKubeconfigKey)
+	}
+
+	restCfg, err := restConfigFromKubeconfigBytes(kubeconfigBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	restCfg.QPS = 20
+	restCfg.Burst = 40
+
+	c, err := client.New(restCfg, client.Options{})
+	if err != nil {
+		return nil, err
+	}
+
+	d, err := discovery.NewDiscoveryClientForConfig(restCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return New(c, d, restCfg), nil
+}
+
+func restConfigFromKubeconfigBytes(kubeconfig []byte) (*rest.Config, error) {
+	// clientcmd handles clusters/users/contexts in kubeconfig properly.
+	cfg, err := clientcmd.NewClientConfigFromBytes(kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+	restCfg, err := cfg.ClientConfig()
+	if err != nil {
+		return nil, err
+	}
+	return restCfg, nil
 }

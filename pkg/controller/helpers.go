@@ -26,9 +26,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	meta "k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
@@ -104,7 +105,7 @@ func (r *ManagedControlPlaneReconciler) statusReady(ctx context.Context, mcp *mc
 	)
 }
 
-func (r *ManagedControlPlaneReconciler) applyOpts(owner client.Object) ApplyOptions {
+func (r *BaseReconciler) applyOpts(owner client.Object) ApplyOptions {
 	return ApplyOptions{
 		FieldOwner:  fieldOwner,
 		Force:       true,
@@ -113,7 +114,7 @@ func (r *ManagedControlPlaneReconciler) applyOpts(owner client.Object) ApplyOpti
 	}
 }
 
-func (r *ManagedControlPlaneReconciler) managedApplyOpts() ApplyOptions {
+func (r *BaseReconciler) managedApplyOpts() ApplyOptions {
 	return ApplyOptions{
 		FieldOwner:  fieldOwner, // or "controlplane-operator-managed" if you want to separate
 		Force:       true,
@@ -127,7 +128,7 @@ var (
 	managedSchemeInst *runtime.Scheme
 )
 
-func (r *ManagedControlPlaneReconciler) managedScheme() *runtime.Scheme {
+func (r *BaseReconciler) managedScheme() *runtime.Scheme {
 	managedSchemeOnce.Do(func() {
 		s := runtime.NewScheme()
 		_ = corev1.AddToScheme(s)
@@ -147,8 +148,8 @@ type ApplyOptions struct {
 	Log         logr.Logger
 }
 
-func apply(ctx context.Context, c client.Client, scheme *runtime.Scheme, opts ApplyOptions, objs ...client.Object) error {
-	if scheme == nil {
+func (r *BaseReconciler) apply(ctx context.Context, c client.Client, opts ApplyOptions, objs ...client.Object) error {
+	if r.Scheme == nil {
 		return fmt.Errorf("apply: scheme is nil")
 	}
 	if opts.SetOwnerRef && opts.Owner == nil {
@@ -157,12 +158,12 @@ func apply(ctx context.Context, c client.Client, scheme *runtime.Scheme, opts Ap
 
 	for _, obj := range objs {
 		if opts.SetOwnerRef && opts.Owner != nil {
-			if err := controllerutil.SetControllerReference(opts.Owner, obj, scheme); err != nil {
+			if err := controllerutil.SetControllerReference(opts.Owner, obj, r.Scheme); err != nil {
 				return fmt.Errorf("set owner ref for %T/%s: %w", obj, obj.GetName(), err)
 			}
 		}
 
-		gvk, err := apiutil.GVKForObject(obj, scheme)
+		gvk, err := apiutil.GVKForObject(obj, r.Scheme)
 		if err != nil {
 			return fmt.Errorf("resolve gvk for %T/%s: %w", obj, obj.GetName(), err)
 		}
@@ -187,4 +188,40 @@ func apply(ctx context.Context, c client.Client, scheme *runtime.Scheme, opts Ap
 		}
 	}
 	return nil
+}
+
+func (r *ManagedControlPlaneReconciler) updateMCPAddress(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+	address string,
+) error {
+	key := client.ObjectKeyFromObject(mcp)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest := mcp.DeepCopyObject().(*mcpv1alpha1.ManagedControlPlane)
+		if err := r.Get(ctx, key, latest); err != nil {
+			return err
+		}
+
+		latest.Status.Address = address
+
+		return r.Status().Update(ctx, latest)
+	})
+}
+
+func (r *ManagedControlPlaneReconciler) updateMCPAdminSecretRef(
+	ctx context.Context,
+	mcp *mcpv1alpha1.ManagedControlPlane,
+	secretName string,
+) error {
+	key := client.ObjectKeyFromObject(mcp)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest := mcp.DeepCopyObject().(*mcpv1alpha1.ManagedControlPlane)
+		if err := r.Get(ctx, key, latest); err != nil {
+			return err
+		}
+
+		latest.Status.AdminKubeconfigSecretRef.Name = secretName
+
+		return r.Status().Update(ctx, latest)
+	})
 }
