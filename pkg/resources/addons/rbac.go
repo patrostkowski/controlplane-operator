@@ -186,7 +186,7 @@ func clusterInfo(mcp *mcpv1alpha1.ManagedControlPlane, ca []byte) *corev1.Config
 // }
 
 func kubeletConfigUnversioned(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
-	clusterDNS, _ := utils.IPAtOffset(mcp.Spec.Networking.ServiceCIDR, 10)
+	clusterDNS, _ := utils.IPAtOffset(mcp.Spec.Kubernetes.Networking.ServiceCIDR, 10)
 
 	kc := &kubeletconfigv1beta1.KubeletConfiguration{
 		RotateCertificates: true,
@@ -221,7 +221,7 @@ func kubeletConfigUnversioned(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Conf
 }
 
 func kubeletConfigVersioned(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
-	clusterDNS, _ := utils.IPAtOffset(mcp.Spec.Networking.ServiceCIDR, 10)
+	clusterDNS, _ := utils.IPAtOffset(mcp.Spec.Kubernetes.Networking.ServiceCIDR, 10)
 
 	kc := &kubeletconfigv1beta1.KubeletConfiguration{
 		RotateCertificates: true,
@@ -246,7 +246,7 @@ func kubeletConfigVersioned(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Config
 	yamlStr := mustEncodeKubeletConfigYAML(kc)
 
 	return builders.NewConfigMap().
-		WithName("kubelet-config-"+utils.GetMajorMinorString(mcp.Spec.Version)).
+		WithName("kubelet-config-"+utils.GetMajorMinorString(mcp.Spec.Kubernetes.Version)).
 		WithNamespace("kube-system").
 		Put("kubelet", yamlStr).
 		Build()
@@ -442,7 +442,7 @@ func kubeadmConfigConfigMap(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Config
 			Kind:       "ClusterConfiguration",
 		},
 		ClusterName:       mcp.Name,
-		KubernetesVersion: mcp.Spec.Version,
+		KubernetesVersion: mcp.Spec.Kubernetes.Version,
 		Networking: kubeadmv1beta4.Networking{
 			DNSDomain: "cluster.local",
 		},
@@ -452,9 +452,9 @@ func kubeadmConfigConfigMap(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Config
 		cc.ControlPlaneEndpoint = mcp.Status.Address + ":6443"
 	}
 
-	if mcp.Spec.Networking != nil {
-		cc.Networking.ServiceSubnet = mcp.Spec.Networking.ServiceCIDR
-		cc.Networking.PodSubnet = mcp.Spec.Networking.PodCIDR
+	if mcp.Spec.Kubernetes.Networking != nil {
+		cc.Networking.ServiceSubnet = mcp.Spec.Kubernetes.Networking.ServiceCIDR
+		cc.Networking.PodSubnet = mcp.Spec.Kubernetes.Networking.PodCIDR
 	}
 
 	yamlStr := mustEncodeKubeadmClusterConfigYAML(cc)

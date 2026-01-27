@@ -57,7 +57,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
-	log.Info("Reconciling ManagedControlPlane", "version", mcpObj.Spec.Version)
+	log.Info("Reconciling ManagedControlPlane", "version", mcpObj.Spec.Kubernetes.Version)
 
 	if !mcpObj.ObjectMeta.DeletionTimestamp.IsZero() {
 		// If finalizer not present, nothing to do

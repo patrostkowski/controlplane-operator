@@ -65,7 +65,7 @@ func printMCPTable(list *mcpv1alpha1.ManagedControlPlaneList) {
 			m.Name,
 			ready,
 			m.Status.Address,
-			m.Spec.Version,
+			m.Spec.Kubernetes.Version,
 			age,
 		)
 	}

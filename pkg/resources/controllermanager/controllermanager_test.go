@@ -32,7 +32,9 @@ func TestBuildConfigMap_ControllerManager(t *testing.T) {
 			Namespace: "demo-ns",
 		},
 		Spec: mcpv1alpha1.ManagedControlPlaneSpec{
-			Version: "v1.34.0",
+			Kubernetes: mcpv1alpha1.KubernetesSpec{
+				Version: "v1.34.0",
+			},
 		},
 	}
 
@@ -79,9 +81,11 @@ func TestBuildDeployment_ControllerManager(t *testing.T) {
 			Namespace: "demo-ns",
 		},
 		Spec: mcpv1alpha1.ManagedControlPlaneSpec{
-			Version: "v1.34.0",
-			Networking: &mcpv1alpha1.NetworkingSpec{
-				PodCIDR: "10.244.0.0/16",
+			Kubernetes: mcpv1alpha1.KubernetesSpec{
+				Version: "v1.34.0",
+				Networking: &mcpv1alpha1.NetworkingSpec{
+					PodCIDR: "10.244.0.0/16",
+				},
 			},
 		},
 	}
@@ -119,7 +123,7 @@ func TestBuildDeployment_ControllerManager(t *testing.T) {
 	if c.Name != containerName {
 		t.Fatalf("expected container name %q, got %q", containerName, c.Name)
 	}
-	wantImage := "registry.k8s.io/kube-controller-manager:" + cm.Spec.Version
+	wantImage := "registry.k8s.io/kube-controller-manager:" + cm.Spec.Kubernetes.Version
 	if c.Image != wantImage {
 		t.Fatalf("expected image %q, got %q", wantImage, c.Image)
 	}
@@ -148,7 +152,7 @@ func TestBuildDeployment_ControllerManager(t *testing.T) {
 	mustContainArg(t, c.Args, "--root-ca-file="+p.ClientCA.CertPath())
 
 	// networking
-	mustContainArg(t, c.Args, "--cluster-cidr="+cm.Spec.Networking.PodCIDR)
+	mustContainArg(t, c.Args, "--cluster-cidr="+cm.Spec.Kubernetes.Networking.PodCIDR)
 	mustContainArg(t, c.Args, "--allocate-node-cidrs=true")
 
 	// probes should be set

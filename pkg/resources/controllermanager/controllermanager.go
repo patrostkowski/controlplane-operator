@@ -63,7 +63,7 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	p := pki.New(cm).ControllerManager()
 
 	ns := cm.Namespace
-	version := cm.Spec.Version
+	version := cm.Spec.Kubernetes.Version
 
 	labels := map[string]string{common.LabelKeyApp: labelValApp}
 
@@ -108,7 +108,7 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			"--root-ca-file=" + p.ClientCA.CertPath(),
 
 			// networking
-			"--cluster-cidr=" + cm.Spec.Networking.PodCIDR,
+			"--cluster-cidr=" + cm.Spec.Kubernetes.Networking.PodCIDR,
 			"--allocate-node-cidrs=true",
 
 			"--logging-format=json",

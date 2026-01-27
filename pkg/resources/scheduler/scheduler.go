@@ -63,7 +63,7 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	p := pki.New(mcp).Scheduler()
 
 	ns := mcp.Namespace
-	version := mcp.Spec.Version
+	version := mcp.Spec.Kubernetes.Version
 
 	labels := map[string]string{common.LabelKeyApp: labelValApp}
 

@@ -391,8 +391,8 @@ func konnectivityServerSANs(mcp *mcpv1alpha1.ManagedControlPlane, ns string) (dn
 		"konnectivity-server." + ns + ".svc",
 	}
 
-	if mcp.Spec.Networking != nil {
-		if svcIP, ok := firstServiceIP(mcp.Spec.Networking.ServiceCIDR); ok {
+	if mcp.Spec.Kubernetes.Networking != nil {
+		if svcIP, ok := firstServiceIP(mcp.Spec.Kubernetes.Networking.ServiceCIDR); ok {
 			ips = append(ips, svcIP)
 		}
 	}
@@ -421,8 +421,8 @@ func apiserverSANs(mcp *mcpv1alpha1.ManagedControlPlane, ns string) (dns []strin
 		"localhost",
 	}
 
-	if mcp.Spec.Networking != nil {
-		if svcIP, ok := firstServiceIP(mcp.Spec.Networking.ServiceCIDR); ok {
+	if mcp.Spec.Kubernetes.Networking != nil {
+		if svcIP, ok := firstServiceIP(mcp.Spec.Kubernetes.Networking.ServiceCIDR); ok {
 			ips = append(ips, svcIP)
 		}
 	}

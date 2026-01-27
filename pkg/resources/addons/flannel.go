@@ -152,7 +152,7 @@ func buildFlannelConfigMap(ma *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMa
 }`
 
 	netConf := `{
-  "Network": "` + ma.Spec.Networking.PodCIDR + `",
+  "Network": "` + ma.Spec.Kubernetes.Networking.PodCIDR + `",
   "EnableNFTables": false,
   "Backend": {
     "Type": "` + FlannelBackendType + `"

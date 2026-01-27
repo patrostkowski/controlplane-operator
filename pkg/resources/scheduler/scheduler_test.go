@@ -33,7 +33,9 @@ func TestBuildConfigMap_Scheduler(t *testing.T) {
 			Namespace: "demo-ns",
 		},
 		Spec: mcpv1alpha1.ManagedControlPlaneSpec{
-			Version: "v1.34.0",
+			Kubernetes: mcpv1alpha1.KubernetesSpec{
+				Version: "v1.34.0",
+			},
 		},
 	}
 
@@ -75,7 +77,7 @@ func keys(m map[string]string) []string {
 func TestBuildDeployment_KubeScheduler(t *testing.T) {
 	ms := &mcpv1alpha1.ManagedControlPlane{}
 	ms.Namespace = "mcp"
-	ms.Spec.Version = "v1.34.1"
+	ms.Spec.Kubernetes.Version = "v1.34.1"
 
 	p := pki.New(ms).Scheduler()
 
@@ -125,7 +127,7 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 	if c.Name != containerName {
 		t.Fatalf("container.name: got %q, want %q", c.Name, containerName)
 	}
-	wantImage := "registry.k8s.io/kube-scheduler:" + ms.Spec.Version
+	wantImage := "registry.k8s.io/kube-scheduler:" + ms.Spec.Kubernetes.Version
 	if c.Image != wantImage {
 		t.Fatalf("container.image: got %q, want %q", c.Image, wantImage)
 	}
