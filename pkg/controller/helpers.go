@@ -21,7 +21,7 @@ import (
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/state"
+	"github.com/patrostkowski/controlplane-operator/pkg/controller/state"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"

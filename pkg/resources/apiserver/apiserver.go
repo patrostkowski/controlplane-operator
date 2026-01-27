@@ -17,10 +17,8 @@ package apiserver
 import (
 	"path/filepath"
 
-	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -41,28 +39,45 @@ const (
 	konnectivityUDSFile              = "konnectivity-uds.sock"
 )
 
-// EndpointResources returns only the Service (LB) for kube-apiserver
-// and Service for Konnectivity server(sidecar)
-func EndpointResources(mcp *mcpv1alpha1.ManagedControlPlane) []client.Object {
+type endpointBuilder struct {
+	cc *cluster.ClusterContext
+}
+
+func NewEndpointBuilder(cc *cluster.ClusterContext) cluster.ObjectProducer {
+	return endpointBuilder{cc: cc}
+}
+
+// Objects implements cluster.ObjectProducer
+func (e endpointBuilder) Objects() []client.Object {
 	return []client.Object{
-		buildService(mcp),
+		e.buildService(),
 	}
 }
 
-// WorkloadResources returns only the Deployment for kube-apiserver
-func WorkloadResources(mcp *mcpv1alpha1.ManagedControlPlane) []client.Object {
+type workloadBuilder struct {
+	cc *cluster.ClusterContext
+}
+
+func NewWorkloadBuilder(cc *cluster.ClusterContext) cluster.ObjectProducer {
+	return workloadBuilder{cc: cc}
+}
+
+// Objects implements cluster.ObjectProducer
+func (w workloadBuilder) Objects() []client.Object {
 	return []client.Object{
-		buildDeployment(mcp),
-		buildKonnectivityConfigMap(mcp),
+		w.buildDeployment(),
+		w.buildKonnectivityConfigMap(),
 	}
 }
 
-func buildService(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
+func (e endpointBuilder) buildService() *corev1.Service {
+	cc := e.cc
+	mcp := cc.MCP
 	ns := mcp.Namespace
-	labels := map[string]string{appLabelKey: appLabelVal}
+	labels := map[string]string{cc.Contract.APIServer.AppLabelKey: cc.Contract.APIServer.AppLabelVal}
 
 	return builders.NewService().
-		WithName(apiServerName).
+		WithName(cc.Names.APIServerServiceName()).
 		WithNamespace(ns).
 		WithLabels(labels).
 		WithSelector(labels).
@@ -72,14 +87,17 @@ func buildService(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 		Build()
 }
 
-func buildKonnectivityConfigMap(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
+func (w workloadBuilder) buildKonnectivityConfigMap() *corev1.ConfigMap {
+	cc := w.cc
+	mcp := cc.MCP
 	ns := mcp.Namespace
-	socketPath := filepath.Join(common.PKIMountRoot, konnectivityServerUDS, konnectivityUDSFile)
+
+	socketPath := filepath.Join(cc.Layout.PKIRoot, konnectivityServerUDS, konnectivityUDSFile)
 
 	e := apiserverv1beta.EgressSelectorConfiguration{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       common.EgressSelectorKind,
-			APIVersion: common.EgressSelectorAPIVersion,
+			Kind:       egressSelectorKind,
+			APIVersion: egressSelectorAPIVersion,
 		},
 		EgressSelections: []apiserverv1beta.EgressSelection{
 			{
@@ -105,33 +123,46 @@ func buildKonnectivityConfigMap(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Co
 	y := utils.GetObjYaml(&e)
 
 	return builders.NewConfigMap().
-		WithName(konnectivityConfigMapName).
+		WithName(cc.Names.KonnectivityConfigMapName()).
 		WithNamespace(ns).
 		Put(konnectivityConfigMapKey, y).
 		Build()
 }
 
-func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
-	p := pki.New(mcp).APIServer()
-
+func (w workloadBuilder) buildDeployment() *appsv1.Deployment {
+	cc := w.cc
+	mcp := cc.MCP
 	ns := mcp.Namespace
-	labels := map[string]string{appLabelKey: appLabelVal}
+
+	clientCA := cc.Names.SecretManagedCAName()
+	serving := cc.Names.SecretAPIServerServingTLSName()
+	etcdCA := cc.Names.SecretEtcdCAName()
+	etcdClient := cc.Names.SecretAPIServerEtcdClientName()
+	kubeletClient := cc.Names.SecretAPIServerKubeletClientName()
+	saSigner := cc.Names.SecretServiceAccountSignerName()
+	fpCA := cc.Names.SecretFrontProxyCAName()
+	fpClient := cc.Names.SecretFrontProxyClientName()
+	konCA := cc.Names.SecretKonnectivityCAName()
+	konSrv := cc.Names.SecretKonnectivityServerTLSName()
+
+	labels := map[string]string{cc.Contract.APIServer.AppLabelKey: cc.Contract.APIServer.AppLabelVal}
 	replicas := int32(1)
 	version := mcp.Spec.Kubernetes.Version
 
 	konnectivityConfigVolume := utils.ConfigMapVolume(
 		konnectivityConfigVolumeName,
-		konnectivityConfigMapName,
+		cc.Names.KonnectivityConfigMapName(),
 		konnectivityConfigMapKey,
 		konnectivityConfFileName,
 	)
+
 	konnectivityConfigVolumeMount := corev1.VolumeMount{
 		Name:      konnectivityConfigVolumeName,
 		ReadOnly:  true,
 		MountPath: konnectivityServerMountDir,
 	}
 
-	konnectivityUDSDir := filepath.Join(common.PKIMountRoot, konnectivityServerUDS)
+	konnectivityUDSDir := filepath.Join(cc.Layout.PKIRoot, konnectivityServerUDS)
 	udsFile := filepath.Join(konnectivityUDSDir, konnectivityUDSFile)
 	konnectivityUDSVolume := utils.EmptyDirVolume(konnectivityServerUDS)
 
@@ -152,30 +183,27 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			"--secure-port=6443",
 			"--service-cluster-ip-range=" + mcp.Spec.Kubernetes.Networking.ServiceCIDR,
 
-			// etcd
-			"--etcd-servers=https://etcd-0.etcd." + ns + ".svc:2379",
-			"--etcd-cafile=" + p.EtcdCA.CertPath(),
-			"--etcd-certfile=" + p.EtcdClient.CertPath(),
-			"--etcd-keyfile=" + p.EtcdClient.KeyPath(),
+			"--etcd-servers=https://etcd-0." + cc.Names.EtcdServiceName() + "." + ns + ".svc.cluster.local:2379",
 
-			// serving + client-ca
-			"--client-ca-file=" + p.ClientCA.CertPath(),
-			"--tls-cert-file=" + p.Serving.CertPath(),
-			"--tls-private-key-file=" + p.Serving.KeyPath(),
+			"--etcd-cafile=" + cc.CAPath(etcdCA),
+			"--etcd-certfile=" + cc.CertPath(etcdClient),
+			"--etcd-keyfile=" + cc.KeyPath(etcdClient),
 
-			// kubelet client
-			"--kubelet-client-certificate=" + p.KubeletClient.CertPath(),
-			"--kubelet-client-key=" + p.KubeletClient.KeyPath(),
+			"--client-ca-file=" + cc.CertPath(clientCA),
+			"--tls-cert-file=" + cc.CertPath(serving),
+			"--tls-private-key-file=" + cc.KeyPath(serving),
+
+			"--kubelet-client-certificate=" + cc.CertPath(kubeletClient),
+			"--kubelet-client-key=" + cc.KeyPath(kubeletClient),
 			"--kubelet-preferred-address-types=InternalIP,Hostname,InternalDNS,ExternalIP,ExternalDNS",
 
 			"--authorization-mode=Node,RBAC",
 			"--enable-bootstrap-token-auth=true",
 			"--enable-admission-plugins=NodeRestriction",
 
-			// service account signing
 			"--service-account-issuer=https://kubernetes.default.svc.cluster.local",
-			"--service-account-key-file=" + p.ServiceAccountSigner.CertPath(),
-			"--service-account-signing-key-file=" + p.ServiceAccountSigner.KeyPath(),
+			"--service-account-key-file=" + cc.CertPath(saSigner),
+			"--service-account-signing-key-file=" + cc.KeyPath(saSigner),
 
 			"--allow-privileged=true",
 
@@ -184,10 +212,34 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			"--logging-format=json",
 		},
 		Ports: []corev1.ContainerPort{
-			{Name: "https", ContainerPort: securePort},
+			{Name: "https", ContainerPort: cc.Contract.APIServer.SecurePort},
 		},
-		LivenessProbe:  utils.HttpsHealthProbe(securePort, common.LivezPath, 10, 10, 10, 10),
-		ReadinessProbe: utils.HttpsHealthProbe(securePort, common.ReadyzPath, 5, 5, 5, 5),
+		LivenessProbe:  utils.HttpsHealthProbe(cc.Contract.APIServer.SecurePort, cc.Keys.LivezPath, 10, 10, 10, 10),
+		ReadinessProbe: utils.HttpsHealthProbe(cc.Contract.APIServer.SecurePort, cc.Keys.ReadyzPath, 5, 5, 5, 5),
+	}
+
+	vols := []corev1.Volume{
+		cc.SecretVolume(clientCA),
+		cc.SecretVolume(serving),
+		cc.SecretVolume(etcdCA),
+		cc.SecretVolume(etcdClient),
+		cc.SecretVolume(kubeletClient),
+		cc.SecretVolume(saSigner),
+		cc.SecretVolume(fpCA),
+		cc.SecretVolume(fpClient),
+		cc.SecretVolume(konSrv),
+		cc.SecretVolume(konCA),
+	}
+
+	mounts := []corev1.VolumeMount{
+		cc.SecretMount(clientCA, true),
+		cc.SecretMount(serving, true),
+		cc.SecretMount(etcdCA, true),
+		cc.SecretMount(etcdClient, true),
+		cc.SecretMount(kubeletClient, true),
+		cc.SecretMount(saSigner, true),
+		cc.SecretMount(fpCA, true),
+		cc.SecretMount(fpClient, true),
 	}
 
 	c2 := corev1.Container{
@@ -197,9 +249,9 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			"--mode=grpc",
 			"--uds-name=" + udsFile,
 			"--delete-existing-uds-file=true",
-			"--cluster-cert=" + p.KonnectivityServing.CertPath(),
-			"--cluster-key=" + p.KonnectivityServing.KeyPath(),
-			"--cluster-ca-cert=" + p.KonnectivityCA.CertPath(),
+			"--cluster-cert=" + cc.CertPath(konSrv),
+			"--cluster-key=" + cc.KeyPath(konSrv),
+			"--cluster-ca-cert=" + cc.CAPath(konCA),
 			"--agent-port=" + utils.PortString(konnectivityServerPort),
 			"--server-port=0",
 			"--v=2",
@@ -207,43 +259,27 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 	}
 
 	return builders.NewDeployment().
-		WithName(apiServerName).
+		WithName(cc.Names.APIServerDeploymentName()).
 		WithNamespace(ns).
 		WithLabels(labels).
 		WithSelector(labels).
 		WithReplicas(replicas).
 		WithContainer(c).
-		AddVolumes(
+		AddVolumes(append([]corev1.Volume{
 			konnectivityUDSVolume,
 			konnectivityConfigVolume,
-			p.ClientCA.Volume(),
-			p.Serving.Volume(),
-			p.EtcdClient.Volume(),
-			p.KubeletClient.Volume(),
-			p.ServiceAccountSigner.Volume(),
-			p.EtcdCA.Volume(),
-			p.FrontProxyCA.Volume(),
-			p.FrontProxyClient.Volume(),
-			p.KonnectivityServing.Volume(),
-			p.KonnectivityCA.Volume(),
-		).
+		}, vols...)...).
 		AddVolumeMounts(c.Name,
-			konnectivityConfigVolumeMount,
-			konnectivityUDSVolumeMount,
-			p.ClientCA.Mount(true),
-			p.Serving.Mount(true),
-			p.EtcdClient.Mount(true),
-			p.KubeletClient.Mount(true),
-			p.ServiceAccountSigner.Mount(true),
-			p.EtcdCA.Mount(true),
-			p.FrontProxyCA.Mount(true),
-			p.FrontProxyClient.Mount(true),
+			append([]corev1.VolumeMount{
+				konnectivityConfigVolumeMount,
+				konnectivityUDSVolumeMount,
+			}, mounts...)...,
 		).
 		WithContainer(c2).
 		AddVolumeMounts(c2.Name,
 			konnectivityUDSVolumeMount,
-			p.KonnectivityServing.Mount(true),
-			p.KonnectivityCA.Mount(true),
+			cc.SecretMount(konSrv, true),
+			cc.SecretMount(konCA, true),
 		).
 		Build()
 }

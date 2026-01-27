@@ -15,26 +15,27 @@
 package addons
 
 import (
-	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type AddonsBuilder func() []client.Object
-
-func buildDefaultAddons(builders ...AddonsBuilder) []client.Object {
-	var addonObjs []client.Object
-
-	for _, b := range builders {
-		addonObjs = append(addonObjs, b()...)
-	}
-	return addonObjs
+type addonsBuilder struct {
+	cc *cluster.ClusterContext
 }
 
-func Resources(ma *mcpv1alpha1.ManagedControlPlane) []client.Object {
-	return buildDefaultAddons(
-		func() []client.Object { return buildKubeproxy(ma) },
-		func() []client.Object { return buildFlannel(ma) },
-		func() []client.Object { return buildCoreDNS(ma) },
-		func() []client.Object { return buildCSI() },
-	)
+func NewAddonsBuilder(cc *cluster.ClusterContext) cluster.ObjectProducer {
+	return addonsBuilder{cc: cc}
+}
+
+// Objects implements cluster.ObjectProducer
+func (e addonsBuilder) Objects() []client.Object {
+	var objs []client.Object
+
+	objs = append(objs, e.buildKubeproxy()...)
+	objs = append(objs, e.buildFlannel()...)
+	objs = append(objs, e.buildCoreDNS()...)
+	objs = append(objs, e.buildCSI()...)
+	objs = append(objs, e.buildKonnectivityAgent()...)
+
+	return objs
 }

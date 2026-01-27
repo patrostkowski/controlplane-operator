@@ -238,8 +238,8 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 	)
 
 	// etcd leaf certs
-	etcd0 := "etcd-0.etcd." + ns + ".svc"
-	etcdSvc := "etcd." + ns + ".svc"
+	etcd0 := "etcd-0.etcd." + ns + ".svc.cluster.local"
+	etcdSvc := "etcd." + ns + ".svc.cluster.local"
 
 	objs = append(objs,
 		// etcd server cert

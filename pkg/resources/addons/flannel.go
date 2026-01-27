@@ -15,9 +15,7 @@
 package addons
 
 import (
-	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -38,14 +36,14 @@ const (
 	FlannelBackendType            = "vxlan"
 )
 
-func buildFlannel(ma *mcpv1alpha1.ManagedControlPlane) []client.Object {
+func (e addonsBuilder) buildFlannel() []client.Object {
 	return []client.Object{
-		buildFlannelNamespace(),
-		buildFlannelServiceAccount(),
-		buildFlannelClusterRole(),
-		buildFLannelClusterRoleBinding(),
-		buildFlannelConfigMap(ma),
-		buildFlannelDaemonSet(),
+		e.buildFlannelNamespace(),
+		e.buildFlannelServiceAccount(),
+		e.buildFlannelClusterRole(),
+		e.buildFlannelClusterRoleBinding(),
+		e.buildFlannelConfigMap(),
+		e.buildFlannelDaemonSet(),
 	}
 }
 
@@ -63,7 +61,7 @@ func defFlannelNSLabels() map[string]string {
 	}
 }
 
-func buildFlannelNamespace() *corev1.Namespace {
+func (e addonsBuilder) buildFlannelNamespace() *corev1.Namespace {
 	labels := defFlannelNSLabels()
 	return builders.NewNamespace().
 		WithName(FlannelNamespaceName).
@@ -71,48 +69,48 @@ func buildFlannelNamespace() *corev1.Namespace {
 		Build()
 }
 
-func buildFlannelClusterRole() *rbacv1.ClusterRole {
+func (e addonsBuilder) buildFlannelClusterRole() *rbacv1.ClusterRole {
 	labels := defFlannelLabels()
 	return builders.NewClusterRole().
 		WithName(FlannelClusterRoleName).
 		WithLabels(labels).
 		WithRules(
 			rbacv1.PolicyRule{
-				APIGroups: []string{common.CoreAPIGroup},
-				Resources: []string{common.ResourcePods},
-				Verbs:     []string{common.VerbGet},
+				APIGroups: []string{coreAPIGroup},
+				Resources: []string{ResourcePods},
+				Verbs:     []string{VerbGet},
 			},
 			rbacv1.PolicyRule{
-				APIGroups: []string{common.CoreAPIGroup},
-				Resources: []string{common.ResourceNodes},
+				APIGroups: []string{coreAPIGroup},
+				Resources: []string{ResourceNodes},
 				Verbs: []string{
-					common.VerbGet,
-					common.VerbList,
-					common.VerbWatch,
+					VerbGet,
+					VerbList,
+					VerbWatch,
 				},
 			},
 			rbacv1.PolicyRule{
-				APIGroups: []string{common.CoreAPIGroup},
-				Resources: []string{common.ResourceNodesStatus},
-				Verbs:     []string{common.VerbPatch},
+				APIGroups: []string{coreAPIGroup},
+				Resources: []string{ResourceNodesStatus},
+				Verbs:     []string{VerbPatch},
 			},
 		).
 		Build()
 }
 
-func buildFLannelClusterRoleBinding() *rbacv1.ClusterRoleBinding {
+func (e addonsBuilder) buildFlannelClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	labels := defFlannelLabels()
 	return builders.NewClusterRoleBinding().
 		WithName(FlannelClusterRoleBindingName).
 		WithLabels(labels).
 		WithRefs(
 			rbacv1.RoleRef{
-				APIGroup: common.RBACAPIGroup,
-				Kind:     common.KindClusterRole,
+				APIGroup: rbacAPIGroup,
+				Kind:     KindClusterRole,
 				Name:     FlannelClusterRoleName,
 			},
 			rbacv1.Subject{
-				Kind:      common.KindServiceAccount,
+				Kind:      KindServiceAccount,
 				Name:      FlannelServiceAccountName,
 				Namespace: FlannelNamespaceName,
 			},
@@ -120,7 +118,7 @@ func buildFLannelClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 		Build()
 }
 
-func buildFlannelServiceAccount() *corev1.ServiceAccount {
+func (e addonsBuilder) buildFlannelServiceAccount() *corev1.ServiceAccount {
 	labels := defFlannelNSLabels()
 	return builders.NewServiceAccount().
 		WithName(FlannelServiceAccountName).
@@ -129,7 +127,7 @@ func buildFlannelServiceAccount() *corev1.ServiceAccount {
 		Build()
 }
 
-func buildFlannelConfigMap(ma *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
+func (e addonsBuilder) buildFlannelConfigMap() *corev1.ConfigMap {
 	labels := defFlannelLabels()
 	cniConf := `{
   "name": "cbr0",
@@ -152,7 +150,7 @@ func buildFlannelConfigMap(ma *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMa
 }`
 
 	netConf := `{
-  "Network": "` + ma.Spec.Kubernetes.Networking.PodCIDR + `",
+  "Network": "` + e.cc.MCP.Spec.Kubernetes.Networking.PodCIDR + `",
   "EnableNFTables": false,
   "Backend": {
     "Type": "` + FlannelBackendType + `"
@@ -168,7 +166,7 @@ func buildFlannelConfigMap(ma *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMa
 		Build()
 }
 
-func buildFlannelDaemonSet() *appsv1.DaemonSet {
+func (e addonsBuilder) buildFlannelDaemonSet() *appsv1.DaemonSet {
 	fileOrCreate := corev1.HostPathFileOrCreate
 	labels := defFlannelLabels()
 	priorityClass := "system-node-critical"

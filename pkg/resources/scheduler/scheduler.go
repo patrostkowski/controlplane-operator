@@ -15,10 +15,8 @@
 package scheduler
 
 import (
-	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -26,25 +24,35 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Resources returns ConfigMap + Deployment for kube-scheduler.
-func Resources(mcp *mcpv1alpha1.ManagedControlPlane) []client.Object {
+type builder struct{ cc *cluster.ClusterContext }
+
+func NewBuilder(cc *cluster.ClusterContext) cluster.ObjectProducer {
+	return builder{cc: cc}
+}
+
+func (b builder) Objects() []client.Object {
 	return []client.Object{
-		buildConfigMap(mcp),
-		buildDeployment(mcp),
+		b.buildConfigMap(),
+		b.buildDeployment(),
 	}
 }
 
-func buildConfigMap(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
-	p := pki.New(mcp).Scheduler()
-
+func (b builder) buildConfigMap() *corev1.ConfigMap {
+	cc := b.cc
+	mcp := cc.MCP
 	ns := mcp.Namespace
+
+	clusterCA := cc.Names.SecretManagedCAName()
+	schedulerClient := cc.Names.SecretSchedulerClientName()
+
 	kcfg := utils.BuildComponentKubeconfig(
 		ns,
-		common.KubeAPIServerName,
-		common.KubeAPISecurePort,
+		cc.Names.APIServerServiceName(),
+		cc.Contract.APIServer.SecurePort,
 		"scheduler",
-		p.ClientCA,
-		p.Client,
+		cc.CertPath(clusterCA),
+		cc.CertPath(schedulerClient),
+		cc.KeyPath(schedulerClient),
 	)
 
 	kubeconfigData, err := clientcmd.Write(*kcfg)
@@ -53,25 +61,28 @@ func buildConfigMap(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
 	}
 
 	return builders.NewConfigMap().
-		WithName(cmKubeconfigName).
+		WithName(cc.Names.SchedulerKubeconfigConfigMapName()).
 		WithNamespace(ns).
 		Put(cmKubeconfigKey, string(kubeconfigData)).
 		Build()
 }
 
-func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
-	p := pki.New(mcp).Scheduler()
-
+func (b builder) buildDeployment() *appsv1.Deployment {
+	cc := b.cc
+	mcp := cc.MCP
 	ns := mcp.Namespace
 	version := mcp.Spec.Kubernetes.Version
 
-	labels := map[string]string{common.LabelKeyApp: labelValApp}
-
+	labels := map[string]string{cc.Keys.LabelKeyApp: labelValApp}
 	var replicas int32 = 1
 
+	// PKI secret names
+	clusterCA := cc.Names.SecretManagedCAName()
+	schedulerClient := cc.Names.SecretSchedulerClientName()
+
 	kubeconfigVol := utils.ConfigMapVolume(
-		common.KubeconfigVolumeName,
-		cmKubeconfigName,
+		cc.Volumes.Kubeconfig,
+		cc.Names.SchedulerKubeconfigConfigMapName(),
 		cmKubeconfigKey,
 		cmKubeconfigFileName,
 	)
@@ -92,26 +103,35 @@ func buildDeployment(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 		Ports: []corev1.ContainerPort{
 			{Name: "https", ContainerPort: securePort},
 		},
-		LivenessProbe:  utils.HttpsHealthProbe(securePort, common.LivezPath, 10, 10, 10, 10),
-		ReadinessProbe: utils.HttpsHealthProbe(securePort, common.ReadyzPath, 5, 5, 5, 5),
+		LivenessProbe:  utils.HttpsHealthProbe(securePort, cc.Keys.LivezPath, 10, 10, 10, 10),
+		ReadinessProbe: utils.HttpsHealthProbe(securePort, cc.Keys.ReadyzPath, 5, 5, 5, 5),
+	}
+
+	secretVolumes := []corev1.Volume{
+		cc.SecretVolume(clusterCA),
+		cc.SecretVolume(schedulerClient),
+	}
+	secretMounts := []corev1.VolumeMount{
+		cc.SecretMount(clusterCA, true),
+		cc.SecretMount(schedulerClient, true),
 	}
 
 	return builders.NewDeployment().
-		WithName(componentName).
+		WithName(cc.Names.SchedulerDeploymentName()).
 		WithNamespace(ns).
 		WithLabels(labels).
 		WithSelector(labels).
 		WithReplicas(replicas).
 		WithContainer(c).
-		AddVolumes(append([]corev1.Volume{kubeconfigVol}, p.Volumes()...)...).
+		AddVolumes(append([]corev1.Volume{kubeconfigVol}, secretVolumes...)...).
 		AddVolumeMounts(c.Name,
-			append(p.Mounts(true),
-				corev1.VolumeMount{
-					Name:      common.KubeconfigVolumeName,
+			append([]corev1.VolumeMount{
+				{
+					Name:      cc.Volumes.Kubeconfig,
 					MountPath: kubeconfigMountDir,
 					ReadOnly:  true,
 				},
-			)...,
+			}, secretMounts...)...,
 		).
 		Build()
 }

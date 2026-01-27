@@ -18,9 +18,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -34,29 +37,34 @@ func TestBuildConfigMap_ControllerManager(t *testing.T) {
 		Spec: mcpv1alpha1.ManagedControlPlaneSpec{
 			Kubernetes: mcpv1alpha1.KubernetesSpec{
 				Version: "v1.34.0",
+				Networking: &mcpv1alpha1.NetworkingSpec{
+					PodCIDR:     "10.0.0.0/18",
+					ServiceCIDR: "172.16.0.0/20",
+				},
 			},
 		},
 	}
 
-	got := buildConfigMap(cm)
+	cc := cluster.NewClusterContext(cm, logr.Logger{})
 
-	if got.Name != cmKubeconfigName {
-		t.Fatalf("expected configmap name %q, got %q", cmKubeconfigName, got.Name)
+	objs := NewBuilder(cc).Objects()
+	cfg := mustFindConfigMap(t, objs)
+
+	if cfg.Name != cmKubeconfigName {
+		t.Fatalf("expected configmap name %q, got %q", cmKubeconfigName, cfg.Name)
 	}
-	if got.Namespace != cm.Namespace {
-		t.Fatalf("expected configmap namespace %q, got %q", cm.Namespace, got.Namespace)
+	if cfg.Namespace != cm.Namespace {
+		t.Fatalf("expected configmap namespace %q, got %q", cm.Namespace, cfg.Namespace)
 	}
 
-	val, ok := got.Data[cmKubeconfigKey]
+	val, ok := cfg.Data[cmKubeconfigKey]
 	if !ok {
-		t.Fatalf("expected configmap Data to contain key %q; keys=%v", cmKubeconfigKey, keys(got.Data))
+		t.Fatalf("expected configmap Data to contain key %q; keys=%v", cmKubeconfigKey, keys(cfg.Data))
 	}
 	if strings.TrimSpace(val) == "" {
 		t.Fatalf("expected configmap Data[%q] to be non-empty", cmKubeconfigKey)
 	}
 
-	// Optional sanity checks: kubeconfig should look like YAML and contain cluster/user stanzas.
-	// Keep these loose to avoid brittle tests.
 	if !strings.Contains(val, "apiVersion: v1") {
 		t.Fatalf("expected kubeconfig to contain %q, got:\n%s", "apiVersion: v1", val)
 	}
@@ -65,16 +73,7 @@ func TestBuildConfigMap_ControllerManager(t *testing.T) {
 	}
 }
 
-func keys(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
-}
-
 func TestBuildDeployment_ControllerManager(t *testing.T) {
-	// Arrange
 	cm := &mcpv1alpha1.ManagedControlPlane{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "demo-cp",
@@ -90,12 +89,16 @@ func TestBuildDeployment_ControllerManager(t *testing.T) {
 		},
 	}
 
-	p := pki.New(cm).ControllerManager()
+	cc := cluster.NewClusterContext(cm, logr.Logger{})
 
-	// Act
-	dep := buildDeployment(cm)
+	// PKI secret names (no pki package)
+	clusterCA := cc.Names.SecretManagedCAName()
+	cmClient := cc.Names.SecretControllerManagerClientName()
+	saSigner := cc.Names.SecretServiceAccountSignerName()
 
-	// Assert: basic metadata
+	objs := NewBuilder(cc).Objects()
+	dep := mustFindDeployment(t, objs)
+
 	if dep.Name != componentName {
 		t.Fatalf("expected deployment name %q, got %q", componentName, dep.Name)
 	}
@@ -103,18 +106,17 @@ func TestBuildDeployment_ControllerManager(t *testing.T) {
 		t.Fatalf("expected namespace %q, got %q", cm.Namespace, dep.Namespace)
 	}
 
-	wantLabels := map[string]string{common.LabelKeyApp: labelValApp}
-	if dep.Labels[common.LabelKeyApp] != labelValApp {
-		t.Fatalf("expected label %s=%s, got %#v", common.LabelKeyApp, labelValApp, dep.Labels)
+	wantLabels := map[string]string{cc.Keys.LabelKeyApp: labelValApp}
+	if dep.Labels[cc.Keys.LabelKeyApp] != labelValApp {
+		t.Fatalf("expected label %s=%s, got %#v", cc.Keys.LabelKeyApp, labelValApp, dep.Labels)
 	}
-	if dep.Spec.Selector == nil || dep.Spec.Selector.MatchLabels[common.LabelKeyApp] != labelValApp {
+	if dep.Spec.Selector == nil || dep.Spec.Selector.MatchLabels[cc.Keys.LabelKeyApp] != labelValApp {
 		t.Fatalf("expected selector matchLabels %#v, got %#v", wantLabels, dep.Spec.Selector)
 	}
 	if dep.Spec.Replicas == nil || *dep.Spec.Replicas != 1 {
 		t.Fatalf("expected replicas=1, got %#v", dep.Spec.Replicas)
 	}
 
-	// Assert: container
 	pod := dep.Spec.Template.Spec
 	if len(pod.Containers) != 1 {
 		t.Fatalf("expected exactly 1 container, got %d", len(pod.Containers))
@@ -131,31 +133,28 @@ func TestBuildDeployment_ControllerManager(t *testing.T) {
 		t.Fatalf("expected command [kube-controller-manager], got %#v", c.Command)
 	}
 
-	// Assert: key args exist
 	mustContainArg(t, c.Args, "--bind-address=0.0.0.0")
 	mustContainArg(t, c.Args, "--cluster-name="+cm.GetObjectMeta().GetName())
 
-	// kubeconfig wiring
 	mustContainArg(t, c.Args, "--kubeconfig="+kubeconfigPath)
 	mustContainArg(t, c.Args, "--authentication-kubeconfig="+kubeconfigPath)
 	mustContainArg(t, c.Args, "--authorization-kubeconfig="+kubeconfigPath)
 
-	// leader election / controllers
 	mustContainArg(t, c.Args, "--leader-elect=true")
 	mustContainArg(t, c.Args, "--use-service-account-credentials=true")
 	mustContainArg(t, c.Args, "--controllers=*,bootstrapsigner,tokencleaner")
 
-	mustContainArg(t, c.Args, "--service-account-private-key-file="+p.ServiceAccountSigner.KeyPath())
-	mustContainArg(t, c.Args, "--cluster-signing-cert-file="+p.ClientCA.CertPath())
-	mustContainArg(t, c.Args, "--cluster-signing-key-file="+p.ClientCA.KeyPath())
-	mustContainArg(t, c.Args, "--client-ca-file="+p.ClientCA.CertPath())
-	mustContainArg(t, c.Args, "--root-ca-file="+p.ClientCA.CertPath())
+	// paths now derived from cc helpers
+	mustContainArg(t, c.Args, "--service-account-private-key-file="+cc.KeyPath(saSigner))
 
-	// networking
+	mustContainArg(t, c.Args, "--cluster-signing-cert-file="+cc.CertPath(clusterCA))
+	mustContainArg(t, c.Args, "--cluster-signing-key-file="+cc.KeyPath(clusterCA))
+	mustContainArg(t, c.Args, "--client-ca-file="+cc.CertPath(clusterCA))
+	mustContainArg(t, c.Args, "--root-ca-file="+cc.CertPath(clusterCA))
+
 	mustContainArg(t, c.Args, "--cluster-cidr="+cm.Spec.Kubernetes.Networking.PodCIDR)
 	mustContainArg(t, c.Args, "--allocate-node-cidrs=true")
 
-	// probes should be set
 	if c.StartupProbe == nil {
 		t.Fatalf("expected StartupProbe to be set")
 	}
@@ -166,38 +165,69 @@ func TestBuildDeployment_ControllerManager(t *testing.T) {
 		t.Fatalf("expected ReadinessProbe to be set")
 	}
 
-	// Assert: mounts
-	expectMount(t, c.VolumeMounts, common.KubeconfigVolumeName, kubeconfigMountDir, true)
+	// kubeconfig mount
+	expectMount(t, c.VolumeMounts, cc.Volumes.Kubeconfig, kubeconfigMountDir, true)
 
-	// secret mounts (name + path)
-	expectMount(t, c.VolumeMounts, p.Client.SecretName, p.Client.MountDir, true)
-	expectMount(t, c.VolumeMounts, p.ServiceAccountSigner.SecretName, p.ServiceAccountSigner.MountDir, true)
-	expectMount(t, c.VolumeMounts, p.ClientCA.SecretName, p.ClientCA.MountDir, true)
+	// secret mounts: name + cc-derived mount dir
+	expectMount(t, c.VolumeMounts, cmClient, cc.SecretMountDir(cmClient), true)
+	expectMount(t, c.VolumeMounts, saSigner, cc.SecretMountDir(saSigner), true)
+	expectMount(t, c.VolumeMounts, clusterCA, cc.SecretMountDir(clusterCA), true)
 
-	// Assert: volumes
-	expectVolume(t, pod.Volumes, common.KubeconfigVolumeName, func(v corev1.Volume) {
+	// volumes
+	expectVolume(t, pod.Volumes, cc.Volumes.Kubeconfig, func(v corev1.Volume) {
 		if v.ConfigMap == nil {
-			t.Fatalf("expected kubeconfig volume %q to be a ConfigMap volume, got %#v", common.KubeconfigVolumeName, v)
+			t.Fatalf("expected kubeconfig volume %q to be a ConfigMap volume, got %#v", cc.Volumes.Kubeconfig, v)
 		}
 		if v.ConfigMap.Name != cmKubeconfigName {
 			t.Fatalf("expected kubeconfig volume CM name %q, got %q", cmKubeconfigName, v.ConfigMap.Name)
 		}
 	})
-	expectVolume(t, pod.Volumes, p.Client.SecretName, func(v corev1.Volume) {
-		if v.Secret == nil || v.Secret.SecretName != p.Client.SecretName {
-			t.Fatalf("expected secret volume %q -> secretName %q, got %#v", p.Client.SecretName, p.Client.SecretName, v)
+
+	expectVolume(t, pod.Volumes, cmClient, func(v corev1.Volume) {
+		if v.Secret == nil || v.Secret.SecretName != cmClient {
+			t.Fatalf("expected secret volume %q -> secretName %q, got %#v", cmClient, cmClient, v)
 		}
 	})
-	expectVolume(t, pod.Volumes, p.ServiceAccountSigner.SecretName, func(v corev1.Volume) {
-		if v.Secret == nil || v.Secret.SecretName != p.ServiceAccountSigner.SecretName {
-			t.Fatalf("expected secret volume %q -> secretName %q, got %#v", p.ServiceAccountSigner.SecretName, p.ServiceAccountSigner.SecretName, v)
+	expectVolume(t, pod.Volumes, saSigner, func(v corev1.Volume) {
+		if v.Secret == nil || v.Secret.SecretName != saSigner {
+			t.Fatalf("expected secret volume %q -> secretName %q, got %#v", saSigner, saSigner, v)
 		}
 	})
-	expectVolume(t, pod.Volumes, p.ClientCA.SecretName, func(v corev1.Volume) {
-		if v.Secret == nil || v.Secret.SecretName != p.ClientCA.SecretName {
-			t.Fatalf("expected secret volume %q -> secretName %q, got %#v", p.ClientCA.SecretName, p.ClientCA.SecretName, v)
+	expectVolume(t, pod.Volumes, clusterCA, func(v corev1.Volume) {
+		if v.Secret == nil || v.Secret.SecretName != clusterCA {
+			t.Fatalf("expected secret volume %q -> secretName %q, got %#v", clusterCA, clusterCA, v)
 		}
 	})
+}
+
+func mustFindConfigMap(t *testing.T, objs []client.Object) *corev1.ConfigMap {
+	t.Helper()
+	for _, o := range objs {
+		if cm, ok := o.(*corev1.ConfigMap); ok {
+			return cm
+		}
+	}
+	t.Fatalf("expected *corev1.ConfigMap in objects, got %#v", objs)
+	return nil
+}
+
+func mustFindDeployment(t *testing.T, objs []client.Object) *appsv1.Deployment {
+	t.Helper()
+	for _, o := range objs {
+		if d, ok := o.(*appsv1.Deployment); ok {
+			return d
+		}
+	}
+	t.Fatalf("expected *appsv1.Deployment in objects, got %#v", objs)
+	return nil
+}
+
+func keys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }
 
 func mustContainArg(t *testing.T, args []string, want string) {

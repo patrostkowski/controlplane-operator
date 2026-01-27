@@ -16,7 +16,6 @@ package addons
 
 import (
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -54,116 +53,116 @@ var CSILabels = map[string]string{
 	"app": "local-path-provisioner",
 }
 
-func buildCSI() []client.Object {
+func (e addonsBuilder) buildCSI() []client.Object {
 	return []client.Object{
-		buildCSINamespace(),
-		buildCSIServiceAccount(),
-		buildCSIClusterRole(),
-		buildCSIClusterRoleBinding(),
-		buildCSIRole(),
-		buildCSIRoleBinding(),
-		buildCSIConfigMap(),
-		buildCSIStorageClass(),
-		buildCSIDeployment(),
+		e.buildCSINamespace(),
+		e.buildCSIServiceAccount(),
+		e.buildCSIClusterRole(),
+		e.buildCSIClusterRoleBinding(),
+		e.buildCSIRole(),
+		e.buildCSIRoleBinding(),
+		e.buildCSIConfigMap(),
+		e.buildCSIStorageClass(),
+		e.buildCSIDeployment(),
 	}
 }
 
-func buildCSINamespace() *corev1.Namespace {
+func (e addonsBuilder) buildCSINamespace() *corev1.Namespace {
 	return builders.NewNamespace().
 		WithName(CSINamespaceName).
 		Build()
 }
 
-func buildCSIServiceAccount() *corev1.ServiceAccount {
+func (e addonsBuilder) buildCSIServiceAccount() *corev1.ServiceAccount {
 	return builders.NewServiceAccount().
 		WithName(CSIServiceAccountName).
 		WithNamespace(CSINamespaceName).
 		Build()
 }
 
-func buildCSIRole() *rbacv1.Role {
+func (e addonsBuilder) buildCSIRole() *rbacv1.Role {
 	return builders.NewRole().
 		WithName(CSIRoleName).
 		WithNamespace(CSINamespaceName).
 		WithRules(
 			rbacv1.PolicyRule{
-				APIGroups: []string{common.CoreAPIGroup},
-				Resources: []string{common.ResourcePods},
+				APIGroups: []string{coreAPIGroup},
+				Resources: []string{ResourcePods},
 				Verbs: []string{
-					common.VerbGet,
-					common.VerbList,
-					common.VerbWatch,
-					common.VerbCreate,
-					common.VerbPatch,
-					common.VerbUpdate,
-					common.VerbDelete,
+					VerbGet,
+					VerbList,
+					VerbWatch,
+					VerbCreate,
+					VerbPatch,
+					VerbUpdate,
+					VerbDelete,
 				},
 			},
 		).
 		Build()
 }
 
-func buildCSIClusterRole() *rbacv1.ClusterRole {
+func (e addonsBuilder) buildCSIClusterRole() *rbacv1.ClusterRole {
 	return builders.NewClusterRole().
 		WithName(CSIClusterRoleName).
 		WithRules(
 			rbacv1.PolicyRule{
-				APIGroups: []string{common.CoreAPIGroup},
+				APIGroups: []string{coreAPIGroup},
 				Resources: []string{
-					common.ResourceNodes,
-					common.ResourcePVCs,
-					common.ResourceConfigMaps,
-					common.ResourcePods,
-					common.ResourcePodsLogs,
+					ResourceNodes,
+					ResourcePVCs,
+					ResourceConfigMaps,
+					ResourcePods,
+					ResourcePodsLogs,
 				},
 				Verbs: []string{
-					common.VerbGet,
-					common.VerbList,
-					common.VerbWatch,
-				},
-			},
-			rbacv1.PolicyRule{
-				APIGroups: []string{common.CoreAPIGroup},
-				Resources: []string{common.ResourcePVs},
-				Verbs: []string{
-					common.VerbGet,
-					common.VerbList,
-					common.VerbWatch,
-					common.VerbCreate,
-					common.VerbPatch,
-					common.VerbUpdate,
-					common.VerbDelete,
+					VerbGet,
+					VerbList,
+					VerbWatch,
 				},
 			},
 			rbacv1.PolicyRule{
-				APIGroups: []string{common.CoreAPIGroup},
-				Resources: []string{common.ResourceEvents},
+				APIGroups: []string{coreAPIGroup},
+				Resources: []string{ResourcePVs},
 				Verbs: []string{
-					common.VerbCreate,
-					common.VerbPatch,
+					VerbGet,
+					VerbList,
+					VerbWatch,
+					VerbCreate,
+					VerbPatch,
+					VerbUpdate,
+					VerbDelete,
 				},
 			},
 			rbacv1.PolicyRule{
-				APIGroups: []string{common.StorageAPIGroup},
-				Resources: []string{common.ResourceStorageClasses},
+				APIGroups: []string{coreAPIGroup},
+				Resources: []string{ResourceEvents},
 				Verbs: []string{
-					common.VerbGet,
-					common.VerbList,
-					common.VerbWatch,
+					VerbCreate,
+					VerbPatch,
+				},
+			},
+			rbacv1.PolicyRule{
+				APIGroups: []string{storageAPIGroup},
+				Resources: []string{ResourceStorageClasses},
+				Verbs: []string{
+					VerbGet,
+					VerbList,
+					VerbWatch,
 				},
 			},
 		).
 		Build()
 }
 
-func buildCSIRoleBinding() *rbacv1.RoleBinding {
+func (e addonsBuilder) buildCSIRoleBinding() *rbacv1.RoleBinding {
 	return builders.NewRoleBinding().
 		WithName(CSIRoleBindingName).
 		WithNamespace(CSINamespaceName).
 		WithRefs(
 			rbacv1.RoleRef{
-				APIGroup: common.RBACAPIGroup,
-				Kind:     common.KindRole,
+				APIGroup: rbacAPIGroup,
+				Kind:     KindRole,
 				Name:     CSIRoleName,
 			},
 			rbacv1.Subject{
@@ -175,17 +174,17 @@ func buildCSIRoleBinding() *rbacv1.RoleBinding {
 		Build()
 }
 
-func buildCSIClusterRoleBinding() *rbacv1.ClusterRoleBinding {
+func (e addonsBuilder) buildCSIClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	return builders.NewClusterRoleBinding().
 		WithName(CSIClusterRoleName).
 		WithRefs(
 			rbacv1.RoleRef{
-				APIGroup: common.RBACAPIGroup,
-				Kind:     common.KindClusterRole,
+				APIGroup: rbacAPIGroup,
+				Kind:     KindClusterRole,
 				Name:     CSIClusterRoleName,
 			},
 			rbacv1.Subject{
-				Kind:      common.KindServiceAccount,
+				Kind:      KindServiceAccount,
 				Name:      CSIServiceAccountName,
 				Namespace: CSINamespaceName,
 			},
@@ -193,7 +192,7 @@ func buildCSIClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 		Build()
 }
 
-func buildCSIStorageClass() *storagev1.StorageClass {
+func (e addonsBuilder) buildCSIStorageClass() *storagev1.StorageClass {
 	return builders.NewStorageClass().
 		WithAnnotations(map[string]string{
 			CSIDefaultStorageClassAnnotation: "true",
@@ -205,7 +204,7 @@ func buildCSIStorageClass() *storagev1.StorageClass {
 		Build()
 }
 
-func buildCSIConfigMap() *corev1.ConfigMap {
+func (e addonsBuilder) buildCSIConfigMap() *corev1.ConfigMap {
 	// upstream default path
 	// creates PV dirs under /opt/local-path-provisioner on the node
 	configJSON := `{
@@ -252,7 +251,7 @@ spec:
 		Build()
 }
 
-func buildCSIDeployment() *appsv1.Deployment {
+func (e addonsBuilder) buildCSIDeployment() *appsv1.Deployment {
 	var replicas int32 = 1
 
 	c := corev1.Container{

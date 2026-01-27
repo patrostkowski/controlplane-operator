@@ -25,15 +25,6 @@ const (
 
 	dataDir = "/var/lib/etcd"
 
-	mountRoot = "/etc/etcd/pki"
-	dirCA     = "ca"
-	dirServer = "server"
-	dirPeer   = "peer"
-
-	caCrt  = "ca.crt"
-	tlsCrt = "tls.crt"
-	tlsKey = "tls.key"
-
 	defaultStorage = "10Gi"
 
 	// Member config (single node for now)

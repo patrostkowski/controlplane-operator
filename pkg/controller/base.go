@@ -19,7 +19,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -33,7 +33,7 @@ type BaseReconciler struct {
 
 type Component interface {
 	Name() string
-	Reconcile(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error)
+	Reconcile(ctx context.Context, cc *cluster.ClusterContext) (ctrl.Result, error)
 	WaitingMessage() v1alpha1.Message
 	FailedMessage() v1alpha1.Message
 }

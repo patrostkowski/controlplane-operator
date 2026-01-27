@@ -15,9 +15,7 @@
 package addons
 
 import (
-	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -67,20 +65,20 @@ var CoreDNSLabels = map[string]string{
 	"k8s-app": "kube-dns",
 }
 
-func buildCoreDNS(ma *mcpv1alpha1.ManagedControlPlane) []client.Object {
+func (e addonsBuilder) buildCoreDNS() []client.Object {
 	return []client.Object{
-		buildCoreDNSServiceAccount(),
-		buildCoreDNSClusterRole(),
-		buildCoreDNSClusterRoleBinding(),
-		buildCoreDNSRole(),
-		buildCoreDNSRoleBinding(),
-		buildCoreDNSConfigMap(),
-		buildCoreDNSService(ma),
-		buildCoreDNSDeployment(),
+		e.buildCoreDNSServiceAccount(),
+		e.buildCoreDNSClusterRole(),
+		e.buildCoreDNSClusterRoleBinding(),
+		e.buildCoreDNSRole(),
+		e.buildCoreDNSRoleBinding(),
+		e.buildCoreDNSConfigMap(),
+		e.buildCoreDNSService(),
+		e.buildCoreDNSDeployment(),
 	}
 }
 
-func buildCoreDNSServiceAccount() *corev1.ServiceAccount {
+func (e addonsBuilder) buildCoreDNSServiceAccount() *corev1.ServiceAccount {
 	return builders.NewServiceAccount().
 		WithName(CoreDNSServiceAccountName).
 		WithNamespace(CoreDNSNamespaceName).
@@ -88,18 +86,18 @@ func buildCoreDNSServiceAccount() *corev1.ServiceAccount {
 		Build()
 }
 
-func buildCoreDNSClusterRoleBinding() *rbacv1.ClusterRoleBinding {
+func (e addonsBuilder) buildCoreDNSClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	return builders.NewClusterRoleBinding().
 		WithName(CoreDNSClusterRoleBindingName).
 		WithRefs(
 			rbacv1.RoleRef{
-				APIGroup: common.RBACAPIGroup,
-				Kind:     common.KindClusterRole,
+				APIGroup: rbacAPIGroup,
+				Kind:     KindClusterRole,
 				Name:     CoreDNSClusterRoleName,
 			},
 
 			rbacv1.Subject{
-				Kind:      common.KindServiceAccount,
+				Kind:      KindServiceAccount,
 				Name:      CoreDNSServiceAccountName,
 				Namespace: CoreDNSNamespaceName,
 			},
@@ -107,71 +105,71 @@ func buildCoreDNSClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 		Build()
 }
 
-func buildCoreDNSClusterRole() *rbacv1.ClusterRole {
+func (e addonsBuilder) buildCoreDNSClusterRole() *rbacv1.ClusterRole {
 	return builders.NewClusterRole().
 		WithName(CoreDNSClusterRoleName).
 		WithRules(
 			rbacv1.PolicyRule{
-				APIGroups: []string{common.CoreAPIGroup},
+				APIGroups: []string{coreAPIGroup},
 				Resources: []string{
-					common.ResourceEndpoints,
-					common.ResourceServices,
-					common.ResourcePods,
-					common.ResourceNamespaces,
+					ResourceEndpoints,
+					ResourceServices,
+					ResourcePods,
+					ResourceNamespaces,
 				},
 				Verbs: []string{
-					common.VerbList,
-					common.VerbWatch,
-				},
-			},
-			rbacv1.PolicyRule{
-				APIGroups: []string{common.DiscoveryAPIGroup},
-				Resources: []string{common.ResourceEndpointSlices},
-				Verbs: []string{
-					common.VerbList,
-					common.VerbWatch,
+					VerbList,
+					VerbWatch,
 				},
 			},
 			rbacv1.PolicyRule{
-				APIGroups: []string{common.CoreAPIGroup},
-				Resources: []string{common.ResourceNodes},
+				APIGroups: []string{discoveryAPIGroup},
+				Resources: []string{ResourceEndpointSlices},
 				Verbs: []string{
-					common.VerbGet,
-					common.VerbList,
-					common.VerbWatch,
+					VerbList,
+					VerbWatch,
+				},
+			},
+			rbacv1.PolicyRule{
+				APIGroups: []string{coreAPIGroup},
+				Resources: []string{ResourceNodes},
+				Verbs: []string{
+					VerbGet,
+					VerbList,
+					VerbWatch,
 				},
 			},
 		).
 		Build()
 }
 
-func buildCoreDNSRole() *rbacv1.Role {
+func (e addonsBuilder) buildCoreDNSRole() *rbacv1.Role {
 	return builders.NewRole().
 		WithName(CoreDNSRoleName).
 		WithNamespace(CoreDNSNamespaceName).
 		WithRules(
 			rbacv1.PolicyRule{
-				APIGroups:     []string{common.CoreAPIGroup},
-				Resources:     []string{common.ResourceConfigMaps},
+				APIGroups:     []string{coreAPIGroup},
+				Resources:     []string{ResourceConfigMaps},
 				ResourceNames: []string{CoreDNSConfigMapName},
 				Verbs: []string{
-					common.VerbGet,
-					common.VerbList,
-					common.VerbWatch,
+					VerbGet,
+					VerbList,
+					VerbWatch,
 				},
 			},
 		).
 		Build()
 }
 
-func buildCoreDNSRoleBinding() *rbacv1.RoleBinding {
+func (e addonsBuilder) buildCoreDNSRoleBinding() *rbacv1.RoleBinding {
 	return builders.NewRoleBinding().
 		WithName(CoreDNSRoleBindingName).
 		WithNamespace(CoreDNSNamespaceName).
 		WithRefs(
 			rbacv1.RoleRef{
-				APIGroup: common.RBACAPIGroup,
-				Kind:     common.KindRole,
+				APIGroup: rbacAPIGroup,
+				Kind:     KindRole,
 				Name:     CoreDNSRoleName,
 			},
 			rbacv1.Subject{
@@ -183,7 +181,7 @@ func buildCoreDNSRoleBinding() *rbacv1.RoleBinding {
 		Build()
 }
 
-func buildCoreDNSConfigMap() *corev1.ConfigMap {
+func (e addonsBuilder) buildCoreDNSConfigMap() *corev1.ConfigMap {
 	corefile := `.:53 {
         errors
         health
@@ -206,12 +204,12 @@ func buildCoreDNSConfigMap() *corev1.ConfigMap {
 		Build()
 }
 
-func buildCoreDNSService(ma *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
+func (e addonsBuilder) buildCoreDNSService() *corev1.Service {
 	ports := []corev1.ServicePort{
 		{Name: "dns", Port: 53, Protocol: corev1.ProtocolUDP, TargetPort: intstr.FromInt(53)},
 		{Name: "dns-tcp", Port: 53, Protocol: corev1.ProtocolTCP, TargetPort: intstr.FromInt(53)},
 	}
-	ip, _ := utils.IPAtOffset(ma.Spec.Kubernetes.Networking.ServiceCIDR, 10)
+	ip, _ := utils.IPAtOffset(e.cc.MCP.Spec.Kubernetes.Networking.ServiceCIDR, 10)
 	return builders.NewService().
 		WithName(CoreDNSServiceName).
 		WithNamespace(CoreDNSNamespaceName).
@@ -223,7 +221,7 @@ func buildCoreDNSService(ma *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
 		Build()
 }
 
-func buildCoreDNSDeployment() *appsv1.Deployment {
+func (e addonsBuilder) buildCoreDNSDeployment() *appsv1.Deployment {
 	c := corev1.Container{
 		Name:            "coredns",
 		Image:           CoreDNSImage,

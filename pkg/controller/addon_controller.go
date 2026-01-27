@@ -20,6 +20,7 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/util/workqueue"
@@ -53,27 +54,32 @@ func (r *ManagedAddonsReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	log.Info("Reconciling addons", "version", mcpObj.Spec.Kubernetes.Version)
 
-	r.cp, err = r.getControlPlaneClient(ctx, mcpObj)
+	cc := cluster.NewClusterContext(mcpObj, r.Log)
+
+	r.cp, err = r.getControlPlaneClient(ctx, cc)
 	if err != nil {
-		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
+		log.Error(err, "getting managed controlplane cluster client failed, will retry", "after", RequeueAfterFailure)
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
-	if res, err := r.reconcileKubeletJoinResources(ctx, mcpObj); err != nil {
-		log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
+	log.Info("reconciling kubeadm resources")
+	if res, err := r.reconcileKubeletJoinResources(ctx, cc); err != nil {
+		log.Error(err, "reconciling kubeadm resources failed, will retry", "after", RequeueAfterFailure)
 		return ctrl.Result{}, err
 	} else if !res.IsZero() {
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
-	if res, err := r.reconcileAddons(ctx, mcpObj); err != nil {
+	log.Info("reconciling addons resources")
+	if res, err := r.reconcileAddons(ctx, cc); err != nil {
+		log.Error(err, "reconciling managed addons failed, will retry", "after", RequeueAfterFailure)
 		return ctrl.Result{}, err
 	} else if !res.IsZero() {
 		return res, nil
 	}
 
-	log.Info("Finished reconciling addon")
-	return ctrl.Result{RequeueAfter: 60 * time.Second}, nil
+	log.Info("Finished reconciling addon controller")
+	return ctrl.Result{RequeueAfter: 360 * time.Second}, nil
 }
 
 func SetupManagedAddonController(mgr ctrl.Manager) error {

@@ -18,12 +18,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
+
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func TestBuildConfigMap_Scheduler(t *testing.T) {
@@ -39,25 +42,26 @@ func TestBuildConfigMap_Scheduler(t *testing.T) {
 		},
 	}
 
-	got := buildConfigMap(cm)
+	cc := cluster.NewClusterContext(cm, logr.Logger{})
+	objs := NewBuilder(cc).Objects()
 
-	if got.Name != cmKubeconfigName {
-		t.Fatalf("expected configmap name %q, got %q", cmKubeconfigName, got.Name)
+	cfg := mustFindConfigMap(t, objs)
+
+	if cfg.Name != cmKubeconfigName {
+		t.Fatalf("expected configmap name %q, got %q", cmKubeconfigName, cfg.Name)
 	}
-	if got.Namespace != cm.Namespace {
-		t.Fatalf("expected configmap namespace %q, got %q", cm.Namespace, got.Namespace)
+	if cfg.Namespace != cm.Namespace {
+		t.Fatalf("expected configmap namespace %q, got %q", cm.Namespace, cfg.Namespace)
 	}
 
-	val, ok := got.Data[cmKubeconfigKey]
+	val, ok := cfg.Data[cmKubeconfigKey]
 	if !ok {
-		t.Fatalf("expected configmap Data to contain key %q; keys=%v", cmKubeconfigKey, keys(got.Data))
+		t.Fatalf("expected configmap Data to contain key %q; keys=%v", cmKubeconfigKey, keys(cfg.Data))
 	}
 	if strings.TrimSpace(val) == "" {
 		t.Fatalf("expected configmap Data[%q] to be non-empty", cmKubeconfigKey)
 	}
 
-	// Optional sanity checks: kubeconfig should look like YAML and contain cluster/user stanzas.
-	// Keep these loose to avoid brittle tests.
 	if !strings.Contains(val, "apiVersion: v1") {
 		t.Fatalf("expected kubeconfig to contain %q, got:\n%s", "apiVersion: v1", val)
 	}
@@ -66,59 +70,52 @@ func TestBuildConfigMap_Scheduler(t *testing.T) {
 	}
 }
 
-func keys(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
-}
-
 func TestBuildDeployment_KubeScheduler(t *testing.T) {
 	ms := &mcpv1alpha1.ManagedControlPlane{}
 	ms.Namespace = "mcp"
 	ms.Spec.Kubernetes.Version = "v1.34.1"
 
-	p := pki.New(ms).Scheduler()
+	cc := cluster.NewClusterContext(ms, logr.Logger{})
+	objs := NewBuilder(cc).Objects()
 
-	got := buildDeployment(ms)
-	if got == nil {
-		t.Fatalf("buildDeployment returned nil")
-	}
+	clusterCA := cc.Names.SecretManagedCAName()
+	schedulerClient := cc.Names.SecretSchedulerClientName()
 
-	if got.Name != componentName {
-		t.Fatalf("metadata.name: got %q, want %q", got.Name, componentName)
+	dep := mustFindDeployment(t, objs)
+
+	if dep.Name != componentName {
+		t.Fatalf("metadata.name: got %q, want %q", dep.Name, componentName)
 	}
-	if got.Namespace != ms.Namespace {
-		t.Fatalf("metadata.namespace: got %q, want %q", got.Namespace, ms.Namespace)
+	if dep.Namespace != ms.Namespace {
+		t.Fatalf("metadata.namespace: got %q, want %q", dep.Namespace, ms.Namespace)
 	}
-	if got.Spec.Selector == nil {
+	if dep.Spec.Selector == nil {
 		t.Fatalf("spec.selector is nil")
 	}
-	if got.Spec.Selector.MatchLabels[common.LabelKeyApp] != labelValApp {
+	if dep.Spec.Selector.MatchLabels[cc.Keys.LabelKeyApp] != labelValApp {
 		t.Fatalf("spec.selector.matchLabels[%q]: got %q, want %q",
-			common.LabelKeyApp,
-			got.Spec.Selector.MatchLabels[common.LabelKeyApp],
+			cc.Keys.LabelKeyApp,
+			dep.Spec.Selector.MatchLabels[cc.Keys.LabelKeyApp],
 			labelValApp,
 		)
 	}
 
-	if got.Spec.Replicas == nil {
+	if dep.Spec.Replicas == nil {
 		t.Fatalf("spec.replicas is nil")
 	}
-	if *got.Spec.Replicas != 1 {
-		t.Fatalf("spec.replicas: got %d, want 1", *got.Spec.Replicas)
+	if *dep.Spec.Replicas != 1 {
+		t.Fatalf("spec.replicas: got %d, want 1", *dep.Spec.Replicas)
 	}
 
-	if got.Spec.Template.Labels[common.LabelKeyApp] != labelValApp {
+	if dep.Spec.Template.Labels[cc.Keys.LabelKeyApp] != labelValApp {
 		t.Fatalf("template.metadata.labels[%q]: got %q, want %q",
-			common.LabelKeyApp,
-			got.Spec.Template.Labels[common.LabelKeyApp],
+			cc.Keys.LabelKeyApp,
+			dep.Spec.Template.Labels[cc.Keys.LabelKeyApp],
 			labelValApp,
 		)
 	}
 
-	pod := got.Spec.Template.Spec
+	pod := dep.Spec.Template.Spec
 	if len(pod.Containers) != 1 {
 		t.Fatalf("pod.spec.containers length: got %d, want 1", len(pod.Containers))
 	}
@@ -149,6 +146,7 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 		"--logging-format=json",
 	}
 	assertStringSliceEqual(t, c.Args, wantArgs, "container.args")
+
 	if len(c.Ports) != 1 {
 		t.Fatalf("container.ports length: got %d, want 1", len(c.Ports))
 	}
@@ -156,38 +154,38 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 		t.Fatalf("container.ports[0]: got %+v, want name=https port=%d", c.Ports[0], securePort)
 	}
 
-	wantLive := utils.HttpsHealthProbe(securePort, common.LivezPath, 10, 10, 10, 10)
-	wantReady := utils.HttpsHealthProbe(securePort, common.ReadyzPath, 5, 5, 5, 5)
+	wantLive := utils.HttpsHealthProbe(securePort, cc.Keys.LivezPath, 10, 10, 10, 10)
+	wantReady := utils.HttpsHealthProbe(securePort, cc.Keys.ReadyzPath, 5, 5, 5, 5)
 	assertProbeEqual(t, c.LivenessProbe, wantLive, "livenessProbe")
 	assertProbeEqual(t, c.ReadinessProbe, wantReady, "readinessProbe")
 
+	// mounts: kubeconfig + scheduler client + cluster CA
 	if len(c.VolumeMounts) != 3 {
 		t.Fatalf("container.volumeMounts length: got %d, want 3", len(c.VolumeMounts))
 	}
 
-	vmKubeconfig, ok := findVolumeMount(c.VolumeMounts, common.KubeconfigVolumeName)
+	vmKubeconfig, ok := findVolumeMount(c.VolumeMounts, cc.Volumes.Kubeconfig)
 	if !ok {
-		t.Fatalf("missing volumeMount %q", common.KubeconfigVolumeName)
+		t.Fatalf("missing volumeMount %q", cc.Volumes.Kubeconfig)
 	}
 	if vmKubeconfig.MountPath != kubeconfigMountDir || !vmKubeconfig.ReadOnly {
 		t.Fatalf("kubeconfig volumeMount: got %+v, want mountPath=%q readOnly=true", vmKubeconfig, kubeconfigMountDir)
 	}
 
-	_, ok = findVolumeMount(c.VolumeMounts, p.Client.SecretName)
-	if !ok {
-		t.Fatalf("missing volumeMount %q (scheduler client)", p.Client.SecretName)
+	if _, ok := findVolumeMount(c.VolumeMounts, schedulerClient); !ok {
+		t.Fatalf("missing volumeMount %q (scheduler client)", schedulerClient)
 	}
-	_, ok = findVolumeMount(c.VolumeMounts, p.ClientCA.SecretName)
-	if !ok {
-		t.Fatalf("missing volumeMount %q (cluster CA)", p.ClientCA.SecretName)
+	if _, ok := findVolumeMount(c.VolumeMounts, clusterCA); !ok {
+		t.Fatalf("missing volumeMount %q (cluster CA)", clusterCA)
 	}
 
-	vKubeconfig, ok := findVolume(pod.Volumes, common.KubeconfigVolumeName)
+	// volumes: kubeconfig configmap + two secrets
+	vKubeconfig, ok := findVolume(pod.Volumes, cc.Volumes.Kubeconfig)
 	if !ok {
-		t.Fatalf("missing volume %q", common.KubeconfigVolumeName)
+		t.Fatalf("missing volume %q", cc.Volumes.Kubeconfig)
 	}
 	if vKubeconfig.ConfigMap == nil {
-		t.Fatalf("volume %q: expected configMap, got nil", common.KubeconfigVolumeName)
+		t.Fatalf("volume %q: expected configMap, got nil", cc.Volumes.Kubeconfig)
 	}
 	if vKubeconfig.ConfigMap.Name != cmKubeconfigName {
 		t.Fatalf("kubeconfig configMap.name: got %q, want %q", vKubeconfig.ConfigMap.Name, cmKubeconfigName)
@@ -200,8 +198,38 @@ func TestBuildDeployment_KubeScheduler(t *testing.T) {
 			vKubeconfig.ConfigMap.Items[0], cmKubeconfigKey, cmKubeconfigFileName)
 	}
 
-	assertSecretVolume(t, pod.Volumes, p.Client.SecretName, "scheduler client secret volume")
-	assertSecretVolume(t, pod.Volumes, p.ClientCA.SecretName, "cluster CA secret volume")
+	assertSecretVolume(t, pod.Volumes, schedulerClient, "scheduler client secret volume")
+	assertSecretVolume(t, pod.Volumes, clusterCA, "cluster CA secret volume")
+}
+
+func mustFindConfigMap(t *testing.T, objs []client.Object) *corev1.ConfigMap {
+	t.Helper()
+	for _, o := range objs {
+		if cm, ok := o.(*corev1.ConfigMap); ok {
+			return cm
+		}
+	}
+	t.Fatalf("expected *corev1.ConfigMap in objects, got %#v", objs)
+	return nil
+}
+
+func mustFindDeployment(t *testing.T, objs []client.Object) *appsv1.Deployment {
+	t.Helper()
+	for _, o := range objs {
+		if d, ok := o.(*appsv1.Deployment); ok {
+			return d
+		}
+	}
+	t.Fatalf("expected *appsv1.Deployment in objects, got %#v", objs)
+	return nil
+}
+
+func keys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }
 
 func assertStringSliceEqual(t *testing.T, got, want []string, field string) {
@@ -232,14 +260,14 @@ func assertProbeEqual(t *testing.T, got, want *corev1.Probe, field string) {
 		got.SuccessThreshold != want.SuccessThreshold {
 		t.Fatalf("%s timing/thresholds mismatch:\n got=%+v\nwant=%+v", field, got, want)
 	}
-	if got.ProbeHandler.HTTPGet == nil || want.ProbeHandler.HTTPGet == nil {
-		t.Fatalf("%s httpGet: got=%v want=%v", field, got.ProbeHandler.HTTPGet, want.ProbeHandler.HTTPGet)
+	if got.HTTPGet == nil || want.HTTPGet == nil {
+		t.Fatalf("%s httpGet: got=%v want=%v", field, got.HTTPGet, want.HTTPGet)
 	}
-	if got.ProbeHandler.HTTPGet.Path != want.ProbeHandler.HTTPGet.Path ||
-		got.ProbeHandler.HTTPGet.Port != want.ProbeHandler.HTTPGet.Port ||
-		got.ProbeHandler.HTTPGet.Scheme != want.ProbeHandler.HTTPGet.Scheme ||
-		got.ProbeHandler.HTTPGet.Host != want.ProbeHandler.HTTPGet.Host {
-		t.Fatalf("%s httpGet mismatch:\n got=%+v\nwant=%+v", field, got.ProbeHandler.HTTPGet, want.ProbeHandler.HTTPGet)
+	if got.HTTPGet.Path != want.HTTPGet.Path ||
+		got.HTTPGet.Port != want.HTTPGet.Port ||
+		got.HTTPGet.Scheme != want.HTTPGet.Scheme ||
+		got.HTTPGet.Host != want.HTTPGet.Host {
+		t.Fatalf("%s httpGet mismatch:\n got=%+v\nwant=%+v", field, got.HTTPGet, want.HTTPGet)
 	}
 }
 

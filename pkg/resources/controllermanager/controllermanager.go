@@ -15,10 +15,8 @@
 package controllermanager
 
 import (
-	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -26,52 +24,66 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Resources returns ConfigMap + Deployment for kube-controller-manager.
-func Resources(cm *mcpv1alpha1.ManagedControlPlane) []client.Object {
+type builder struct{ cc *cluster.ClusterContext }
+
+func NewBuilder(cc *cluster.ClusterContext) cluster.ObjectProducer {
+	return builder{cc: cc}
+}
+
+func (b builder) Objects() []client.Object {
 	return []client.Object{
-		buildConfigMap(cm),
-		buildDeployment(cm),
+		b.buildConfigMap(),
+		b.buildDeployment(),
 	}
 }
 
-func buildConfigMap(cm *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
-	p := pki.New(cm).ControllerManager()
+func (b builder) buildConfigMap() *corev1.ConfigMap {
+	cc := b.cc
+	mcp := cc.MCP
+	ns := mcp.Namespace
 
-	ns := cm.Namespace
+	clusterCA := cc.Names.SecretManagedCAName()
+	cmClient := cc.Names.SecretControllerManagerClientName()
+
 	kcfg := utils.BuildComponentKubeconfig(
 		ns,
-		common.KubeAPIServerName,
-		common.KubeAPISecurePort,
+		cc.Names.APIServerServiceName(),
+		cc.Contract.APIServer.SecurePort,
 		"cm",
-		p.ClientCA,
-		p.Client,
+		cc.CertPath(clusterCA),
+		cc.CertPath(cmClient),
+		cc.KeyPath(cmClient),
 	)
 
 	kubeconfigData, err := clientcmd.Write(*kcfg)
 	if err != nil {
-		panic(err) // should never happen
+		panic(err)
 	}
 
 	return builders.NewConfigMap().
-		WithName(cmKubeconfigName).
+		WithName(cc.Names.ControllerManagerKubeconfigConfigMapName()).
 		WithNamespace(ns).
 		Put(cmKubeconfigKey, string(kubeconfigData)).
 		Build()
 }
 
-func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
-	p := pki.New(cm).ControllerManager()
+func (b builder) buildDeployment() *appsv1.Deployment {
+	cc := b.cc
+	mcp := cc.MCP
+	ns := mcp.Namespace
+	version := mcp.Spec.Kubernetes.Version
 
-	ns := cm.Namespace
-	version := cm.Spec.Kubernetes.Version
-
-	labels := map[string]string{common.LabelKeyApp: labelValApp}
-
+	labels := map[string]string{cc.Keys.LabelKeyApp: labelValApp}
 	var replicas int32 = 1
 
+	// PKI secret names
+	clusterCA := cc.Names.SecretManagedCAName()
+	cmClient := cc.Names.SecretControllerManagerClientName()
+	saSigner := cc.Names.SecretServiceAccountSignerName()
+
 	kubeconfigVol := utils.ConfigMapVolume(
-		common.KubeconfigVolumeName,
-		cmKubeconfigName,
+		cc.Volumes.Kubeconfig,
+		cc.Names.ControllerManagerKubeconfigConfigMapName(),
 		cmKubeconfigKey,
 		cmKubeconfigFileName,
 	)
@@ -84,7 +96,7 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 		Args: []string{
 			"--bind-address=0.0.0.0",
 
-			"--cluster-name=" + cm.GetObjectMeta().GetName(),
+			"--cluster-name=" + mcp.GetObjectMeta().GetName(),
 
 			// kubeconfig wiring
 			"--kubeconfig=" + kubeconfigPath,
@@ -97,18 +109,19 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 			"--controllers=*,bootstrapsigner,tokencleaner",
 
 			// service account signing key
-			"--service-account-private-key-file=" + p.ServiceAccountSigner.KeyPath(),
+			"--service-account-private-key-file=" + cc.KeyPath(saSigner),
 
 			// cluster signing
-			"--cluster-signing-cert-file=" + p.ClientCA.CertPath(), // check if its exposing actual cluster CA
-			"--cluster-signing-key-file=" + p.ClientCA.KeyPath(),   // check if its exposing actual cluster CA
+			"--cluster-signing-cert-file=" + cc.CertPath(clusterCA),
+			"--cluster-signing-key-file=" + cc.KeyPath(clusterCA),
 			"--feature-gates=RotateKubeletServerCertificate=true",
+
 			// CA wiring
-			"--client-ca-file=" + p.ClientCA.CertPath(),
-			"--root-ca-file=" + p.ClientCA.CertPath(),
+			"--client-ca-file=" + cc.CertPath(clusterCA),
+			"--root-ca-file=" + cc.CertPath(clusterCA),
 
 			// networking
-			"--cluster-cidr=" + cm.Spec.Kubernetes.Networking.PodCIDR,
+			"--cluster-cidr=" + mcp.Spec.Kubernetes.Networking.PodCIDR,
 			"--allocate-node-cidrs=true",
 
 			"--logging-format=json",
@@ -116,27 +129,39 @@ func buildDeployment(cm *mcpv1alpha1.ManagedControlPlane) *appsv1.Deployment {
 		Ports: []corev1.ContainerPort{
 			{Name: "https", ContainerPort: securePort},
 		},
-		StartupProbe:   utils.HttpsHealthProbe(securePort, common.HealthPath, 10, 10, 15, 24),
-		LivenessProbe:  utils.HttpsHealthProbe(securePort, common.HealthPath, 10, 10, 15, 8),
-		ReadinessProbe: utils.HttpsHealthProbe(securePort, common.HealthPath, 5, 5, 15, 3),
+		StartupProbe:   utils.HttpsHealthProbe(securePort, cc.Keys.HealthPath, 10, 10, 15, 24),
+		LivenessProbe:  utils.HttpsHealthProbe(securePort, cc.Keys.HealthPath, 10, 10, 15, 8),
+		ReadinessProbe: utils.HttpsHealthProbe(securePort, cc.Keys.HealthPath, 5, 5, 15, 3),
+	}
+
+	secretVolumes := []corev1.Volume{
+		cc.SecretVolume(clusterCA),
+		cc.SecretVolume(cmClient),
+		cc.SecretVolume(saSigner),
+	}
+
+	secretMounts := []corev1.VolumeMount{
+		cc.SecretMount(clusterCA, true),
+		cc.SecretMount(cmClient, true),
+		cc.SecretMount(saSigner, true),
 	}
 
 	return builders.NewDeployment().
-		WithName(componentName).
+		WithName(cc.Names.ControllerManagerDeploymentName()).
 		WithNamespace(ns).
 		WithLabels(labels).
 		WithSelector(labels).
 		WithReplicas(replicas).
 		WithContainer(c).
-		AddVolumes(append([]corev1.Volume{kubeconfigVol}, p.Volumes()...)...).
+		AddVolumes(append([]corev1.Volume{kubeconfigVol}, secretVolumes...)...).
 		AddVolumeMounts(c.Name,
 			append([]corev1.VolumeMount{
 				{
-					Name:      common.KubeconfigVolumeName,
+					Name:      cc.Volumes.Kubeconfig,
 					MountPath: kubeconfigMountDir,
 					ReadOnly:  true,
 				},
-			}, p.Mounts(true)...)...,
+			}, secretMounts...)...,
 		).
 		Build()
 }

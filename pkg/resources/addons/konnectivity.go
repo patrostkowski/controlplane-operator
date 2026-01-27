@@ -17,10 +17,7 @@ package addons
 import (
 	"path/filepath"
 
-	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -28,9 +25,9 @@ import (
 )
 
 // KonnectivityAgentResources returns only the Daemonset for konnectivity-agent
-func KonnectivityAgentResources(mcp *mcpv1alpha1.ManagedControlPlane) []client.Object {
+func (e addonsBuilder) buildKonnectivityAgent() []client.Object {
 	return []client.Object{
-		buildKonnectivityAgentDaemonSet(mcp),
+		e.buildKonnectivityAgentDaemonSet(),
 	}
 }
 
@@ -40,13 +37,28 @@ const (
 
 var KonnecivityAgentVersion = "v0.1.3"
 
-func buildKonnectivityAgentDaemonSet(mcp *mcpv1alpha1.ManagedControlPlane) *appsv1.DaemonSet {
-	p := pki.New(mcp).KonnectivityAgentView()
-	policy := corev1.DNSClusterFirstWithHostNet
+func (e addonsBuilder) buildKonnectivityAgentDaemonSet() *appsv1.DaemonSet {
+	cc := e.cc
+	mcp := cc.MCP
+
+	k := cc.Contract.Konnectivity
+
+	agentName := k.AgentName
+	volumeName := konnectivityAgentVolumeName
+	mountDir := "/var/run/konnectivity"
+
+	// secrets copied into managed cluster namespace (names must match what you copy)
+	agentTLS := cc.Names.SecretKonnectivityAgentTLSName()
+	konCA := cc.Names.SecretKonnectivityCAName()
+
 	labels := map[string]string{
-		"app": konnectivityAgentName,
+		"app": agentName,
 	}
-	caPath := filepath.Join(p.KonnectivityAgent.MountDir, p.KonnectivityCA.CAFile)
+
+	// file names / keys from cc.Keys
+	caPath := filepath.Join(mountDir, cc.Keys.CACrt)
+	agentCertPath := filepath.Join(mountDir, cc.Keys.TLSCrt)
+	agentKeyPath := filepath.Join(mountDir, cc.Keys.TLSKey)
 
 	c := corev1.Container{
 		Name: konnectivityAgentName,
@@ -57,44 +69,31 @@ func buildKonnectivityAgentDaemonSet(mcp *mcpv1alpha1.ManagedControlPlane) *apps
 			"--proxy-server-port=" + utils.PortString(konnectivityServerPort),
 
 			"--ca-cert=" + caPath,
-			"--agent-cert=" + p.KonnectivityAgent.CertPath(),
-			"--agent-key=" + p.KonnectivityAgent.KeyPath(),
+			"--agent-cert=" + agentCertPath,
+			"--agent-key=" + agentKeyPath,
 			"--v=2",
 		},
 	}
 
 	volume := corev1.Volume{
-		Name: konnectivityAgentVolumeName,
+		Name: volumeName,
 		VolumeSource: corev1.VolumeSource{
 			Projected: &corev1.ProjectedVolumeSource{
 				Sources: []corev1.VolumeProjection{
 					{
 						Secret: &corev1.SecretProjection{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: common.KonnectivityAgentTLSSecretName,
-							},
+							LocalObjectReference: corev1.LocalObjectReference{Name: agentTLS},
 							Items: []corev1.KeyToPath{
-								{
-									Key:  p.KonnectivityAgent.CertFile,
-									Path: p.KonnectivityAgent.CertFile,
-								},
-								{
-									Key:  p.KonnectivityAgent.KeyFile,
-									Path: p.KonnectivityAgent.KeyFile,
-								},
+								{Key: cc.Keys.TLSCrt, Path: cc.Keys.TLSCrt},
+								{Key: cc.Keys.TLSKey, Path: cc.Keys.TLSKey},
 							},
 						},
 					},
 					{
 						Secret: &corev1.SecretProjection{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: common.KonnectivityCASecretName,
-							},
+							LocalObjectReference: corev1.LocalObjectReference{Name: konCA},
 							Items: []corev1.KeyToPath{
-								{
-									Key:  p.KonnectivityCA.CAFile,
-									Path: p.KonnectivityCA.CAFile,
-								},
+								{Key: cc.Keys.CACrt, Path: cc.Keys.CACrt},
 							},
 						},
 					},
@@ -104,9 +103,12 @@ func buildKonnectivityAgentDaemonSet(mcp *mcpv1alpha1.ManagedControlPlane) *apps
 	}
 
 	volumeMounts := corev1.VolumeMount{
-		Name:      konnectivityAgentVolumeName,
-		MountPath: p.KonnectivityAgent.MountDir,
+		Name:      volumeName,
+		MountPath: mountDir,
+		ReadOnly:  true,
 	}
+
+	policy := corev1.DNSClusterFirstWithHostNet
 
 	return builders.NewDaemonSet().
 		WithName(konnectivityAgentDSName).
