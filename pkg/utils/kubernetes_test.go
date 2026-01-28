@@ -17,46 +17,9 @@ package utils
 import (
 	"testing"
 
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
-
-func TestSecretMount(t *testing.T) {
-	t.Parallel()
-
-	got := SecretMount("vol", "/mnt/secret")
-	if got.Name != "vol" {
-		t.Fatalf("Name=%q want %q", got.Name, "vol")
-	}
-	if got.MountPath != "/mnt/secret" {
-		t.Fatalf("MountPath=%q want %q", got.MountPath, "/mnt/secret")
-	}
-	if !got.ReadOnly {
-		t.Fatalf("ReadOnly=false want true")
-	}
-}
-
-func TestSecretVolume(t *testing.T) {
-	t.Parallel()
-
-	got := SecretVolume("vol", "my-secret")
-
-	if got.Name != "vol" {
-		t.Fatalf("Name=%q want %q", got.Name, "vol")
-	}
-	if got.VolumeSource.Secret == nil {
-		t.Fatalf("expected VolumeSource.Secret to be set")
-	}
-	if got.VolumeSource.Secret.SecretName != "my-secret" {
-		t.Fatalf("SecretName=%q want %q", got.VolumeSource.Secret.SecretName, "my-secret")
-	}
-
-	// Ensure no other source is accidentally set
-	if got.VolumeSource.ConfigMap != nil || got.VolumeSource.EmptyDir != nil {
-		t.Fatalf("expected only Secret volume source to be set: %#v", got.VolumeSource)
-	}
-}
 
 func TestHttpsHealthProbe(t *testing.T) {
 	t.Parallel()
@@ -173,22 +136,12 @@ func TestBuildComponentKubeconfig(t *testing.T) {
 	port := int32(6443)
 	user := "kube-controller-manager"
 
-	ca := common.SecretMount{
-		SecretName: "cluster-ca",
-		MountDir:   "/pki/cluster-ca",
-		CertFile:   "tls.crt",
-		KeyFile:    "tls.key",
-		CAFile:     "ca.crt",
-	}
-	client := common.SecretMount{
-		SecretName: "cm-client",
-		MountDir:   "/pki/cm-client",
-		CertFile:   "tls.crt",
-		KeyFile:    "tls.key",
-		CAFile:     "ca.crt",
-	}
+	// Instead of SecretMount, provide explicit paths
+	caCrtPath := "/pki/cluster-ca/tls.crt"
+	clientCrtPath := "/pki/cm-client/tls.crt"
+	clientKeyPath := "/pki/cm-client/tls.key"
 
-	cfg := BuildComponentKubeconfig(ns, svc, port, user, ca, client)
+	cfg := BuildComponentKubeconfig(ns, svc, port, user, caCrtPath, clientCrtPath, clientKeyPath)
 	if cfg == nil {
 		t.Fatalf("expected config, got nil")
 	}
@@ -209,19 +162,19 @@ func TestBuildComponentKubeconfig(t *testing.T) {
 	}
 
 	// Cluster
-	cluster, ok := cfg.Clusters["local"]
-	if !ok || cluster == nil {
+	cl, ok := cfg.Clusters["local"]
+	if !ok || cl == nil {
 		t.Fatalf("expected Clusters[local] to exist")
 	}
 	wantServer := "https://" + svc + "." + ns + ".svc:6443"
-	if cluster.Server != wantServer {
-		t.Fatalf("Clusters[local].Server=%q want %q", cluster.Server, wantServer)
+	if cl.Server != wantServer {
+		t.Fatalf("Clusters[local].Server=%q want %q", cl.Server, wantServer)
 	}
-	if cluster.CertificateAuthority != ca.CertPath() {
+	if cl.CertificateAuthority != caCrtPath {
 		t.Fatalf(
 			"Clusters[local].CertificateAuthority=%q want %q",
-			cluster.CertificateAuthority,
-			ca.CertPath(),
+			cl.CertificateAuthority,
+			caCrtPath,
 		)
 	}
 
@@ -230,20 +183,20 @@ func TestBuildComponentKubeconfig(t *testing.T) {
 	if !ok || auth == nil {
 		t.Fatalf("expected AuthInfos[%s] to exist", user)
 	}
-	if auth.ClientCertificate != client.CertPath() {
+	if auth.ClientCertificate != clientCrtPath {
 		t.Fatalf(
 			"AuthInfos[%s].ClientCertificate=%q want %q",
 			user,
 			auth.ClientCertificate,
-			client.CertPath(),
+			clientCrtPath,
 		)
 	}
-	if auth.ClientKey != client.KeyPath() {
+	if auth.ClientKey != clientKeyPath {
 		t.Fatalf(
 			"AuthInfos[%s].ClientKey=%q want %q",
 			user,
 			auth.ClientKey,
-			client.KeyPath(),
+			clientKeyPath,
 		)
 	}
 }

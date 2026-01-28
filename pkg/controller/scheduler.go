@@ -9,8 +9,9 @@ import (
 	"context"
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
+	"github.com/patrostkowski/controlplane-operator/pkg/controller/state"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/scheduler"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/state"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -22,8 +23,8 @@ func (c *SchedulerComponent) Name() string {
 	return "scheduler"
 }
 
-func (c *SchedulerComponent) Reconcile(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
-	return c.r.reconcileScheduler(ctx, mcp)
+func (c *SchedulerComponent) Reconcile(ctx context.Context, cc *cluster.ClusterContext) (ctrl.Result, error) {
+	return c.r.reconcileScheduler(ctx, cc)
 }
 
 func (c *SchedulerComponent) WaitingMessage() mcpv1alpha1.Message {
@@ -36,15 +37,17 @@ func (c *SchedulerComponent) FailedMessage() mcpv1alpha1.Message {
 
 func (r *ManagedControlPlaneReconciler) reconcileScheduler(
 	ctx context.Context,
-	mcp *mcpv1alpha1.ManagedControlPlane,
+	cc *cluster.ClusterContext,
 ) (ctrl.Result, error) {
+	mcp := cc.MCP
 	log := r.Log.WithValues("scheduler", mcp.Namespace)
 
+	s := scheduler.NewBuilder(cc)
 	if err := r.apply(
 		ctx,
 		r.Client,
 		r.applyOpts(mcp),
-		scheduler.Resources(mcp)...,
+		s.Objects()...,
 	); err != nil {
 		log.Error(err, "failed to apply scheduler resources")
 		return ctrl.Result{}, err

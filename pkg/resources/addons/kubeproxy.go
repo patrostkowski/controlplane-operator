@@ -15,7 +15,6 @@
 package addons
 
 import (
-	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -32,16 +31,16 @@ const (
 
 var labels = map[string]string{"k8s-app": "kube-proxy"}
 
-func buildKubeproxy(ma *mcpv1alpha1.ManagedControlPlane) []client.Object {
+func (e addonsBuilder) buildKubeproxy() []client.Object {
 	return []client.Object{
-		buildKubeproxyServiceAccount(),
-		buildKubeproxyClusterRoleBinding(),
-		buildKubeproxyConfigMap(ma),
-		buildKubeproxyDaemonSet(ma),
+		e.buildKubeproxyServiceAccount(),
+		e.buildKubeproxyClusterRoleBinding(),
+		e.buildKubeproxyConfigMap(),
+		e.buildKubeproxyDaemonSet(),
 	}
 }
 
-func buildKubeproxyServiceAccount() *corev1.ServiceAccount {
+func (e addonsBuilder) buildKubeproxyServiceAccount() *corev1.ServiceAccount {
 	return builders.NewServiceAccount().
 		WithName(kubeProxyName).
 		WithNamespace(kubeProxyNamespaceName).
@@ -49,7 +48,7 @@ func buildKubeproxyServiceAccount() *corev1.ServiceAccount {
 		Build()
 }
 
-func buildKubeproxyClusterRoleBinding() *rbacv1.ClusterRoleBinding {
+func (e addonsBuilder) buildKubeproxyClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	return builders.NewClusterRoleBinding().
 		WithName(kubeProxyName).
 		WithRefs(
@@ -70,12 +69,12 @@ func buildKubeproxyClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 // for now hardcode clusterCIDR
 // TODO: make it configurable depends
 // on CNI that was set
-func buildKubeproxyConfigMap(ma *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
-	server := "https://" + ma.Status.Address + ":6443"
+func (e addonsBuilder) buildKubeproxyConfigMap() *corev1.ConfigMap {
+	server := "https://" + e.cc.MCP.Status.Address + ":6443"
 	configConf := `apiVersion: kubeproxy.config.k8s.io/v1alpha1
 kind: KubeProxyConfiguration
 mode: "iptables"
-clusterCIDR: "` + ma.Spec.Kubernetes.Networking.ServiceCIDR + `"
+clusterCIDR: "` + e.cc.MCP.Spec.Kubernetes.Networking.ServiceCIDR + `"
 bindAddress: "0.0.0.0"
 metricsBindAddress: "127.0.0.1:10249"
 healthzBindAddress: "0.0.0.0:10256"
@@ -115,8 +114,8 @@ current-context: default
 		Build()
 }
 
-func buildKubeproxyDaemonSet(ma *mcpv1alpha1.ManagedControlPlane) *appsv1.DaemonSet {
-	version := ma.Spec.Kubernetes.Version
+func (e addonsBuilder) buildKubeproxyDaemonSet() *appsv1.DaemonSet {
+	version := e.cc.MCP.Spec.Kubernetes.Version
 	priv := true
 	fileOrCreate := corev1.HostPathFileOrCreate
 	dir := corev1.HostPathDirectory

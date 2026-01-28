@@ -18,8 +18,9 @@ import (
 	"context"
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
+	"github.com/patrostkowski/controlplane-operator/pkg/controller/state"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/controllermanager"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/state"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -31,8 +32,8 @@ func (c *ControllerManagerComponent) Name() string {
 	return "controller-manager"
 }
 
-func (c *ControllerManagerComponent) Reconcile(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
-	return c.r.reconcileControllerManager(ctx, mcp)
+func (c *ControllerManagerComponent) Reconcile(ctx context.Context, cc *cluster.ClusterContext) (ctrl.Result, error) {
+	return c.r.reconcileControllerManager(ctx, cc)
 }
 
 func (c *ControllerManagerComponent) WaitingMessage() mcpv1alpha1.Message {
@@ -45,15 +46,17 @@ func (c *ControllerManagerComponent) FailedMessage() mcpv1alpha1.Message {
 
 func (r *ManagedControlPlaneReconciler) reconcileControllerManager(
 	ctx context.Context,
-	mcp *mcpv1alpha1.ManagedControlPlane,
+	cc *cluster.ClusterContext,
 ) (ctrl.Result, error) {
+	mcp := cc.MCP
 	log := r.Log.WithValues("controllermanager", mcp.Namespace)
 
+	cm := controllermanager.NewBuilder(cc)
 	if err := r.apply(
 		ctx,
 		r.Client,
 		r.applyOpts(mcp),
-		controllermanager.Resources(mcp)...,
+		cm.Objects()...,
 	); err != nil {
 		log.Error(err, "failed to apply controller-manager resources")
 		return ctrl.Result{}, err

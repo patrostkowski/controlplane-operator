@@ -17,28 +17,10 @@ package utils
 import (
 	"strconv"
 
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/clientcmd/api"
 )
-
-func SecretMount(volumeName, mountPath string) corev1.VolumeMount {
-	return corev1.VolumeMount{
-		Name:      volumeName,
-		MountPath: mountPath,
-		ReadOnly:  true,
-	}
-}
-
-func SecretVolume(volumeName, secretName string) corev1.Volume {
-	return corev1.Volume{
-		Name: volumeName,
-		VolumeSource: corev1.VolumeSource{
-			Secret: &corev1.SecretVolumeSource{SecretName: secretName},
-		},
-	}
-}
 
 func HttpsHealthProbe(port int32, path string, initialDelay, period, timeout, failureThreshold int32) *corev1.Probe {
 	return &corev1.Probe{
@@ -98,8 +80,9 @@ func BuildComponentKubeconfig(
 	apiServerService string,
 	apiServerPort int32,
 	user string,
-	ca common.SecretMount,
-	client common.SecretMount,
+	ca string,
+	clientCert string,
+	clientKey string,
 ) *api.Config {
 	serverURL := "https://" +
 		apiServerService +
@@ -111,12 +94,12 @@ func BuildComponentKubeconfig(
 
 	cfg.Clusters[DefaultContextName] = &api.Cluster{
 		Server:               serverURL,
-		CertificateAuthority: ca.CertPath(),
+		CertificateAuthority: ca,
 	}
 
 	cfg.AuthInfos[user] = &api.AuthInfo{
-		ClientCertificate: client.CertPath(),
-		ClientKey:         client.KeyPath(),
+		ClientCertificate: clientCert,
+		ClientKey:         clientKey,
 	}
 
 	cfg.Contexts[DefaultContextName] = &api.Context{

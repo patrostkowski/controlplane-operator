@@ -20,6 +20,7 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -85,6 +86,8 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{Requeue: true}, nil
 	}
 
+	cc := cluster.NewClusterContext(mcpObj, r.Log)
+
 	components := []Component{
 		&APIServerServiceComponent{r: r},
 		&PKIComponent{r: r},
@@ -96,7 +99,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	for _, c := range components {
-		res, err := c.Reconcile(ctx, mcpObj)
+		res, err := c.Reconcile(ctx, cc)
 		if err != nil {
 			_ = r.statusFailed(ctx, mcpObj, c.FailedMessage())
 			log.Error(err, "component failed", "component", c.Name(), "after", RequeueAfterFailure)
@@ -109,7 +112,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	_ = r.statusReady(ctx, mcpObj)
-	log.Info("Finished reconciling ManagedControlPlane")
+	log.Info("Finished reconciling managed controlplane")
 	return ctrl.Result{}, nil
 }
 

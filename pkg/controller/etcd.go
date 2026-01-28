@@ -18,8 +18,9 @@ import (
 	"context"
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
+	"github.com/patrostkowski/controlplane-operator/pkg/controller/state"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/etcd"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/state"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -30,8 +31,8 @@ type ETCDComponent struct {
 func (c *ETCDComponent) Name() string {
 	return "etcd"
 }
-func (c *ETCDComponent) Reconcile(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
-	return c.r.reconcileETCD(ctx, mcp)
+func (c *ETCDComponent) Reconcile(ctx context.Context, cc *cluster.ClusterContext) (ctrl.Result, error) {
+	return c.r.reconcileETCD(ctx, cc)
 }
 func (c *ETCDComponent) WaitingMessage() mcpv1alpha1.Message {
 	return state.MessageETCDWaiting
@@ -42,15 +43,17 @@ func (c *ETCDComponent) FailedMessage() mcpv1alpha1.Message {
 
 func (r *ManagedControlPlaneReconciler) reconcileETCD(
 	ctx context.Context,
-	mcp *mcpv1alpha1.ManagedControlPlane,
+	cc *cluster.ClusterContext,
 ) (ctrl.Result, error) {
+	mcp := cc.MCP
 	log := r.Log.WithValues("etcd", mcp.Namespace)
 
+	e := etcd.NewBuilder(cc)
 	if err := r.apply(
 		ctx,
 		r.Client,
 		r.applyOpts(mcp),
-		etcd.Resources(mcp)...,
+		e.Objects()...,
 	); err != nil {
 		log.Error(err, "failed to apply etcd resources")
 		return ctrl.Result{}, err

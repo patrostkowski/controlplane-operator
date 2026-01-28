@@ -17,12 +17,12 @@ package addons
 import (
 	"bytes"
 
-	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -50,110 +50,165 @@ const (
 	KubeadmConfigCMName = "kubeadm-config"
 )
 
+const (
+	coreAPIGroup      = ""
+	rbacAPIGroup      = rbacv1.GroupName
+	storageAPIGroup   = storagev1.GroupName
+	discoveryAPIGroup = "discovery.k8s.io"
+
+	ResourceNodes          = "nodes"
+	ResourceNodesStatus    = "nodes/status"
+	ResourcePodsLogs       = "pods/logs"
+	ResourceEndpoints      = "endpoints"
+	ResourceEndpointSlices = "endpointslices"
+	ResourceNamespaces     = "namespaces"
+	ResourcePVs            = "persistentvolumes"
+	ResourceStorageClasses = "storageclasses"
+	ResourceEvents         = "events"
+
+	VerbGet    = "get"
+	VerbList   = "list"
+	VerbWatch  = "watch"
+	VerbCreate = "create"
+	VerbUpdate = "update"
+	VerbPatch  = "patch"
+	VerbDelete = "delete"
+
+	KindGroup = rbacv1.GroupKind
+	KindUser  = rbacv1.UserKind
+)
+
+var (
+	ResourcePods           = corev1.ResourcePods.String()
+	ResourceServices       = corev1.ResourceServices.String()
+	ResourceConfigMaps     = corev1.ResourceConfigMaps.String()
+	ResourcePVCs           = corev1.ResourcePersistentVolumeClaims.String()
+	KindClusterRole        = rbacv1.SchemeGroupVersion.WithKind("ClusterRole").Kind
+	KindClusterRoleBinding = rbacv1.SchemeGroupVersion.WithKind("ClusterRoleBinding").Kind
+	KindRole               = rbacv1.SchemeGroupVersion.WithKind("Role").Kind
+	KindServiceAccount     = rbacv1.ServiceAccountKind
+	KindRoleBinding        = rbacv1.SchemeGroupVersion.WithKind("RoleBinding").Kind
+)
+
 const DefaultNodeBootstrapperGroup = "system:bootstrappers:kubeadm:default-node-token"
 
-func BootstrapKubeletJoinResources(mcp *mcpv1alpha1.ManagedControlPlane, token BootstrapToken, ca []byte) []client.Object {
-	return []client.Object{
-		bootstrapTokenSecret(token),
-		nodeAutoapproveRotation(),
-		nodeAutoapproveBootstrap(),
-		nodeBootstrapper(),
+type kubeletJoinBuilder struct {
+	cc    *cluster.ClusterContext
+	tok   BootstrapToken
+	caPEM []byte
+}
 
-		clusterInfo(mcp, ca),
-
-		clusterInfoRole(),
-		clusterInfoRoleBindingAnon(),
-
-		kubeletConfigVersioned(mcp),
-		kubeletConfigUnversioned(mcp),
-		kubeletConfig(),
-
-		kubeadmKubeletConfigRole(),
-		kubeadmKubeletConfigRoleBinding(),
-		kubeadmNodesKubeadmConfigRole(),
-		kubeadmNodesKubeadmConfigRoleBinding(),
-		kubeadmGetNodesClusterRole(),
-		kubeadmGetNodesClusterRoleBinding(),
-
-		kubeadmConfigConfigMap(mcp),
+func NewKubeletJoinBuilder(cc *cluster.ClusterContext, tok BootstrapToken, caPEM []byte) cluster.ObjectProducer {
+	return kubeletJoinBuilder{
+		cc:    cc,
+		tok:   tok,
+		caPEM: caPEM,
 	}
 }
 
-func bootstrapTokenSecret(token BootstrapToken) *corev1.Secret {
-	name := bootstraphandle.BootstrapTokenSecretName(token.ID)
+func (b kubeletJoinBuilder) Objects() []client.Object {
+	return []client.Object{
+		b.bootstrapTokenSecret(),
+		b.nodeAutoapproveRotation(),
+		b.nodeAutoapproveBootstrap(),
+		b.nodeBootstrapper(),
+
+		b.clusterInfo(),
+
+		b.clusterInfoRole(),
+		b.clusterInfoRoleBindingAnon(),
+
+		b.kubeletConfigVersioned(),
+		b.kubeletConfigUnversioned(),
+		b.kubeletConfig(),
+
+		b.kubeadmKubeletConfigRole(),
+		b.kubeadmKubeletConfigRoleBinding(),
+		b.kubeadmNodesKubeadmConfigRole(),
+		b.kubeadmNodesKubeadmConfigRoleBinding(),
+		b.kubeadmGetNodesClusterRole(),
+		b.kubeadmGetNodesClusterRoleBinding(),
+
+		b.kubeadmConfigConfigMap(),
+	}
+}
+
+func (b kubeletJoinBuilder) bootstrapTokenSecret() *corev1.Secret {
+	name := bootstraphandle.BootstrapTokenSecretName(b.tok.ID)
 	return builders.NewSecret().
 		WithName(name).
 		WithNamespace(KubeSystemNamespace).
 		WithType(bootstrapapi.SecretTypeBootstrapToken).
 		Put(bootstrapapi.BootstrapTokenDescriptionKey, BootstrapTokenDescription).
-		Put(bootstrapapi.BootstrapTokenIDKey, token.ID).
-		Put(bootstrapapi.BootstrapTokenSecretKey, token.Secret).
+		Put(bootstrapapi.BootstrapTokenIDKey, b.tok.ID).
+		Put(bootstrapapi.BootstrapTokenSecretKey, b.tok.Secret).
 		Put(bootstrapapi.BootstrapTokenUsageAuthentication, "true").
 		Put(bootstrapapi.BootstrapTokenUsageSigningKey, "true").
 		Put(bootstrapapi.BootstrapTokenExtraGroupsKey, DefaultNodeBootstrapperGroup).
 		Build()
 }
 
-func nodeAutoapproveBootstrap() *rbacv1.ClusterRoleBinding {
+func (b kubeletJoinBuilder) nodeAutoapproveBootstrap() *rbacv1.ClusterRoleBinding {
 	return builders.NewClusterRoleBinding().
 		WithName(CRBKubeadmNodeAutoapproveBootstrap).
 		WithRefs(
 			rbacv1.RoleRef{
 				APIGroup: rbacv1.GroupName,
-				Kind:     common.KindClusterRole,
+				Kind:     KindClusterRole,
 				Name:     RoleNodeClientCSRApprove,
 			},
 			rbacv1.Subject{
-				APIGroup: common.RBACAPIGroup,
-				Kind:     common.KindGroup,
+				APIGroup: rbacAPIGroup,
+				Kind:     KindGroup,
 				Name:     GroupBootstrappers,
 			},
 		).
 		Build()
 }
 
-func nodeAutoapproveRotation() *rbacv1.ClusterRoleBinding {
+func (b kubeletJoinBuilder) nodeAutoapproveRotation() *rbacv1.ClusterRoleBinding {
 	return builders.NewClusterRoleBinding().
 		WithName(CRBKubeadmNodeAutoapproveRotation).
 		WithRefs(
 			rbacv1.RoleRef{
 				APIGroup: rbacv1.GroupName,
-				Kind:     common.KindClusterRole,
+				Kind:     KindClusterRole,
 				Name:     RoleSelfNodeClientCSR,
 			},
 			rbacv1.Subject{
 				APIGroup: rbacv1.GroupName,
-				Kind:     common.KindGroup,
+				Kind:     KindGroup,
 				Name:     GroupNodes,
 			},
 		).
 		Build()
 }
 
-func nodeBootstrapper() *rbacv1.ClusterRoleBinding {
+func (b kubeletJoinBuilder) nodeBootstrapper() *rbacv1.ClusterRoleBinding {
 	return builders.NewClusterRoleBinding().
 		WithName(CRBNodeBootstrapperName).
 		WithRefs(
 			rbacv1.RoleRef{
 				APIGroup: rbacv1.GroupName,
-				Kind:     common.KindClusterRole,
+				Kind:     KindClusterRole,
 				Name:     RoleNodeBootstrapper,
 			},
 			rbacv1.Subject{
 				APIGroup: rbacv1.GroupName,
-				Kind:     common.KindGroup,
+				Kind:     KindGroup,
 				Name:     GroupBootstrappers,
 			},
 		).
 		Build()
 }
 
-func clusterInfo(mcp *mcpv1alpha1.ManagedControlPlane, ca []byte) *corev1.ConfigMap {
+func (b kubeletJoinBuilder) clusterInfo() *corev1.ConfigMap {
+	mcp := b.cc.MCP
 	cfg := api.NewConfig()
 
 	cfg.Clusters[""] = &api.Cluster{
 		Server:                   "https://" + mcp.Status.Address + ":6443",
-		CertificateAuthorityData: ca,
+		CertificateAuthorityData: b.caPEM,
 	}
 	cfg.Contexts = map[string]*api.Context{}
 	cfg.AuthInfos = map[string]*api.AuthInfo{}
@@ -167,25 +222,8 @@ func clusterInfo(mcp *mcpv1alpha1.ManagedControlPlane, ca []byte) *corev1.Config
 		Build()
 }
 
-// func clusterInfoAnon() *rbacv1.ClusterRoleBinding {
-// 	return builders.NewClusterRoleBinding().
-// 		WithName("kubeadm:cluster-info-anon").
-// 		WithRefs(
-// 			rbacv1.RoleRef{
-// 				APIGroup: rbacv1.GroupName,
-// 				Kind:     common.KindClusterRole,
-// 				Name:     "system:public-info-viewer",
-// 			},
-// 			rbacv1.Subject{
-// 				APIGroup: rbacv1.GroupName,
-// 				Kind:     common.KindUser,
-// 				Name:     "system:anonymous",
-// 			},
-// 		).
-// 		Build()
-// }
-
-func kubeletConfigUnversioned(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
+func (b kubeletJoinBuilder) kubeletConfigUnversioned() *corev1.ConfigMap {
+	mcp := b.cc.MCP
 	clusterDNS, _ := utils.IPAtOffset(mcp.Spec.Kubernetes.Networking.ServiceCIDR, 10)
 
 	kc := &kubeletconfigv1beta1.KubeletConfiguration{
@@ -220,7 +258,8 @@ func kubeletConfigUnversioned(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Conf
 	}
 }
 
-func kubeletConfigVersioned(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
+func (b kubeletJoinBuilder) kubeletConfigVersioned() *corev1.ConfigMap {
+	mcp := b.cc.MCP
 	clusterDNS, _ := utils.IPAtOffset(mcp.Spec.Kubernetes.Networking.ServiceCIDR, 10)
 
 	kc := &kubeletconfigv1beta1.KubeletConfiguration{
@@ -252,25 +291,25 @@ func kubeletConfigVersioned(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.Config
 		Build()
 }
 
-func kubeletConfig() *rbacv1.ClusterRoleBinding {
+func (b kubeletJoinBuilder) kubeletConfig() *rbacv1.ClusterRoleBinding {
 	return builders.NewClusterRoleBinding().
 		WithName("kubeadm:kubelet-config").
 		WithRefs(
 			rbacv1.RoleRef{
 				APIGroup: rbacv1.GroupName,
-				Kind:     common.KindClusterRole,
+				Kind:     KindClusterRole,
 				Name:     "system:kubelet-config-reader",
 			},
 			rbacv1.Subject{
 				APIGroup: rbacv1.GroupName,
-				Kind:     common.KindGroup,
+				Kind:     KindGroup,
 				Name:     "system:nodes",
 			},
 		).
 		Build()
 }
 
-func clusterInfoRole() *rbacv1.Role {
+func (b kubeletJoinBuilder) clusterInfoRole() *rbacv1.Role {
 	return &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      RoleBootstrapSignerClusterInfoName,
@@ -287,7 +326,7 @@ func clusterInfoRole() *rbacv1.Role {
 	}
 }
 
-func clusterInfoRoleBindingAnon() *rbacv1.RoleBinding {
+func (b kubeletJoinBuilder) clusterInfoRoleBindingAnon() *rbacv1.RoleBinding {
 	return &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      RoleBootstrapSignerClusterInfoName,
@@ -309,7 +348,7 @@ func clusterInfoRoleBindingAnon() *rbacv1.RoleBinding {
 }
 
 // kubeadmKubeletConfigRole allows nodes to GET the "kubelet-config" ConfigMap in kube-system.
-func kubeadmKubeletConfigRole() *rbacv1.Role {
+func (b kubeletJoinBuilder) kubeadmKubeletConfigRole() *rbacv1.Role {
 	return &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      RoleKubeadmKubeletConfig,
@@ -327,7 +366,7 @@ func kubeadmKubeletConfigRole() *rbacv1.Role {
 }
 
 // kubeadmNodesKubeadmConfigRole allows bootstrappers/nodes to GET the "kubeadm-config" ConfigMap in kube-system.
-func kubeadmNodesKubeadmConfigRole() *rbacv1.Role {
+func (b kubeletJoinBuilder) kubeadmNodesKubeadmConfigRole() *rbacv1.Role {
 	return &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      RoleKubeadmNodesKubeadmConfig,
@@ -345,7 +384,7 @@ func kubeadmNodesKubeadmConfigRole() *rbacv1.Role {
 }
 
 // kubeadmKubeletConfigRoleBinding binds system:nodes to Role kubeadm:kubelet-config.
-func kubeadmKubeletConfigRoleBinding() *rbacv1.RoleBinding {
+func (b kubeletJoinBuilder) kubeadmKubeletConfigRoleBinding() *rbacv1.RoleBinding {
 	return &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      RoleKubeadmKubeletConfig,
@@ -371,7 +410,7 @@ func kubeadmKubeletConfigRoleBinding() *rbacv1.RoleBinding {
 	}
 }
 
-func kubeadmGetNodesClusterRole() *rbacv1.ClusterRole {
+func (b kubeletJoinBuilder) kubeadmGetNodesClusterRole() *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "kubeadm:get-nodes",
@@ -386,7 +425,7 @@ func kubeadmGetNodesClusterRole() *rbacv1.ClusterRole {
 	}
 }
 
-func kubeadmGetNodesClusterRoleBinding() *rbacv1.ClusterRoleBinding {
+func (b kubeletJoinBuilder) kubeadmGetNodesClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "kubeadm:get-nodes",
@@ -408,7 +447,7 @@ func kubeadmGetNodesClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 
 // kubeadmNodesKubeadmConfigRoleBinding binds system:bootstrappers to Role kubeadm:nodes-kubeadm-config.
 // This is the identity kubeadm uses during join: system:bootstrap:<token-id>.
-func kubeadmNodesKubeadmConfigRoleBinding() *rbacv1.RoleBinding {
+func (b kubeletJoinBuilder) kubeadmNodesKubeadmConfigRoleBinding() *rbacv1.RoleBinding {
 	return &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      RoleKubeadmNodesKubeadmConfig,
@@ -435,7 +474,8 @@ func kubeadmNodesKubeadmConfigRoleBinding() *rbacv1.RoleBinding {
 }
 
 // kubeadmConfigConfigMap creates kube-system/kubeadm-config with typed ClusterConfiguration (v1beta4)
-func kubeadmConfigConfigMap(mcp *mcpv1alpha1.ManagedControlPlane) *corev1.ConfigMap {
+func (b kubeletJoinBuilder) kubeadmConfigConfigMap() *corev1.ConfigMap {
+	mcp := b.cc.MCP
 	cc := &kubeadmv1beta4.ClusterConfiguration{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "kubeadm.k8s.io/v1beta4",

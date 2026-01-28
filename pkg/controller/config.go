@@ -18,9 +18,8 @@ import (
 	"context"
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/state"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
+	"github.com/patrostkowski/controlplane-operator/pkg/controller/state"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,8 +36,8 @@ func (c *AdminConfigComponent) Name() string {
 	return "admin-kubeconfig"
 }
 
-func (c *AdminConfigComponent) Reconcile(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) (ctrl.Result, error) {
-	return c.r.reconcileAdminConfig(ctx, mcp)
+func (c *AdminConfigComponent) Reconcile(ctx context.Context, cc *cluster.ClusterContext) (ctrl.Result, error) {
+	return c.r.reconcileAdminConfig(ctx, cc)
 }
 
 func (c *AdminConfigComponent) WaitingMessage() mcpv1alpha1.Message {
@@ -51,8 +50,9 @@ func (c *AdminConfigComponent) FailedMessage() mcpv1alpha1.Message {
 
 func (r *ManagedControlPlaneReconciler) reconcileAdminConfig(
 	ctx context.Context,
-	mcp *mcpv1alpha1.ManagedControlPlane,
+	cc *cluster.ClusterContext,
 ) (ctrl.Result, error) {
+	mcp := cc.MCP
 	ns := mcp.Namespace
 
 	if mcp.Status.Address == "" {
@@ -62,17 +62,17 @@ func (r *ManagedControlPlaneReconciler) reconcileAdminConfig(
 
 	serverURL := "https://" + mcp.Status.Address + ":6443"
 
-	p := pki.New(mcp).Admin()
+	adminSecretName := cc.Names.SecretAdminClientName()
 
 	// get admin-client secret
 	adminClient := &corev1.Secret{}
-	if err := r.Get(ctx, client.ObjectKey{Name: p.Client.SecretName, Namespace: ns}, adminClient); err != nil {
+	if err := r.Get(ctx, client.ObjectKey{Name: adminSecretName, Namespace: ns}, adminClient); err != nil {
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, client.IgnoreNotFound(err)
 	}
 
-	ca := adminClient.Data[common.CACrtKey]
-	crt := adminClient.Data[common.TLSCrtKey]
-	key := adminClient.Data[common.TLSKeyKey]
+	ca := adminClient.Data[cc.Keys.CACrt]
+	crt := adminClient.Data[cc.Keys.TLSCrt]
+	key := adminClient.Data[cc.Keys.TLSKey]
 
 	if len(ca) == 0 || len(crt) == 0 || len(key) == 0 {
 		r.Log.Info("admin config secret not ready yet")
@@ -89,12 +89,12 @@ func (r *ManagedControlPlaneReconciler) reconcileAdminConfig(
 
 	s := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      common.AdminConfigName,
+			Name:      cc.Names.AdminKubeconfigSecretName(),
 			Namespace: ns,
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: map[string][]byte{
-			common.AdminConfigKubeconfigKey: kubeconfigBytes,
+			cc.Keys.AdminKubeconfigKey: kubeconfigBytes,
 		},
 	}
 
@@ -105,7 +105,7 @@ func (r *ManagedControlPlaneReconciler) reconcileAdminConfig(
 	}
 
 	// updating MCP status with sercet ref
-	if err = r.updateMCPAdminSecretRef(ctx, mcp, common.AdminConfigName); err != nil {
+	if err = r.updateMCPAdminSecretRef(ctx, mcp, cc.Names.AdminKubeconfigSecretName()); err != nil {
 		r.Log.Error(err, "failed to update admin config secret ref")
 		return ctrl.Result{}, err
 	}

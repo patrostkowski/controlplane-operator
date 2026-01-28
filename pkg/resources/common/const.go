@@ -19,8 +19,6 @@ const (
 	TLSKeyKey = "tls.key"
 	CACrtKey  = "ca.crt"
 
-	PKIMountRoot = "/var/run/k8s"
-
 	LabelKeyApp = "app"
 
 	// Probes
@@ -30,40 +28,5 @@ const (
 
 	KubeconfigVolumeName = "kubeconfig"
 
-	AdminConfigName          = "admin-config"
-	AdminConfigKubeconfigKey = "config"
-)
-
-// API server vars
-const (
-	KubeAPIServerName  = "kube-apiserver"
-	KubeAPIAppLabelKey = "app"
-	KubeAPIAppLabelVal = "kube-apiserver"
-
-	KonnectivityServerName = "konnectivity-server"
-	KonnectivityAgentName  = "konnectivity-agent"
-
-	KubeAPISecurePort int32 = 6443
-)
-
-// Konnectivity vars
-const (
-	EgressSelectorKind             = "EgressSelectorConfiguration"
-	EgressSelectorAPIVersion       = "apiserver.k8s.io/v1beta1"
-	KonnectivityCASecretName       = "konnectivity-ca"
-	KonnectivityTLSSecretName      = "konnectivity-server-tls"
-	KonnectivityAgentTLSSecretName = "konnectivity-agent-tls"
-
-	KonnectivityCACN     = "konnectivity-ca"
-	KonnectivityServerCN = "konnectivity-server"
-	KonnectivityAgentCN  = "konnectivity-agent"
-
-	KonnectivityServerPort       int32 = 8132
-	KonnectivityAgentNamespace         = "kube-system"
-	KonnectivityConfigMapName          = "konnectivity-egress-selector"
-	KonnectivityConfigVolumeName       = "egress-selector"
-	KonnectivityConfigMapKey           = "konnectivity-egress-selector.yaml"
-	KonnectivityAgentDSName            = "konnectivity-agent"
-
-	KonnectivityServerUDS = "konnectivity-uds"
+	AdminConfigName = "admin-config"
 )

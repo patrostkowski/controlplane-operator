@@ -17,15 +17,17 @@ package apiserver
 import (
 	"testing"
 
+	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/common"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
+
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestBuildService_APIServer(t *testing.T) {
-	api := &mcpv1alpha1.ManagedControlPlane{
+func TestEndpointBuilder_Service(t *testing.T) {
+	mcp := &mcpv1alpha1.ManagedControlPlane{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "demo",
 			Namespace: "demo-ns",
@@ -40,20 +42,30 @@ func TestBuildService_APIServer(t *testing.T) {
 		},
 	}
 
-	svc := buildService(api)
+	cc := cluster.NewClusterContext(mcp, logr.Logger{})
+
+	objs := NewEndpointBuilder(cc).Objects()
+	if len(objs) != 1 {
+		t.Fatalf("expected 1 object, got %d", len(objs))
+	}
+
+	svc, ok := objs[0].(*corev1.Service)
+	if !ok {
+		t.Fatalf("expected *corev1.Service, got %T", objs[0])
+	}
 
 	// metadata
-	if svc.Name != apiServerName {
-		t.Fatalf("expected service name %q, got %q", apiServerName, svc.Name)
+	if svc.Name != cc.Names.APIServerServiceName() {
+		t.Fatalf("expected service name %q, got %q", cc.Names.APIServerServiceName(), svc.Name)
 	}
-	if svc.Namespace != api.Namespace {
-		t.Fatalf("expected service namespace %q, got %q", api.Namespace, svc.Namespace)
+	if svc.Namespace != mcp.Namespace {
+		t.Fatalf("expected service namespace %q, got %q", mcp.Namespace, svc.Namespace)
 	}
 
 	// labels + selector (should match)
-	wantVal := appLabelVal
-	if got := svc.Labels[appLabelKey]; got != wantVal {
-		t.Fatalf("expected label %s=%s, got %#v", appLabelKey, wantVal, svc.Labels)
+	wantVal := cc.Contract.APIServer.AppLabelVal
+	if got := svc.Labels[cc.Contract.APIServer.AppLabelKey]; got != wantVal {
+		t.Fatalf("expected label %s=%s, got %#v", cc.Contract.APIServer.AppLabelKey, wantVal, svc.Labels)
 	}
 
 	// type
@@ -61,34 +73,30 @@ func TestBuildService_APIServer(t *testing.T) {
 		t.Fatalf("expected service type %q, got %q", corev1.ServiceTypeLoadBalancer, svc.Spec.Type)
 	}
 
-	// ports
-	if len(svc.Spec.Ports) != 1 {
-		t.Fatalf("expected 1 port, got %d: %#v", len(svc.Spec.Ports), svc.Spec.Ports)
-	}
-	p := svc.Spec.Ports[0]
-
-	if p.Name != "https" {
-		t.Fatalf("expected port name %q, got %q", "https", p.Name)
-	}
-	if p.Port != securePort {
-		t.Fatalf("expected port %d, got %d", securePort, p.Port)
-	}
-	if p.Protocol != "" && p.Protocol != corev1.ProtocolTCP {
-		t.Fatalf("expected protocol TCP/empty-default, got %q", p.Protocol)
+	// ports: https + grpc
+	if len(svc.Spec.Ports) != 2 {
+		t.Fatalf("expected 2 ports, got %d: %#v", len(svc.Spec.Ports), svc.Spec.Ports)
 	}
 
-	// targetPort should be intstr FromInt(securePort)
-	if p.TargetPort.IntValue() != int(securePort) || p.TargetPort.Type != 0 {
-		// Type==0 means Int in k8s intstr
-		t.Fatalf("expected targetPort to be int %d, got %#v", securePort, p.TargetPort)
+	https := findServicePort(t, svc, "https")
+	if https.Port != 6443 {
+		t.Fatalf("expected https port %d, got %d", 6443, https.Port)
+	}
+	if https.TargetPort.IntValue() != 6443 {
+		t.Fatalf("expected https targetPort int %d, got %#v", 6443, https.TargetPort)
 	}
 
-	// sanity: service is labeled as "control-plane" app (not required, but helps ensure you didn't accidentally change labels)
-	_ = common.LabelKeyApp
+	grpc := findServicePort(t, svc, "grpc")
+	if grpc.Port != 8132 {
+		t.Fatalf("expected grpc port %d, got %d", 8132, grpc.Port)
+	}
+	if grpc.TargetPort.IntValue() != 8132 {
+		t.Fatalf("expected grpc targetPort int %d, got %#v", 8132, grpc.TargetPort)
+	}
 }
 
-func TestBuildDeployment_APIServer(t *testing.T) {
-	api := &mcpv1alpha1.ManagedControlPlane{
+func TestWorkloadBuilder_ConfigMapAndDeployment(t *testing.T) {
+	mcp := &mcpv1alpha1.ManagedControlPlane{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "demo",
 			Namespace: "demo-ns",
@@ -106,81 +114,162 @@ func TestBuildDeployment_APIServer(t *testing.T) {
 		},
 	}
 
-	p := pki.New(api).APIServer()
+	cc := cluster.NewClusterContext(mcp, logr.Logger{})
 
-	dep := buildDeployment(api)
+	// PKI secret names (no pki package)
+	clientCA := cc.Names.SecretManagedCAName()
+	serving := cc.Names.SecretAPIServerServingTLSName()
+	etcdCA := cc.Names.SecretEtcdCAName()
+	etcdClient := cc.Names.SecretAPIServerEtcdClientName()
+	kubeletClient := cc.Names.SecretAPIServerKubeletClientName()
+	saSigner := cc.Names.SecretServiceAccountSignerName()
+	fpCA := cc.Names.SecretFrontProxyCAName()
+	fpClient := cc.Names.SecretFrontProxyClientName()
+	konCA := cc.Names.SecretKonnectivityCAName()
+	konSrv := cc.Names.SecretKonnectivityServerTLSName()
 
-	// metadata
-	if dep.Name != apiServerName {
-		t.Fatalf("expected deployment name %q, got %q", apiServerName, dep.Name)
+	objs := NewWorkloadBuilder(cc).Objects()
+	if len(objs) != 2 {
+		t.Fatalf("expected 2 objects (Deployment + ConfigMap), got %d: %#v", len(objs), objs)
 	}
-	if dep.Namespace != api.Namespace {
-		t.Fatalf("expected namespace %q, got %q", api.Namespace, dep.Namespace)
+
+	var dep *appsv1.Deployment
+	var cm *corev1.ConfigMap
+	for _, o := range objs {
+		switch x := o.(type) {
+		case *appsv1.Deployment:
+			dep = x
+		case *corev1.ConfigMap:
+			cm = x
+		default:
+			t.Fatalf("unexpected object type %T", o)
+		}
+	}
+	if dep == nil {
+		t.Fatalf("expected Deployment in objects")
+	}
+	if cm == nil {
+		t.Fatalf("expected ConfigMap in objects")
+	}
+
+	// ConfigMap
+	if cm.Name != cc.Names.KonnectivityConfigMapName() {
+		t.Fatalf("expected konnectivity configmap name %q, got %q", cc.Names.KonnectivityConfigMapName(), cm.Name)
+	}
+	if cm.Namespace != mcp.Namespace {
+		t.Fatalf("expected configmap namespace %q, got %q", mcp.Namespace, cm.Namespace)
+	}
+
+	// Deployment metadata
+	if dep.Name != cc.Names.APIServerDeploymentName() {
+		t.Fatalf("expected deployment name %q, got %q", cc.Names.APIServerDeploymentName(), dep.Name)
+	}
+	if dep.Namespace != mcp.Namespace {
+		t.Fatalf("expected namespace %q, got %q", mcp.Namespace, dep.Namespace)
 	}
 	if dep.Spec.Replicas == nil || *dep.Spec.Replicas != 1 {
 		t.Fatalf("expected replicas=1, got %#v", dep.Spec.Replicas)
 	}
 
-	// container
+	// containers
 	pod := dep.Spec.Template.Spec
-	if len(pod.Containers) != 1 {
-		t.Fatalf("expected 1 container, got %d", len(pod.Containers))
+	if len(pod.Containers) != 2 {
+		t.Fatalf("expected 2 containers (apiserver + konnectivity), got %d", len(pod.Containers))
 	}
-	c := pod.Containers[0]
-	if c.Name != "apiserver" {
-		t.Fatalf("expected container name %q, got %q", "apiserver", c.Name)
-	}
-	wantImage := "registry.k8s.io/kube-apiserver:" + api.Spec.Kubernetes.Version
-	if c.Image != wantImage {
-		t.Fatalf("expected image %q, got %q", wantImage, c.Image)
+
+	apiC := findContainer(t, pod.Containers, "apiserver")
+	wantImage := "registry.k8s.io/kube-apiserver:" + mcp.Spec.Kubernetes.Version
+	if apiC.Image != wantImage {
+		t.Fatalf("expected image %q, got %q", wantImage, apiC.Image)
 	}
 
 	// key args
-	mustContainArg(t, c.Args, "--advertise-address="+api.Status.Address)
-	mustContainArg(t, c.Args, "--service-cluster-ip-range="+api.Spec.Kubernetes.Networking.ServiceCIDR)
-	mustContainArg(t, c.Args, "--etcd-servers=https://etcd-0.etcd."+api.Namespace+".svc:2379")
+	mustContainArg(t, apiC.Args, "--advertise-address="+mcp.Status.Address)
+	mustContainArg(t, apiC.Args, "--service-cluster-ip-range="+mcp.Spec.Kubernetes.Networking.ServiceCIDR)
 
-	mustContainArg(t, c.Args, "--client-ca-file="+p.ClientCA.CertPath())
-	mustContainArg(t, c.Args, "--tls-cert-file="+p.Serving.CertPath())
-	mustContainArg(t, c.Args, "--tls-private-key-file="+p.Serving.KeyPath())
+	mustContainArg(t, apiC.Args, "--etcd-servers=https://etcd-0."+cc.Names.EtcdServiceName()+"."+mcp.Namespace+".svc.cluster.local:2379")
 
-	mustContainArg(t, c.Args, "--etcd-cafile="+p.EtcdCA.CertPath())
-	mustContainArg(t, c.Args, "--etcd-certfile="+p.EtcdClient.CertPath())
-	mustContainArg(t, c.Args, "--etcd-keyfile="+p.EtcdClient.KeyPath())
+	// args: PKI paths derived from cc helpers
+	mustContainArg(t, apiC.Args, "--client-ca-file="+cc.CertPath(clientCA))
+	mustContainArg(t, apiC.Args, "--tls-cert-file="+cc.CertPath(serving))
+	mustContainArg(t, apiC.Args, "--tls-private-key-file="+cc.KeyPath(serving))
 
-	mustContainArg(t, c.Args, "--kubelet-client-certificate="+p.KubeletClient.CertPath())
-	mustContainArg(t, c.Args, "--kubelet-client-key="+p.KubeletClient.KeyPath())
+	mustContainArg(t, apiC.Args, "--etcd-cafile="+cc.CAPath(etcdCA))
+	mustContainArg(t, apiC.Args, "--etcd-certfile="+cc.CertPath(etcdClient))
+	mustContainArg(t, apiC.Args, "--etcd-keyfile="+cc.KeyPath(etcdClient))
 
-	mustContainArg(t, c.Args, "--service-account-key-file="+p.ServiceAccountSigner.CertPath())
-	mustContainArg(t, c.Args, "--service-account-signing-key-file="+p.ServiceAccountSigner.KeyPath())
+	mustContainArg(t, apiC.Args, "--kubelet-client-certificate="+cc.CertPath(kubeletClient))
+	mustContainArg(t, apiC.Args, "--kubelet-client-key="+cc.KeyPath(kubeletClient))
+
+	mustContainArg(t, apiC.Args, "--service-account-key-file="+cc.CertPath(saSigner))
+	mustContainArg(t, apiC.Args, "--service-account-signing-key-file="+cc.KeyPath(saSigner))
 
 	// probes
-	if c.LivenessProbe == nil {
+	if apiC.LivenessProbe == nil {
 		t.Fatalf("expected LivenessProbe to be set")
 	}
-	if c.ReadinessProbe == nil {
+	if apiC.ReadinessProbe == nil {
 		t.Fatalf("expected ReadinessProbe to be set")
 	}
 
-	// volumes (8 secrets)
-	expectVolume(t, pod.Volumes, p.ClientCA.SecretName)
-	expectVolume(t, pod.Volumes, p.Serving.SecretName)
-	expectVolume(t, pod.Volumes, p.EtcdCA.SecretName)
-	expectVolume(t, pod.Volumes, p.EtcdClient.SecretName)
-	expectVolume(t, pod.Volumes, p.KubeletClient.SecretName)
-	expectVolume(t, pod.Volumes, p.ServiceAccountSigner.SecretName)
-	// expectVolume(t, pod.Volumes, p.FrontProxyCA.SecretName)
-	// expectVolume(t, pod.Volumes, p.FrontProxyClient.SecretName)
+	// volumes: include konnectivity configmap + uds + secrets
+	expectConfigMapVolume(t, pod.Volumes, konnectivityConfigVolumeName, cc.Names.KonnectivityConfigMapName())
+	expectEmptyDirVolume(t, pod.Volumes, konnectivityServerUDS)
 
-	// mounts (same volumes, mounted at view-provided dirs)
-	expectMount(t, c.VolumeMounts, p.ClientCA.SecretName, p.ClientCA.MountDir)
-	expectMount(t, c.VolumeMounts, p.Serving.SecretName, p.Serving.MountDir)
-	expectMount(t, c.VolumeMounts, p.EtcdCA.SecretName, p.EtcdCA.MountDir)
-	expectMount(t, c.VolumeMounts, p.EtcdClient.SecretName, p.EtcdClient.MountDir)
-	expectMount(t, c.VolumeMounts, p.KubeletClient.SecretName, p.KubeletClient.MountDir)
-	expectMount(t, c.VolumeMounts, p.ServiceAccountSigner.SecretName, p.ServiceAccountSigner.MountDir)
-	// expectMount(t, c.VolumeMounts, p.FrontProxyCA.SecretName, p.FrontProxyCA.MountDir)
-	// expectMount(t, c.VolumeMounts, p.FrontProxyClient.SecretName, p.FrontProxyClient.MountDir)
+	expectSecretVolume(t, pod.Volumes, clientCA)
+	expectSecretVolume(t, pod.Volumes, serving)
+	expectSecretVolume(t, pod.Volumes, etcdCA)
+	expectSecretVolume(t, pod.Volumes, etcdClient)
+	expectSecretVolume(t, pod.Volumes, kubeletClient)
+	expectSecretVolume(t, pod.Volumes, saSigner)
+	expectSecretVolume(t, pod.Volumes, fpCA)
+	expectSecretVolume(t, pod.Volumes, fpClient)
+	expectSecretVolume(t, pod.Volumes, konSrv)
+	expectSecretVolume(t, pod.Volumes, konCA)
+
+	// mounts: apiserver container includes config + uds + PKI mounts
+	expectMount(t, apiC.VolumeMounts, konnectivityConfigVolumeName, konnectivityServerMountDir)
+	expectMountRW(t, apiC.VolumeMounts, konnectivityServerUDS, filepathForUDSDir(cc))
+
+	expectMount(t, apiC.VolumeMounts, clientCA, cc.SecretMountDir(clientCA))
+	expectMount(t, apiC.VolumeMounts, serving, cc.SecretMountDir(serving))
+	expectMount(t, apiC.VolumeMounts, etcdCA, cc.SecretMountDir(etcdCA))
+	expectMount(t, apiC.VolumeMounts, etcdClient, cc.SecretMountDir(etcdClient))
+	expectMount(t, apiC.VolumeMounts, kubeletClient, cc.SecretMountDir(kubeletClient))
+	expectMount(t, apiC.VolumeMounts, saSigner, cc.SecretMountDir(saSigner))
+	expectMount(t, apiC.VolumeMounts, fpCA, cc.SecretMountDir(fpCA))
+	expectMount(t, apiC.VolumeMounts, fpClient, cc.SecretMountDir(fpClient))
+
+	// konnectivity container exists (and optionally assert it mounts TLS)
+	konC := findContainer(t, pod.Containers, konnectivityServerName)
+
+	// If your migrated deployment mounts konnectivity TLS secrets into the konnectivity container (recommended):
+	expectMount(t, konC.VolumeMounts, konSrv, cc.SecretMountDir(konSrv))
+	expectMount(t, konC.VolumeMounts, konCA, cc.SecretMountDir(konCA))
+}
+
+// ---- helpers ----
+
+func findServicePort(t *testing.T, svc *corev1.Service, name string) corev1.ServicePort {
+	t.Helper()
+	for _, p := range svc.Spec.Ports {
+		if p.Name == name {
+			return p
+		}
+	}
+	t.Fatalf("expected service port %q not found; ports=%#v", name, svc.Spec.Ports)
+	return corev1.ServicePort{}
+}
+
+func findContainer(t *testing.T, cs []corev1.Container, name string) corev1.Container {
+	t.Helper()
+	for _, c := range cs {
+		if c.Name == name {
+			return c
+		}
+	}
+	t.Fatalf("expected container %q not found; containers=%#v", name, cs)
+	return corev1.Container{}
 }
 
 func mustContainArg(t *testing.T, args []string, want string) {
@@ -193,7 +282,7 @@ func mustContainArg(t *testing.T, args []string, want string) {
 	t.Fatalf("expected args to contain %q, got %#v", want, args)
 }
 
-func expectVolume(t *testing.T, vols []corev1.Volume, name string) {
+func expectSecretVolume(t *testing.T, vols []corev1.Volume, name string) {
 	t.Helper()
 	for _, v := range vols {
 		if v.Name == name {
@@ -203,7 +292,33 @@ func expectVolume(t *testing.T, vols []corev1.Volume, name string) {
 			return
 		}
 	}
-	t.Fatalf("expected volume %q not found; volumes=%#v", name, vols)
+	t.Fatalf("expected secret volume %q not found; volumes=%#v", name, vols)
+}
+
+func expectConfigMapVolume(t *testing.T, vols []corev1.Volume, volName, cmName string) {
+	t.Helper()
+	for _, v := range vols {
+		if v.Name == volName {
+			if v.ConfigMap == nil || v.ConfigMap.Name != cmName {
+				t.Fatalf("expected volume %q to be configmap volume with name=%q, got %#v", volName, cmName, v)
+			}
+			return
+		}
+	}
+	t.Fatalf("expected configmap volume %q not found; volumes=%#v", volName, vols)
+}
+
+func expectEmptyDirVolume(t *testing.T, vols []corev1.Volume, volName string) {
+	t.Helper()
+	for _, v := range vols {
+		if v.Name == volName {
+			if v.EmptyDir == nil {
+				t.Fatalf("expected volume %q to be emptyDir, got %#v", volName, v)
+			}
+			return
+		}
+	}
+	t.Fatalf("expected emptyDir volume %q not found; volumes=%#v", volName, vols)
 }
 
 func expectMount(t *testing.T, mounts []corev1.VolumeMount, name, path string) {
@@ -220,4 +335,24 @@ func expectMount(t *testing.T, mounts []corev1.VolumeMount, name, path string) {
 		}
 	}
 	t.Fatalf("expected volumeMount %q (path=%q) not found; mounts=%#v", name, path, mounts)
+}
+
+func expectMountRW(t *testing.T, mounts []corev1.VolumeMount, name, path string) {
+	t.Helper()
+	for _, m := range mounts {
+		if m.Name == name {
+			if m.MountPath != path {
+				t.Fatalf("mount %q: expected path %q, got %q", name, path, m.MountPath)
+			}
+			if m.ReadOnly {
+				t.Fatalf("mount %q: expected readOnly=false", name)
+			}
+			return
+		}
+	}
+	t.Fatalf("expected volumeMount %q (path=%q) not found; mounts=%#v", name, path, mounts)
+}
+
+func filepathForUDSDir(cc *cluster.ClusterContext) string {
+	return cc.Layout.PKIRoot + "/" + konnectivityServerUDS
 }

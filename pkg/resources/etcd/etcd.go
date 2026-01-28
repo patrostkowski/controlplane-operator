@@ -15,9 +15,8 @@
 package etcd
 
 import (
-	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
-	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -28,38 +27,65 @@ import (
 
 var EtcdVersion = "3.6.5-0"
 
-// Resources returns the Service + StatefulSet required for etcd.
-func Resources(cp *mcpv1alpha1.ManagedControlPlane) []client.Object {
+type builder struct{ cc *cluster.ClusterContext }
+
+func NewBuilder(cc *cluster.ClusterContext) cluster.ObjectProducer {
+	return builder{cc: cc}
+}
+
+func (b builder) Objects() []client.Object {
 	return []client.Object{
-		buildService(cp),
-		buildStatefulSet(cp),
+		b.buildService(),
+		b.buildStatefulSet(),
 	}
 }
 
-func buildService(cp *mcpv1alpha1.ManagedControlPlane) *corev1.Service {
+func (b builder) buildService() *corev1.Service {
+	cc := b.cc
+	mcp := cc.MCP
+
 	labels := map[string]string{appLabelKey: appLabelVal}
-	ns := cp.Namespace
+	ns := mcp.Namespace
 
 	return builders.NewService().
-		WithName(nameEtcd).
+		WithName(cc.Names.EtcdServiceName()).
 		WithNamespace(ns).
 		Headless().
 		WithLabels(labels).
-		WithSelector(map[string]string(labels)).
+		WithSelector(labels).
 		AddPort("client", clientPort, clientPort, corev1.ProtocolTCP).
 		AddPort("peer", peerPort, peerPort, corev1.ProtocolTCP).
 		Build()
 }
 
-func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
-	p := pki.New(cp).ETCD()
+func (b builder) buildStatefulSet() *appsv1.StatefulSet {
+	cc := b.cc
+	mcp := cc.MCP
+
+	ca := cc.Names.SecretEtcdCAName()
+	srv := cc.Names.SecretEtcdServerTLSName()
+	peer := cc.Names.SecretEtcdPeerTLSName()
 
 	labels := map[string]string{appLabelKey: appLabelVal}
-	ns := cp.Namespace
+	ns := mcp.Namespace
 	replicas := int32(1)
 
-	podFQDNClient := memberName + "." + nameEtcd + "." + ns + ".svc:" + utils.PortString(clientPort)
-	podFQDNPeer := memberName + "." + nameEtcd + "." + ns + ".svc:" + utils.PortString(peerPort)
+	// service must match buildService() name
+	svc := cc.Names.EtcdServiceName()
+
+	podFQDNClient := memberName + "." + svc + "." + ns + ".svc:" + utils.PortString(clientPort)
+	podFQDNPeer := memberName + "." + svc + "." + ns + ".svc:" + utils.PortString(peerPort)
+
+	vols := []corev1.Volume{
+		cc.SecretVolume(ca),
+		cc.SecretVolume(srv),
+		cc.SecretVolume(peer),
+	}
+	mounts := []corev1.VolumeMount{
+		cc.SecretMount(ca, true),
+		cc.SecretMount(srv, true),
+		cc.SecretMount(peer, true),
+	}
 
 	etcdContainer := corev1.Container{
 		Name:  nameEtcd,
@@ -83,13 +109,13 @@ func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
 			"--client-cert-auth=true",
 			"--peer-client-cert-auth=true",
 
-			"--trusted-ca-file=" + p.CA.CAPath(),
-			"--cert-file=" + p.Server.CertPath(),
-			"--key-file=" + p.Server.KeyPath(),
+			"--trusted-ca-file=" + cc.CAPath(ca),
+			"--cert-file=" + cc.CertPath(srv),
+			"--key-file=" + cc.KeyPath(srv),
 
-			"--peer-trusted-ca-file=" + p.CA.CAPath(),
-			"--peer-cert-file=" + p.Peer.CertPath(),
-			"--peer-key-file=" + p.Peer.KeyPath(),
+			"--peer-trusted-ca-file=" + cc.CAPath(ca),
+			"--peer-cert-file=" + cc.CertPath(peer),
+			"--peer-key-file=" + cc.KeyPath(peer),
 		},
 		Ports: []corev1.ContainerPort{
 			{Name: "client", ContainerPort: clientPort},
@@ -99,14 +125,16 @@ func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
 		ReadinessProbe: utils.TcpProbe(clientPort, 5, 5),
 		VolumeMounts: append(
 			[]corev1.VolumeMount{
-				{Name: "etcd-data", MountPath: dataDir},
+				{Name: cc.Names.EtcdStatefulSetName(), MountPath: dataDir},
 			},
-			p.Mounts(true)...,
+			mounts...,
 		),
 	}
 
 	claim := corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{Name: "etcd-data"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: cc.Names.EtcdStatefulSetName(),
+		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			Resources: corev1.VolumeResourceRequirements{
@@ -125,7 +153,7 @@ func buildStatefulSet(cp *mcpv1alpha1.ManagedControlPlane) *appsv1.StatefulSet {
 		WithReplicas(replicas).
 		WithServiceName(nameEtcd).
 		WithContainer(etcdContainer).
-		AddVolumes(p.Volumes()...).
+		AddVolumes(vols...).
 		WithVolumeClaims(claim).
 		Build()
 }
