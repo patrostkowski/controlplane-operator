@@ -15,6 +15,10 @@
 package addons
 
 const (
+	keyCACrt  = "ca.crt"
+	keyTLSCrt = "tls.crt"
+	keyTLSKey = "tls.key"
+
 	KubeSystemNamespace = "kube-system"
 
 	BootstrapTokenMgmtSecretName = "bootstrap-token"

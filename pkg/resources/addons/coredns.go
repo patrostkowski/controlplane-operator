@@ -209,7 +209,7 @@ func (e addonsBuilder) buildCoreDNSService() *corev1.Service {
 		{Name: "dns", Port: 53, Protocol: corev1.ProtocolUDP, TargetPort: intstr.FromInt(53)},
 		{Name: "dns-tcp", Port: 53, Protocol: corev1.ProtocolTCP, TargetPort: intstr.FromInt(53)},
 	}
-	ip, _ := utils.IPAtOffset(e.cc.MCP.Spec.Kubernetes.Networking.ServiceCIDR, 10)
+	ip, _ := utils.IPAtOffset(e.cc.GetManagedControlPlaneSpec().Kubernetes.Networking.ServiceCIDR, 10)
 	return builders.NewService().
 		WithName(CoreDNSServiceName).
 		WithNamespace(CoreDNSNamespaceName).

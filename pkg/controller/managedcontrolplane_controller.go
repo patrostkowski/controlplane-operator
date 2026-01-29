@@ -34,15 +34,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-const RequeueAfterFailure = 10 * time.Second
+const RequeueAfterFailure = 10 * time.Second // RequeueAfterFailure specifies the duration to wait before requeueing a failed reconciliation.
 
-const ManagedControlPlaneFinalizer = "controlplane.patrostkowski.dev/finalizer"
+const ManagedControlPlaneFinalizer = "controlplane.patrostkowski.dev/finalizer" // ManagedControlPlaneFinalizer is the finalizer used for ManagedControlPlane objects.
 
+// ManagedControlPlaneReconciler reconciles ManagedControlPlane objects.
 type ManagedControlPlaneReconciler struct {
 	BaseReconciler
 	client.Client
 }
 
+// Reconcile performs the main reconciliation loop for ManagedControlPlane objects.
 func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("control-plane", req.NamespacedName)
 
@@ -116,6 +118,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	return ctrl.Result{}, nil
 }
 
+// SetupManagedControlPlaneController sets up the ManagedControlPlane controller with the Kubernetes manager.
 func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
 	certPred := predicate.GenerationChangedPredicate{}
 	issuerPred := predicate.GenerationChangedPredicate{}

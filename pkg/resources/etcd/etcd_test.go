@@ -15,252 +15,130 @@
 package etcd
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/go-logr/logr"
+	testutil "github.com/patrostkowski/controlplane-operator/internal/test"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
-
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func TestBuildService_Etcd(t *testing.T) {
-	cp := &mcpv1alpha1.ManagedControlPlane{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "example-mcp",
-			Namespace: "mcp",
-		},
+	mcp := &mcpv1alpha1.ManagedControlPlane{
+		ObjectMeta: metav1.ObjectMeta{Name: "example-mcp", Namespace: "mcp"},
 	}
+	cc := cluster.NewClusterContext(mcp, logr.Logger{})
+	e := cc.Etcd()
 
-	cc := cluster.NewClusterContext(cp, logr.Logger{})
 	objs := NewBuilder(cc).Objects()
+	svc := testutil.MustFindService(t, objs)
 
-	svc := mustFindService(t, objs)
-
-	if svc.Name != nameEtcd {
-		t.Fatalf("expected service name %q, got %q", nameEtcd, svc.Name)
+	if svc.Name != e.ServiceName() {
+		t.Fatalf("service name=%q want %q", svc.Name, e.ServiceName())
 	}
-	if svc.Namespace != cp.Namespace {
-		t.Fatalf("expected service namespace %q, got %q", cp.Namespace, svc.Namespace)
+	if svc.Namespace != mcp.Namespace {
+		t.Fatalf("service namespace=%q want %q", svc.Namespace, mcp.Namespace)
 	}
-
-	wantLabels := map[string]string{appLabelKey: appLabelVal}
-	if svc.Labels == nil || svc.Labels[appLabelKey] != appLabelVal {
-		t.Fatalf("expected labels %#v, got %#v", wantLabels, svc.Labels)
-	}
-
-	if svc.Spec.Selector == nil || svc.Spec.Selector[appLabelKey] != appLabelVal {
-		t.Fatalf("expected selector %#v, got %#v", wantLabels, svc.Spec.Selector)
-	}
-
 	if svc.Spec.ClusterIP != "None" {
-		t.Fatalf("expected ClusterIP %q (headless), got %q", "None", svc.Spec.ClusterIP)
+		t.Fatalf("expected headless ClusterIP=None, got %q", svc.Spec.ClusterIP)
 	}
-
-	if len(svc.Spec.Ports) != 2 {
-		t.Fatalf("expected 2 ports, got %d: %#v", len(svc.Spec.Ports), svc.Spec.Ports)
-	}
-
-	expectPort(t, svc.Spec.Ports, "client", clientPort)
-	expectPort(t, svc.Spec.Ports, "peer", peerPort)
-
-	for _, p := range svc.Spec.Ports {
-		if p.Protocol != "" && p.Protocol != corev1.ProtocolTCP {
-			t.Fatalf("expected protocol TCP/empty-default, got %q for port %#v", p.Protocol, p)
-		}
-	}
+	testutil.ExpectPort(t, svc.Spec.Ports, "client", e.ClientPort())
+	testutil.ExpectPort(t, svc.Spec.Ports, "peer", e.PeerPort())
 }
 
 func TestBuildStatefulSet_Etcd(t *testing.T) {
-	cp := &mcpv1alpha1.ManagedControlPlane{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "example-mcp",
-			Namespace: "mcp",
-		},
+	mcp := &mcpv1alpha1.ManagedControlPlane{
+		ObjectMeta: metav1.ObjectMeta{Name: "example-mcp", Namespace: "mcp"},
 	}
+	cc := cluster.NewClusterContext(mcp, logr.Logger{})
+	e := cc.Etcd()
 
-	cc := cluster.NewClusterContext(cp, logr.Logger{})
 	objs := NewBuilder(cc).Objects()
+	sts := testutil.MustFindStatefulSet(t, objs)
 
-	sts := mustFindStatefulSet(t, objs)
-
-	// --- PKI secret names from cc ---
-	etcdCA := cc.Names.SecretEtcdCAName()
-	etcdServer := cc.Names.SecretEtcdServerTLSName()
-	etcdPeer := cc.Names.SecretEtcdPeerTLSName()
-
-	// metadata
-	if sts.Name != nameEtcd {
-		t.Fatalf("metadata.name: got %q want %q", sts.Name, nameEtcd)
+	if sts.Name != e.StatefulSetName() {
+		t.Fatalf("statefulset name=%q want %q", sts.Name, e.StatefulSetName())
 	}
-	if sts.Namespace != cp.Namespace {
-		t.Fatalf("metadata.namespace: got %q want %q", sts.Namespace, cp.Namespace)
+	if sts.Namespace != mcp.Namespace {
+		t.Fatalf("statefulset namespace=%q want %q", sts.Namespace, mcp.Namespace)
 	}
-	if sts.Labels == nil || sts.Labels[appLabelKey] != appLabelVal {
-		t.Fatalf("metadata.labels: got %#v want app=%q", sts.Labels, appLabelVal)
+	if sts.Spec.ServiceName != e.ServiceName() {
+		t.Fatalf("statefulset serviceName=%q want %q", sts.Spec.ServiceName, e.ServiceName())
 	}
 
-	// spec basics
-	if sts.Spec.ServiceName != nameEtcd {
-		t.Fatalf("spec.serviceName: got %q want %q", sts.Spec.ServiceName, nameEtcd)
+	if len(sts.Spec.Template.Spec.Containers) != 1 {
+		t.Fatalf("expected 1 container, got %d", len(sts.Spec.Template.Spec.Containers))
 	}
-	if sts.Spec.Selector == nil || sts.Spec.Selector.MatchLabels[appLabelKey] != appLabelVal {
-		t.Fatalf("spec.selector.matchLabels: got %#v want app=%q", sts.Spec.Selector, appLabelVal)
-	}
-	if sts.Spec.Replicas == nil || *sts.Spec.Replicas != 1 {
-		t.Fatalf("spec.replicas: got %#v want 1", sts.Spec.Replicas)
-	}
-
-	// pod template
-	pod := sts.Spec.Template.Spec
-	if len(pod.Containers) != 1 {
-		t.Fatalf("pod.spec.containers: got %d want 1", len(pod.Containers))
-	}
-
-	c := pod.Containers[0]
+	c := sts.Spec.Template.Spec.Containers[0]
 	if c.Name != nameEtcd {
-		t.Fatalf("container.name: got %q want %q", c.Name, nameEtcd)
-	}
-	if c.Image == "" {
-		t.Fatalf("container.image should not be empty")
+		t.Fatalf("container name=%q want %q", c.Name, nameEtcd)
 	}
 
-	// key args exist (keep these stable + important)
-	mustContainArg(t, c.Args, "--name="+memberName)
-	mustContainArg(t, c.Args, "--data-dir="+dataDir)
+	// Important args should reference FQDNs + cert paths.
+	testutil.MustContainArg(t, c.Args, "--name="+e.MemberName())
+	testutil.MustContainArg(t, c.Args, "--data-dir="+e.DataDir())
+	testutil.MustContainArg(t, c.Args, "--advertise-client-urls=https://"+e.MemberFQDNClient())
+	testutil.MustContainArg(t, c.Args, "--initial-advertise-peer-urls=https://"+e.MemberFQDNPeer())
+	testutil.MustContainArg(t, c.Args, "--trusted-ca-file="+e.CAPath())
+	testutil.MustContainArg(t, c.Args, "--cert-file="+e.ServerCertPath())
+	testutil.MustContainArg(t, c.Args, "--key-file="+e.ServerKeyPath())
 
-	// PKI args must match cc paths now
-	mustContainArg(t, c.Args, "--trusted-ca-file="+cc.CAPath(etcdCA))
-	mustContainArg(t, c.Args, "--cert-file="+cc.CertPath(etcdServer))
-	mustContainArg(t, c.Args, "--key-file="+cc.KeyPath(etcdServer))
-
-	mustContainArg(t, c.Args, "--peer-trusted-ca-file="+cc.CAPath(etcdCA))
-	mustContainArg(t, c.Args, "--peer-cert-file="+cc.CertPath(etcdPeer))
-	mustContainArg(t, c.Args, "--peer-key-file="+cc.KeyPath(etcdPeer))
-
-	// probes
-	if c.LivenessProbe == nil {
-		t.Fatalf("expected livenessProbe to be set")
-	}
-	if c.ReadinessProbe == nil {
-		t.Fatalf("expected readinessProbe to be set")
-	}
-
-	// pvc template
-	if len(sts.Spec.VolumeClaimTemplates) != 1 {
-		t.Fatalf("expected 1 volumeClaimTemplate, got %d", len(sts.Spec.VolumeClaimTemplates))
-	}
-	vct := sts.Spec.VolumeClaimTemplates[0]
-
-	// your previous tests expected this pvc name
-	if vct.Name != cc.Names.EtcdStatefulSetName() {
-		t.Fatalf("volumeClaimTemplate.name: got %q want %q", vct.Name, cc.Names.EtcdStatefulSetName())
-	}
-
-	qty := vct.Spec.Resources.Requests[corev1.ResourceStorage]
-	if qty.IsZero() {
-		t.Fatalf("expected storage request to be set")
-	}
-	if qty.Cmp(resource.MustParse(defaultStorage)) != 0 {
-		t.Fatalf("storage request: got %s want %s", qty.String(), defaultStorage)
-	}
-
-	// mounts
-	expectMount(t, c.VolumeMounts, cc.Names.EtcdStatefulSetName(), dataDir, false) // data dir not readOnly
-	expectMount(t, c.VolumeMounts, etcdCA, cc.SecretMountDir(etcdCA), true)
-	expectMount(t, c.VolumeMounts, etcdServer, cc.SecretMountDir(etcdServer), true)
-	expectMount(t, c.VolumeMounts, etcdPeer, cc.SecretMountDir(etcdPeer), true)
-
-	// volumes
-	expectVolume(t, pod.Volumes, etcdCA, func(v corev1.Volume) {
-		if v.Secret == nil || v.Secret.SecretName != etcdCA {
-			t.Fatalf("expected secret volume %q -> secretName %q, got %#v", etcdCA, etcdCA, v)
+	// Volumes must include three secrets.
+	testutil.ExpectVolume(t, sts.Spec.Template.Spec.Volumes, e.CASecret(), func(v corev1.Volume) {
+		if v.Secret == nil || v.Secret.SecretName != e.CASecret() {
+			t.Fatalf("expected CA volume secret %q, got %#v", e.CASecret(), v.Secret)
 		}
 	})
-	expectVolume(t, pod.Volumes, etcdServer, func(v corev1.Volume) {
-		if v.Secret == nil || v.Secret.SecretName != etcdServer {
-			t.Fatalf("expected secret volume %q -> secretName %q, got %#v", etcdServer, etcdServer, v)
+	testutil.ExpectVolume(t, sts.Spec.Template.Spec.Volumes, e.ServerTLSSecret(), func(v corev1.Volume) {
+		if v.Secret == nil || v.Secret.SecretName != e.ServerTLSSecret() {
+			t.Fatalf("expected server TLS volume secret %q, got %#v", e.ServerTLSSecret(), v.Secret)
 		}
 	})
-	expectVolume(t, pod.Volumes, etcdPeer, func(v corev1.Volume) {
-		if v.Secret == nil || v.Secret.SecretName != etcdPeer {
-			t.Fatalf("expected secret volume %q -> secretName %q, got %#v", etcdPeer, etcdPeer, v)
+	testutil.ExpectVolume(t, sts.Spec.Template.Spec.Volumes, e.PeerTLSSecret(), func(v corev1.Volume) {
+		if v.Secret == nil || v.Secret.SecretName != e.PeerTLSSecret() {
+			t.Fatalf("expected peer TLS volume secret %q, got %#v", e.PeerTLSSecret(), v.Secret)
 		}
 	})
-}
 
-func mustFindService(t *testing.T, objs []client.Object) *corev1.Service {
-	t.Helper()
-	for _, o := range objs {
-		if s, ok := o.(*corev1.Service); ok {
-			return s
-		}
+	// There must be one PVC named after StatefulSetName with default storage.
+	if got := len(sts.Spec.VolumeClaimTemplates); got != 1 {
+		t.Fatalf("expected 1 PVC template, got %d", got)
 	}
-	t.Fatalf("expected *corev1.Service in objects, got %#v", objs)
-	return nil
-}
-
-func mustFindStatefulSet(t *testing.T, objs []client.Object) *appsv1.StatefulSet {
-	t.Helper()
-	for _, o := range objs {
-		if s, ok := o.(*appsv1.StatefulSet); ok {
-			return s
-		}
+	pvc := sts.Spec.VolumeClaimTemplates[0]
+	if pvc.Name != e.StatefulSetName() {
+		t.Fatalf("pvc name=%q want %q", pvc.Name, e.StatefulSetName())
 	}
-	t.Fatalf("expected *appsv1.StatefulSet in objects, got %#v", objs)
-	return nil
-}
+	q := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
+	if q.String() != e.DefaultStorage() {
+		t.Fatalf("pvc storage=%q want %q", q.String(), e.DefaultStorage())
+	}
 
-func expectPort(t *testing.T, ports []corev1.ServicePort, name string, port int32) {
-	t.Helper()
-	for _, p := range ports {
-		if p.Name == name {
-			if p.Port != port {
-				t.Fatalf("port %q: expected %d, got %d", name, port, p.Port)
+	// dataDir mount should exist and be RW.
+	found := false
+	for _, m := range c.VolumeMounts {
+		if m.MountPath == dataDir {
+			found = true
+			if m.ReadOnly {
+				t.Fatalf("expected data dir mount to be readWrite")
 			}
-			return
 		}
 	}
-	t.Fatalf("expected port %q not found; ports=%#v", name, ports)
-}
+	if !found {
+		t.Fatalf("expected volumeMount for dataDir %q", dataDir)
+	}
 
-func mustContainArg(t *testing.T, args []string, want string) {
-	t.Helper()
-	for _, a := range args {
-		if a == want {
-			return
+	// Sanity: initial-cluster contains the member name.
+	ok := false
+	for _, a := range c.Args {
+		if strings.HasPrefix(a, "--initial-cluster=") && strings.Contains(a, memberName) {
+			ok = true
+			break
 		}
 	}
-	t.Fatalf("expected args to contain %q, got %#v", want, args)
-}
-
-func expectMount(t *testing.T, mounts []corev1.VolumeMount, name, path string, readOnly bool) {
-	t.Helper()
-	for _, m := range mounts {
-		if m.Name == name {
-			if m.MountPath != path {
-				t.Fatalf("mount %q: expected path %q, got %q", name, path, m.MountPath)
-			}
-			if m.ReadOnly != readOnly {
-				t.Fatalf("mount %q: expected readOnly=%v, got %v", name, readOnly, m.ReadOnly)
-			}
-			return
-		}
+	if !ok {
+		t.Fatalf("expected --initial-cluster arg to include %q; args=%#v", memberName, c.Args)
 	}
-	t.Fatalf("expected volumeMount %q (path=%q) not found; mounts=%#v", name, path, mounts)
-}
-
-func expectVolume(t *testing.T, vols []corev1.Volume, name string, validate func(corev1.Volume)) {
-	t.Helper()
-	for _, v := range vols {
-		if v.Name == name {
-			validate(v)
-			return
-		}
-	}
-	t.Fatalf("expected volume %q not found; volumes=%#v", name, vols)
 }

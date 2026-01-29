@@ -15,35 +15,6 @@
 package pki
 
 const (
-	// Issuers
-	issuerSelfSigned       = "selfsigned"
-	issuerCA               = "ca-issuer"
-	issuerEtcdSelfSigned   = "etcd-selfsigned"
-	issuerEtcdCA           = "etcd-ca-issuer"
-	issuerFrontProxySelf   = "front-proxy-selfsigned"
-	issuerFrontProxyCA     = "front-proxy-ca-issuer"
-	issuerKonnectivitySelf = "konnectivity-selfsigned"
-	issuerKonnectivityCA   = "konnectivity-ca-issuer"
-
-	// Secrets / cert names
-	secretManagedCA            = "managed-ca"
-	secretEtcdCA               = "etcd-ca"
-	secretFrontProxyCA         = "front-proxy-ca"
-	secretSASigner             = "sa-signer"
-	secretAPIServerTLS         = "apiserver-tls"
-	secretAPIServerKubelet     = "apiserver-kubelet-client"
-	secretEtcdServerTLS        = "etcd-server-tls"
-	secretEtcdPeerTLS          = "etcd-peer-tls"
-	secretEtcdHealthClient     = "etcd-healthcheck-client"
-	secretAPIServerEtcd        = "apiserver-etcd-client"
-	secretFrontProxyClient     = "front-proxy-client"
-	secretCMClient             = "cm-client"
-	secretSchedulerClient      = "scheduler-client"
-	secretAdminClient          = "admin-client"
-	secretKonnectivityCA       = "konnectivity-ca"
-	secretKonnectivityTLS      = "konnectivity-server-tls"
-	secretKonnectivityAgentTLS = "konnectivity-agent-tls"
-
 	// CommonNames
 	cnManagedCA          = "managed-ca"
 	cnEtcdCA             = "etcd-ca"

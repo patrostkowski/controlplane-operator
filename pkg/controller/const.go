@@ -14,8 +14,14 @@
 
 package controller
 
+// Constants used throughout the controller package.
 const (
-	operatorName  = "controlplane-operator"
+	// operatorName defines the name of the control plane operator.
+	operatorName = "controlplane-operator"
+
+	// componentName defines the name of the control plane system component.
 	componentName = "controlplane-system"
-	fieldOwner    = operatorName + "/" + componentName
+
+	// fieldOwner defines the field owner for server-side apply operations.
+	fieldOwner = operatorName + "/" + componentName
 )

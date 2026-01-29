@@ -32,12 +32,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+// ManagedAddonsReconciler reconciles ManagedAddons objects.
 type ManagedAddonsReconciler struct {
 	BaseReconciler
 	client.Client
 	cp *ControlPlaneClient
 }
 
+// Reconcile performs the main reconciliation loop for managed addons.
 func (r *ManagedAddonsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("addons", req.NamespacedName)
 	var err error
@@ -70,6 +72,14 @@ func (r *ManagedAddonsReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
+	log.Info("reconciling extension-apiserver-authentication")
+	if res, err := r.reconcileExtensionAuthConfig(ctx, cc); err != nil {
+		log.Error(err, "reconciling extension-apiserver-authentication failed, will retry", "after", RequeueAfterFailure)
+		return ctrl.Result{}, err
+	} else if !res.IsZero() {
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+	}
+
 	log.Info("reconciling addons resources")
 	if res, err := r.reconcileAddons(ctx, cc); err != nil {
 		log.Error(err, "reconciling managed addons failed, will retry", "after", RequeueAfterFailure)
@@ -82,6 +92,7 @@ func (r *ManagedAddonsReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{RequeueAfter: 360 * time.Second}, nil
 }
 
+// SetupManagedAddonController sets up the ManagedAddon controller with the Kubernetes manager.
 func SetupManagedAddonController(mgr ctrl.Manager) error {
 	certPred := predicate.GenerationChangedPredicate{}
 	issuerPred := predicate.GenerationChangedPredicate{}

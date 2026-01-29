@@ -31,19 +31,11 @@ import (
 
 var KonnectivityServerVersion = "v0.1.3"
 
-const (
-	egressConnectionNameCluster      = "cluster"
-	egressConnectionNameControlPlane = "controlplane"
-	egressConnectionGRPCType         = apiserverv1beta.ProtocolGRPC
-	egressConnectionDirectType       = apiserverv1beta.ProtocolDirect
-	konnectivityUDSFile              = "konnectivity-uds.sock"
-)
-
 type endpointBuilder struct {
-	cc *cluster.ClusterContext
+	cc cluster.APIServerSpec
 }
 
-func NewEndpointBuilder(cc *cluster.ClusterContext) cluster.ObjectProducer {
+func NewEndpointBuilder(cc cluster.APIServerSpec) cluster.ObjectProducer {
 	return endpointBuilder{cc: cc}
 }
 
@@ -55,10 +47,10 @@ func (e endpointBuilder) Objects() []client.Object {
 }
 
 type workloadBuilder struct {
-	cc *cluster.ClusterContext
+	cc cluster.APIServerSpec
 }
 
-func NewWorkloadBuilder(cc *cluster.ClusterContext) cluster.ObjectProducer {
+func NewWorkloadBuilder(cc cluster.APIServerSpec) cluster.ObjectProducer {
 	return workloadBuilder{cc: cc}
 }
 
@@ -72,27 +64,28 @@ func (w workloadBuilder) Objects() []client.Object {
 
 func (e endpointBuilder) buildService() *corev1.Service {
 	cc := e.cc
-	mcp := cc.MCP
-	ns := mcp.Namespace
-	labels := map[string]string{cc.Contract.APIServer.AppLabelKey: cc.Contract.APIServer.AppLabelVal}
+	a := cc.APIServer()
+	ns := cc.Namespace()
+
+	labels := map[string]string{appLabelKey: appLabelVal}
 
 	return builders.NewService().
-		WithName(cc.Names.APIServerServiceName()).
+		WithName(a.ServiceName()).
 		WithNamespace(ns).
 		WithLabels(labels).
 		WithSelector(labels).
-		AddPort("https", 6443, 6443, corev1.ProtocolTCP).
-		AddPort("grpc", 8132, 8132, corev1.ProtocolTCP).
+		AddPort("https", securePort, securePort, corev1.ProtocolTCP).
+		AddPort("grpc", grpcPort, grpcPort, corev1.ProtocolTCP).
 		WithType(corev1.ServiceTypeLoadBalancer).
 		Build()
 }
 
 func (w workloadBuilder) buildKonnectivityConfigMap() *corev1.ConfigMap {
 	cc := w.cc
-	mcp := cc.MCP
-	ns := mcp.Namespace
+	a := cc.APIServer()
+	ns := cc.Namespace()
 
-	socketPath := filepath.Join(cc.Layout.PKIRoot, konnectivityServerUDS, konnectivityUDSFile)
+	socketPath := filepath.Join(konnectivityServerMountDir, konnectivityServerUDS, konnectivityUDSFile)
 
 	e := apiserverv1beta.EgressSelectorConfiguration{
 		TypeMeta: metav1.TypeMeta{
@@ -123,7 +116,7 @@ func (w workloadBuilder) buildKonnectivityConfigMap() *corev1.ConfigMap {
 	y := utils.GetObjYaml(&e)
 
 	return builders.NewConfigMap().
-		WithName(cc.Names.KonnectivityConfigMapName()).
+		WithName(a.KonnectivityConfigMapName()).
 		WithNamespace(ns).
 		Put(konnectivityConfigMapKey, y).
 		Build()
@@ -131,27 +124,30 @@ func (w workloadBuilder) buildKonnectivityConfigMap() *corev1.ConfigMap {
 
 func (w workloadBuilder) buildDeployment() *appsv1.Deployment {
 	cc := w.cc
-	mcp := cc.MCP
-	ns := mcp.Namespace
+	a := cc.APIServer()
+	ns := cc.Namespace()
 
-	clientCA := cc.Names.SecretManagedCAName()
-	serving := cc.Names.SecretAPIServerServingTLSName()
-	etcdCA := cc.Names.SecretEtcdCAName()
-	etcdClient := cc.Names.SecretAPIServerEtcdClientName()
-	kubeletClient := cc.Names.SecretAPIServerKubeletClientName()
-	saSigner := cc.Names.SecretServiceAccountSignerName()
-	fpCA := cc.Names.SecretFrontProxyCAName()
-	fpClient := cc.Names.SecretFrontProxyClientName()
-	konCA := cc.Names.SecretKonnectivityCAName()
-	konSrv := cc.Names.SecretKonnectivityServerTLSName()
+	spec := cc.GetManagedControlPlaneSpec()
+	status := cc.GetManagedControlPlaneStatus()
 
-	labels := map[string]string{cc.Contract.APIServer.AppLabelKey: cc.Contract.APIServer.AppLabelVal}
+	clientCA := a.ClientCASecret()
+	serving := a.ServingTLSSecret()
+	etcdCA := a.EtcdCASecret()
+	etcdClient := a.EtcdClientSecret()
+	kubeletClient := a.KubeletClientSecret()
+	saSigner := a.SASignerSecret()
+	fpCA := a.FrontProxyCASecret()
+	fpClient := a.FrontProxyClientSecret()
+	konCA := a.KonnectivityCASecret()
+	konSrv := a.KonnectivityServerSecret()
+
+	labels := map[string]string{appLabelKey: appLabelVal}
 	replicas := int32(1)
-	version := mcp.Spec.Kubernetes.Version
+	version := spec.Kubernetes.Version
 
 	konnectivityConfigVolume := utils.ConfigMapVolume(
 		konnectivityConfigVolumeName,
-		cc.Names.KonnectivityConfigMapName(),
+		a.KonnectivityConfigMapName(),
 		konnectivityConfigMapKey,
 		konnectivityConfFileName,
 	)
@@ -162,7 +158,9 @@ func (w workloadBuilder) buildDeployment() *appsv1.Deployment {
 		MountPath: konnectivityServerMountDir,
 	}
 
-	konnectivityUDSDir := filepath.Join(cc.Layout.PKIRoot, konnectivityServerUDS)
+	// IMPORTANT: stop using cc.Layout.PKIRoot since you don’t have it.
+	// Use the same mount root as your config map uses.
+	konnectivityUDSDir := filepath.Join(konnectivityServerMountDir, konnectivityServerUDS)
 	udsFile := filepath.Join(konnectivityUDSDir, konnectivityUDSFile)
 	konnectivityUDSVolume := utils.EmptyDirVolume(konnectivityServerUDS)
 
@@ -172,18 +170,20 @@ func (w workloadBuilder) buildDeployment() *appsv1.Deployment {
 		MountPath: konnectivityUDSDir,
 	}
 
+	e := cc.Etcd()
+
 	c := corev1.Container{
 		Name:            "apiserver",
 		Image:           "registry.k8s.io/kube-apiserver:" + version,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Command:         []string{"kube-apiserver"},
 		Args: []string{
-			"--advertise-address=" + mcp.Status.Address,
+			"--advertise-address=" + status.Address,
 			"--bind-address=0.0.0.0",
 			"--secure-port=6443",
-			"--service-cluster-ip-range=" + mcp.Spec.Kubernetes.Networking.ServiceCIDR,
+			"--service-cluster-ip-range=" + spec.Kubernetes.Networking.ServiceCIDR,
 
-			"--etcd-servers=https://etcd-0." + cc.Names.EtcdServiceName() + "." + ns + ".svc.cluster.local:2379",
+			"--etcd-servers=https://etcd-0." + e.ServiceName() + "." + ns + ".svc.cluster.local:2379",
 
 			"--etcd-cafile=" + cc.CAPath(etcdCA),
 			"--etcd-certfile=" + cc.CertPath(etcdClient),
@@ -206,16 +206,14 @@ func (w workloadBuilder) buildDeployment() *appsv1.Deployment {
 			"--service-account-signing-key-file=" + cc.KeyPath(saSigner),
 
 			"--allow-privileged=true",
-
 			"--egress-selector-config-file=" + konnectivityConfFilePath,
-
 			"--logging-format=json",
 		},
 		Ports: []corev1.ContainerPort{
-			{Name: "https", ContainerPort: cc.Contract.APIServer.SecurePort},
+			{Name: "https", ContainerPort: securePort},
 		},
-		LivenessProbe:  utils.HttpsHealthProbe(cc.Contract.APIServer.SecurePort, cc.Keys.LivezPath, 10, 10, 10, 10),
-		ReadinessProbe: utils.HttpsHealthProbe(cc.Contract.APIServer.SecurePort, cc.Keys.ReadyzPath, 5, 5, 5, 5),
+		LivenessProbe:  utils.HttpsHealthProbe(securePort, livezPath, 10, 10, 10, 10),
+		ReadinessProbe: utils.HttpsHealthProbe(securePort, readyzPath, 5, 5, 5, 5),
 	}
 
 	vols := []corev1.Volume{
@@ -259,7 +257,7 @@ func (w workloadBuilder) buildDeployment() *appsv1.Deployment {
 	}
 
 	return builders.NewDeployment().
-		WithName(cc.Names.APIServerDeploymentName()).
+		WithName(a.DeploymentName()).
 		WithNamespace(ns).
 		WithLabels(labels).
 		WithSelector(labels).

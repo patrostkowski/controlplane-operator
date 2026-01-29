@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd/api"
 )
 
+// HttpsHealthProbe creates an HTTPS health probe for a Kubernetes container.
 func HttpsHealthProbe(port int32, path string, initialDelay, period, timeout, failureThreshold int32) *corev1.Probe {
 	return &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{
@@ -40,6 +41,7 @@ func HttpsHealthProbe(port int32, path string, initialDelay, period, timeout, fa
 	}
 }
 
+// TcpProbe creates a TCP health probe for a Kubernetes container.
 func TcpProbe(port int32, initialDelay, period int32) *corev1.Probe {
 	return &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{
@@ -52,6 +54,7 @@ func TcpProbe(port int32, initialDelay, period int32) *corev1.Probe {
 	}
 }
 
+// ConfigMapVolume creates a Kubernetes volume sourced from a ConfigMap.
 func ConfigMapVolume(mountName, cmName, cmKey, path string) corev1.Volume {
 	return corev1.Volume{
 		Name: mountName,
@@ -66,6 +69,7 @@ func ConfigMapVolume(mountName, cmName, cmKey, path string) corev1.Volume {
 	}
 }
 
+// EmptyDirVolume creates an EmptyDir volume for a Kubernetes container.
 func EmptyDirVolume(mountName string) corev1.Volume {
 	return corev1.Volume{
 		Name: mountName,
@@ -75,6 +79,7 @@ func EmptyDirVolume(mountName string) corev1.Volume {
 	}
 }
 
+// BuildComponentKubeconfig constructs a kubeconfig for a Kubernetes component.
 func BuildComponentKubeconfig(
 	namespace string,
 	apiServerService string,
@@ -111,6 +116,7 @@ func BuildComponentKubeconfig(
 	return cfg
 }
 
+// DefaultContextName is the default context name used in generated kubeconfigs.
 const DefaultContextName = "local"
 
 // BuildKubeconfigWithCertData builds kubeconfig that embeds cert material inlined (Data fields).

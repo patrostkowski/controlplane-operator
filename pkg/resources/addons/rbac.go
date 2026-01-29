@@ -93,17 +93,13 @@ var (
 const DefaultNodeBootstrapperGroup = "system:bootstrappers:kubeadm:default-node-token"
 
 type kubeletJoinBuilder struct {
-	cc    *cluster.ClusterContext
+	cc    cluster.AddonSpec
 	tok   BootstrapToken
 	caPEM []byte
 }
 
-func NewKubeletJoinBuilder(cc *cluster.ClusterContext, tok BootstrapToken, caPEM []byte) cluster.ObjectProducer {
-	return kubeletJoinBuilder{
-		cc:    cc,
-		tok:   tok,
-		caPEM: caPEM,
-	}
+func NewKubeletJoinBuilder(cc cluster.AddonSpec, tok BootstrapToken, caPEM []byte) cluster.ObjectProducer {
+	return kubeletJoinBuilder{cc: cc, tok: tok, caPEM: caPEM}
 }
 
 func (b kubeletJoinBuilder) Objects() []client.Object {
@@ -203,11 +199,11 @@ func (b kubeletJoinBuilder) nodeBootstrapper() *rbacv1.ClusterRoleBinding {
 }
 
 func (b kubeletJoinBuilder) clusterInfo() *corev1.ConfigMap {
-	mcp := b.cc.MCP
+	mcpStatus := b.cc.GetManagedControlPlaneStatus()
 	cfg := api.NewConfig()
 
 	cfg.Clusters[""] = &api.Cluster{
-		Server:                   "https://" + mcp.Status.Address + ":6443",
+		Server:                   "https://" + mcpStatus.Address + ":6443",
 		CertificateAuthorityData: b.caPEM,
 	}
 	cfg.Contexts = map[string]*api.Context{}
@@ -223,8 +219,8 @@ func (b kubeletJoinBuilder) clusterInfo() *corev1.ConfigMap {
 }
 
 func (b kubeletJoinBuilder) kubeletConfigUnversioned() *corev1.ConfigMap {
-	mcp := b.cc.MCP
-	clusterDNS, _ := utils.IPAtOffset(mcp.Spec.Kubernetes.Networking.ServiceCIDR, 10)
+	mcpSpec := b.cc.GetManagedControlPlaneSpec()
+	clusterDNS, _ := utils.IPAtOffset(mcpSpec.Kubernetes.Networking.ServiceCIDR, 10)
 
 	kc := &kubeletconfigv1beta1.KubeletConfiguration{
 		RotateCertificates: true,
@@ -259,8 +255,8 @@ func (b kubeletJoinBuilder) kubeletConfigUnversioned() *corev1.ConfigMap {
 }
 
 func (b kubeletJoinBuilder) kubeletConfigVersioned() *corev1.ConfigMap {
-	mcp := b.cc.MCP
-	clusterDNS, _ := utils.IPAtOffset(mcp.Spec.Kubernetes.Networking.ServiceCIDR, 10)
+	mcpSpec := b.cc.GetManagedControlPlaneSpec()
+	clusterDNS, _ := utils.IPAtOffset(mcpSpec.Kubernetes.Networking.ServiceCIDR, 10)
 
 	kc := &kubeletconfigv1beta1.KubeletConfiguration{
 		RotateCertificates: true,
@@ -285,7 +281,7 @@ func (b kubeletJoinBuilder) kubeletConfigVersioned() *corev1.ConfigMap {
 	yamlStr := mustEncodeKubeletConfigYAML(kc)
 
 	return builders.NewConfigMap().
-		WithName("kubelet-config-"+utils.GetMajorMinorString(mcp.Spec.Kubernetes.Version)).
+		WithName("kubelet-config-"+utils.GetMajorMinorString(mcpSpec.Kubernetes.Version)).
 		WithNamespace("kube-system").
 		Put("kubelet", yamlStr).
 		Build()
@@ -475,26 +471,27 @@ func (b kubeletJoinBuilder) kubeadmNodesKubeadmConfigRoleBinding() *rbacv1.RoleB
 
 // kubeadmConfigConfigMap creates kube-system/kubeadm-config with typed ClusterConfiguration (v1beta4)
 func (b kubeletJoinBuilder) kubeadmConfigConfigMap() *corev1.ConfigMap {
-	mcp := b.cc.MCP
+	mcpSpec := b.cc.GetManagedControlPlaneSpec()
+	mcpStatus := b.cc.GetManagedControlPlaneStatus()
 	cc := &kubeadmv1beta4.ClusterConfiguration{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "kubeadm.k8s.io/v1beta4",
 			Kind:       "ClusterConfiguration",
 		},
-		ClusterName:       mcp.Name,
-		KubernetesVersion: mcp.Spec.Kubernetes.Version,
+		ClusterName:       b.cc.Name(),
+		KubernetesVersion: mcpSpec.Kubernetes.Version,
 		Networking: kubeadmv1beta4.Networking{
 			DNSDomain: "cluster.local",
 		},
 	}
 
-	if mcp.Status.Address != "" {
-		cc.ControlPlaneEndpoint = mcp.Status.Address + ":6443"
+	if mcpStatus.Address != "" {
+		cc.ControlPlaneEndpoint = mcpStatus.Address + ":6443"
 	}
 
-	if mcp.Spec.Kubernetes.Networking != nil {
-		cc.Networking.ServiceSubnet = mcp.Spec.Kubernetes.Networking.ServiceCIDR
-		cc.Networking.PodSubnet = mcp.Spec.Kubernetes.Networking.PodCIDR
+	if mcpSpec.Kubernetes.Networking != nil {
+		cc.Networking.ServiceSubnet = mcpSpec.Kubernetes.Networking.ServiceCIDR
+		cc.Networking.PodSubnet = mcpSpec.Kubernetes.Networking.PodCIDR
 	}
 
 	yamlStr := mustEncodeKubeadmClusterConfigYAML(cc)

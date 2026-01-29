@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
+// setStatus updates the status of the ManagedControlPlane object with the given condition and message.
 func (r *ManagedControlPlaneReconciler) setStatus(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
@@ -75,6 +76,7 @@ func (r *ManagedControlPlaneReconciler) setStatus(
 	return r.Status().Patch(ctx, mcp, client.MergeFrom(before))
 }
 
+// statusWaiting sets the ManagedControlPlane status to waiting with a specific message.
 func (r *ManagedControlPlaneReconciler) statusWaiting(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane, msg mcpv1alpha1.Message) error {
 	return r.setStatus(ctx, mcp,
 		state.ConditionReady,
@@ -85,6 +87,7 @@ func (r *ManagedControlPlaneReconciler) statusWaiting(ctx context.Context, mcp *
 	)
 }
 
+// statusFailed sets the ManagedControlPlane status to failed with a specific message.
 func (r *ManagedControlPlaneReconciler) statusFailed(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane, msg mcpv1alpha1.Message) error {
 	return r.setStatus(ctx, mcp,
 		state.ConditionReady,
@@ -95,6 +98,7 @@ func (r *ManagedControlPlaneReconciler) statusFailed(ctx context.Context, mcp *m
 	)
 }
 
+// statusReady sets the ManagedControlPlane status to ready.
 func (r *ManagedControlPlaneReconciler) statusReady(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) error {
 	return r.setStatus(ctx, mcp,
 		state.ConditionReady,
@@ -105,6 +109,7 @@ func (r *ManagedControlPlaneReconciler) statusReady(ctx context.Context, mcp *mc
 	)
 }
 
+// applyOpts returns the ApplyOptions with field owner and owner reference set for a given owner object.
 func (r *BaseReconciler) applyOpts(owner client.Object) ApplyOptions {
 	return ApplyOptions{
 		FieldOwner:  fieldOwner,
@@ -114,6 +119,7 @@ func (r *BaseReconciler) applyOpts(owner client.Object) ApplyOptions {
 	}
 }
 
+// managedApplyOpts returns ApplyOptions for resources managed by the operator without an explicit owner.
 func (r *BaseReconciler) managedApplyOpts() ApplyOptions {
 	return ApplyOptions{
 		FieldOwner:  fieldOwner, // or "controlplane-operator-managed" if you want to separate
@@ -124,10 +130,13 @@ func (r *BaseReconciler) managedApplyOpts() ApplyOptions {
 }
 
 var (
+	// managedSchemeOnce ensures the managedScheme is initialized only once.
 	managedSchemeOnce sync.Once
+	// managedSchemeInst holds the initialized runtime.Scheme for managed resources.
 	managedSchemeInst *runtime.Scheme
 )
 
+// managedScheme initializes and returns a scheme containing common Kubernetes API types for managed resources.
 func (r *BaseReconciler) managedScheme() *runtime.Scheme {
 	managedSchemeOnce.Do(func() {
 		s := runtime.NewScheme()
@@ -140,6 +149,7 @@ func (r *BaseReconciler) managedScheme() *runtime.Scheme {
 	return managedSchemeInst
 }
 
+// ApplyOptions defines options for server-side apply operations.
 type ApplyOptions struct {
 	FieldOwner  string
 	Force       bool
@@ -148,6 +158,7 @@ type ApplyOptions struct {
 	Log         logr.Logger
 }
 
+// apply performs a server-side apply operation for a list of Kubernetes objects.
 func (r *BaseReconciler) apply(ctx context.Context, c client.Client, opts ApplyOptions, objs ...client.Object) error {
 	if r.Scheme == nil {
 		return fmt.Errorf("apply: scheme is nil")
@@ -190,6 +201,7 @@ func (r *BaseReconciler) apply(ctx context.Context, c client.Client, opts ApplyO
 	return nil
 }
 
+// updateMCPAddress updates the address field in the ManagedControlPlane's status.
 func (r *ManagedControlPlaneReconciler) updateMCPAddress(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,
@@ -208,6 +220,7 @@ func (r *ManagedControlPlaneReconciler) updateMCPAddress(
 	})
 }
 
+// updateMCPAdminSecretRef updates the admin kubeconfig secret reference in the ManagedControlPlane's status.
 func (r *ManagedControlPlaneReconciler) updateMCPAdminSecretRef(
 	ctx context.Context,
 	mcp *mcpv1alpha1.ManagedControlPlane,

@@ -24,9 +24,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type builder struct{ cc *cluster.ClusterContext }
+type builder struct {
+	cc cluster.ControllerManagerSpec
+}
 
-func NewBuilder(cc *cluster.ClusterContext) cluster.ObjectProducer {
+func NewBuilder(cc cluster.ControllerManagerSpec) cluster.ObjectProducer {
 	return builder{cc: cc}
 }
 
@@ -39,16 +41,17 @@ func (b builder) Objects() []client.Object {
 
 func (b builder) buildConfigMap() *corev1.ConfigMap {
 	cc := b.cc
-	mcp := cc.MCP
-	ns := mcp.Namespace
+	cm := cc.ControllerManager()
+	a := cc.APIServer()
+	ns := cc.Namespace()
 
-	clusterCA := cc.Names.SecretManagedCAName()
-	cmClient := cc.Names.SecretControllerManagerClientName()
+	clusterCA := cm.ClusterCASecret()
+	cmClient := cm.ClientCertSecret()
 
 	kcfg := utils.BuildComponentKubeconfig(
 		ns,
-		cc.Names.APIServerServiceName(),
-		cc.Contract.APIServer.SecurePort,
+		a.ServiceName(),
+		6443, // apiserver secure port (builder-owned; keep consistent with apiserver builder)
 		"cm",
 		cc.CertPath(clusterCA),
 		cc.CertPath(cmClient),
@@ -61,7 +64,7 @@ func (b builder) buildConfigMap() *corev1.ConfigMap {
 	}
 
 	return builders.NewConfigMap().
-		WithName(cc.Names.ControllerManagerKubeconfigConfigMapName()).
+		WithName(cm.KubeconfigConfigMapName()).
 		WithNamespace(ns).
 		Put(cmKubeconfigKey, string(kubeconfigData)).
 		Build()
@@ -69,21 +72,23 @@ func (b builder) buildConfigMap() *corev1.ConfigMap {
 
 func (b builder) buildDeployment() *appsv1.Deployment {
 	cc := b.cc
-	mcp := cc.MCP
-	ns := mcp.Namespace
-	version := mcp.Spec.Kubernetes.Version
+	cm := cc.ControllerManager()
+	ns := cc.Namespace()
 
-	labels := map[string]string{cc.Keys.LabelKeyApp: labelValApp}
+	spec := cc.GetManagedControlPlaneSpec()
+	version := spec.Kubernetes.Version
+
+	labels := map[string]string{labelKeyApp: labelValApp}
 	var replicas int32 = 1
 
-	// PKI secret names
-	clusterCA := cc.Names.SecretManagedCAName()
-	cmClient := cc.Names.SecretControllerManagerClientName()
-	saSigner := cc.Names.SecretServiceAccountSignerName()
+	// PKI secret names via cc.ControllerManager()
+	clusterCA := cm.ClusterCASecret()
+	cmClient := cm.ClientCertSecret()
+	saSigner := cm.SASignerSecret()
 
 	kubeconfigVol := utils.ConfigMapVolume(
-		cc.Volumes.Kubeconfig,
-		cc.Names.ControllerManagerKubeconfigConfigMapName(),
+		kubeconfigVolumeName,
+		cm.KubeconfigConfigMapName(),
 		cmKubeconfigKey,
 		cmKubeconfigFileName,
 	)
@@ -96,7 +101,7 @@ func (b builder) buildDeployment() *appsv1.Deployment {
 		Args: []string{
 			"--bind-address=0.0.0.0",
 
-			"--cluster-name=" + mcp.GetObjectMeta().GetName(),
+			"--cluster-name=" + cc.Name(),
 
 			// kubeconfig wiring
 			"--kubeconfig=" + kubeconfigPath,
@@ -121,7 +126,7 @@ func (b builder) buildDeployment() *appsv1.Deployment {
 			"--root-ca-file=" + cc.CertPath(clusterCA),
 
 			// networking
-			"--cluster-cidr=" + mcp.Spec.Kubernetes.Networking.PodCIDR,
+			"--cluster-cidr=" + spec.Kubernetes.Networking.PodCIDR,
 			"--allocate-node-cidrs=true",
 
 			"--logging-format=json",
@@ -129,9 +134,9 @@ func (b builder) buildDeployment() *appsv1.Deployment {
 		Ports: []corev1.ContainerPort{
 			{Name: "https", ContainerPort: securePort},
 		},
-		StartupProbe:   utils.HttpsHealthProbe(securePort, cc.Keys.HealthPath, 10, 10, 15, 24),
-		LivenessProbe:  utils.HttpsHealthProbe(securePort, cc.Keys.HealthPath, 10, 10, 15, 8),
-		ReadinessProbe: utils.HttpsHealthProbe(securePort, cc.Keys.HealthPath, 5, 5, 15, 3),
+		StartupProbe:   utils.HttpsHealthProbe(securePort, healthPath, 10, 10, 15, 24),
+		LivenessProbe:  utils.HttpsHealthProbe(securePort, healthPath, 10, 10, 15, 8),
+		ReadinessProbe: utils.HttpsHealthProbe(securePort, healthPath, 5, 5, 15, 3),
 	}
 
 	secretVolumes := []corev1.Volume{
@@ -147,7 +152,7 @@ func (b builder) buildDeployment() *appsv1.Deployment {
 	}
 
 	return builders.NewDeployment().
-		WithName(cc.Names.ControllerManagerDeploymentName()).
+		WithName(cm.DeploymentName()).
 		WithNamespace(ns).
 		WithLabels(labels).
 		WithSelector(labels).
@@ -157,7 +162,7 @@ func (b builder) buildDeployment() *appsv1.Deployment {
 		AddVolumeMounts(c.Name,
 			append([]corev1.VolumeMount{
 				{
-					Name:      cc.Volumes.Kubeconfig,
+					Name:      kubeconfigVolumeName,
 					MountPath: kubeconfigMountDir,
 					ReadOnly:  true,
 				},

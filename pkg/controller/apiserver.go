@@ -28,46 +28,57 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// APIServerServiceComponent reconciles the Kubernetes API server service.
 type APIServerServiceComponent struct {
 	r *ManagedControlPlaneReconciler
 }
 
+// Name returns the name of the API server service component.
 func (c *APIServerServiceComponent) Name() string {
 	return "apiserver-service"
 }
 
+// Reconcile reconciles the API server service.
 func (c *APIServerServiceComponent) Reconcile(ctx context.Context, cc *cluster.ClusterContext) (ctrl.Result, error) {
 	return c.r.reconcileAPIServiceSvc(ctx, cc)
 }
 
+// WaitingMessage returns the waiting message for the API server service.
 func (c *APIServerServiceComponent) WaitingMessage() mcpv1alpha1.Message {
 	return state.MessageAPIServerSvcWaiting
 }
 
+// FailedMessage returns the failed message for the API server service.
 func (c *APIServerServiceComponent) FailedMessage() mcpv1alpha1.Message {
 	return state.MessageAPIServerSvcFailed
 }
 
+// APIServerComponent reconciles the Kubernetes API server deployment.
 type APIServerComponent struct {
 	r *ManagedControlPlaneReconciler
 }
 
+// Name returns the name of the API server component.
 func (c *APIServerComponent) Name() string {
 	return "apiserver"
 }
 
+// Reconcile reconciles the API server deployment.
 func (c *APIServerComponent) Reconcile(ctx context.Context, cc *cluster.ClusterContext) (ctrl.Result, error) {
 	return c.r.reconcileAPIServer(ctx, cc)
 }
 
+// WaitingMessage returns the waiting message for the API server.
 func (c *APIServerComponent) WaitingMessage() mcpv1alpha1.Message {
 	return state.MessageAPIServerWaiting
 }
 
+// FailedMessage returns the failed message for the API server.
 func (c *APIServerComponent) FailedMessage() mcpv1alpha1.Message {
 	return state.MessageAPIServerFailed
 }
 
+// tryEndpointAddress attempts to retrieve the endpoint address for a given service.
 func (r *ManagedControlPlaneReconciler) tryEndpointAddress(ctx context.Context, name, namespace string) (string, error) {
 	svc := &corev1.Service{}
 	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, svc); err != nil {
@@ -86,19 +97,19 @@ func (r *ManagedControlPlaneReconciler) tryEndpointAddress(ctx context.Context, 
 	return "", nil
 }
 
+// reconcileAPIServiceSvc reconciles the API server service for the control plane.
 func (r *ManagedControlPlaneReconciler) reconcileAPIServiceSvc(
 	ctx context.Context,
 	cc *cluster.ClusterContext,
 ) (ctrl.Result, error) {
-	mcp := cc.MCP
-	log := r.Log.WithValues("api-endpoint", mcp.Namespace)
+	log := r.Log.WithValues("api-endpoint", cc.Namespace())
 
 	endpoint := apiserver.NewEndpointBuilder(cc)
-	if err := r.apply(ctx, r.Client, r.applyOpts(mcp), endpoint.Objects()...); err != nil {
+	if err := r.apply(ctx, r.Client, r.applyOpts(cc.Owner()), endpoint.Objects()...); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	addr, err := r.tryEndpointAddress(ctx, cc.Names.APIServerServiceName(), mcp.Namespace)
+	addr, err := r.tryEndpointAddress(ctx, cc.APIServer().ServiceName(), cc.Namespace())
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
@@ -112,8 +123,8 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServiceSvc(
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
-	if mcp.Status.Address != addr {
-		if err := r.updateMCPAddress(ctx, mcp, addr); err != nil {
+	if cc.GetManagedControlPlaneStatus().Address != addr {
+		if err := r.updateMCPAddress(ctx, cc.MCP(), addr); err != nil {
 			log.Error(err, "failed to update address")
 			return ctrl.Result{}, err
 		}
@@ -122,17 +133,16 @@ func (r *ManagedControlPlaneReconciler) reconcileAPIServiceSvc(
 	return ctrl.Result{}, nil
 }
 
+// reconcileAPIServer reconciles the API server deployment for the control plane.
 func (r *ManagedControlPlaneReconciler) reconcileAPIServer(
 	ctx context.Context,
 	cc *cluster.ClusterContext,
 ) (ctrl.Result, error) {
-	mcp := cc.MCP
-
 	workload := apiserver.NewWorkloadBuilder(cc)
 	if err := r.apply(
 		ctx,
 		r.Client,
-		r.applyOpts(mcp),
+		r.applyOpts(cc.Owner()),
 		workload.Objects()...,
 	); err != nil {
 		return ctrl.Result{}, err

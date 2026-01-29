@@ -42,7 +42,7 @@ import (
 )
 
 const (
-	adminConfigSecretKey = "config"
+	adminConfigSecretKey = "kubeconfig"
 
 	kubeconfigFlagName = "kubeconfig"
 	namespaceFlagName  = "namespace"

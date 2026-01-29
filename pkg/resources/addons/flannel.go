@@ -150,7 +150,7 @@ func (e addonsBuilder) buildFlannelConfigMap() *corev1.ConfigMap {
 }`
 
 	netConf := `{
-  "Network": "` + e.cc.MCP.Spec.Kubernetes.Networking.PodCIDR + `",
+  "Network": "` + e.cc.GetManagedControlPlaneSpec().Kubernetes.Networking.PodCIDR + `",
   "EnableNFTables": false,
   "Backend": {
     "Type": "` + FlannelBackendType + `"
