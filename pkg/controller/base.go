@@ -25,12 +25,14 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
+// BaseReconciler provides common reconciliation utilities and fields.
 type BaseReconciler struct {
 	Log      logr.Logger
 	Recorder record.EventRecorder
 	Scheme   *runtime.Scheme
 }
 
+// Component defines an interface for a reconcilable component within the control plane.
 type Component interface {
 	Name() string
 	Reconcile(ctx context.Context, cc *cluster.ClusterContext) (ctrl.Result, error)

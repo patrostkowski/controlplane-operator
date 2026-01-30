@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
+// IPAtOffset calculates an IP address within a CIDR range at a given offset.
 func IPAtOffset(cidr string, offset uint32) (net.IP, error) {
 	ip, ipnet, err := net.ParseCIDR(cidr)
 	if err != nil {
@@ -61,6 +62,7 @@ func IPAtOffset(cidr string, offset uint32) (net.IP, error) {
 	return out, nil
 }
 
+// MergeStringMap merges a source map into a destination map, overwriting existing keys.
 func MergeStringMap(dst, src map[string]string) map[string]string {
 	if dst == nil && src == nil {
 		return nil
@@ -74,14 +76,17 @@ func MergeStringMap(dst, src map[string]string) map[string]string {
 	return dst
 }
 
+// PortString converts an int32 port number to its string representation.
 func PortString(p int32) string {
 	return strconv.Itoa(int(p))
 }
 
+// IntstrFromInt converts an integer port to an IntOrString type.
 func IntstrFromInt(port int32) intstr.IntOrString {
 	return intstr.IntOrString{Type: intstr.Int, IntVal: port}
 }
 
+// GetMajorMinorString extracts the major and minor version from a full version string.
 func GetMajorMinorString(version string) string {
 	if len(version) < 2 {
 		return ""
@@ -122,6 +127,7 @@ func GetObjYaml(obj runtime.Object) string {
 	return b.String()
 }
 
+// GetObjJSON serializes a Kubernetes runtime object to a JSON string.
 func GetObjJSON(obj runtime.Object) string {
 	s := json.NewSerializerWithOptions(
 		json.DefaultMetaFactory,

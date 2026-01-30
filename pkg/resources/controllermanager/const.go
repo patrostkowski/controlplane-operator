@@ -16,11 +16,18 @@ package controllermanager
 
 const (
 	// Component identity
+	healthPath = "/healthz"
+
+	kubeconfigConfigMapKey = "kubeconfig"
+	kubeconfigFileName     = "kubeconfig"
+	kubeconfigVolumeName   = "kubeconfig"
+
+	labelKeyApp = "app"
+	labelValApp = "kube-controller-manager"
+
 	componentName = "kube-controller-manager"
 
-	labelValApp = "kcm"
-
-	containerName = "kcm"
+	containerName = "kube-controller-manager"
 
 	// Kubeconfig ConfigMap
 	cmKubeconfigName     = "controller-kubeconfig"

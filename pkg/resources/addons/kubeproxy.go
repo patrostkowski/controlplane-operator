@@ -70,11 +70,11 @@ func (e addonsBuilder) buildKubeproxyClusterRoleBinding() *rbacv1.ClusterRoleBin
 // TODO: make it configurable depends
 // on CNI that was set
 func (e addonsBuilder) buildKubeproxyConfigMap() *corev1.ConfigMap {
-	server := "https://" + e.cc.MCP.Status.Address + ":6443"
+	server := "https://" + e.cc.GetManagedControlPlaneStatus().Address + ":6443"
 	configConf := `apiVersion: kubeproxy.config.k8s.io/v1alpha1
 kind: KubeProxyConfiguration
 mode: "iptables"
-clusterCIDR: "` + e.cc.MCP.Spec.Kubernetes.Networking.ServiceCIDR + `"
+clusterCIDR: "` + e.cc.GetManagedControlPlaneSpec().Kubernetes.Networking.ServiceCIDR + `"
 bindAddress: "0.0.0.0"
 metricsBindAddress: "127.0.0.1:10249"
 healthzBindAddress: "0.0.0.0:10256"
@@ -115,7 +115,7 @@ current-context: default
 }
 
 func (e addonsBuilder) buildKubeproxyDaemonSet() *appsv1.DaemonSet {
-	version := e.cc.MCP.Spec.Kubernetes.Version
+	version := e.cc.GetManagedControlPlaneSpec().Kubernetes.Version
 	priv := true
 	fileOrCreate := corev1.HostPathFileOrCreate
 	dir := corev1.HostPathDirectory

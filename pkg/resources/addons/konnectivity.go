@@ -39,33 +39,32 @@ var KonnecivityAgentVersion = "v0.1.3"
 
 func (e addonsBuilder) buildKonnectivityAgentDaemonSet() *appsv1.DaemonSet {
 	cc := e.cc
-	mcp := cc.MCP
+	k := cc.Konnectivity()
 
-	k := cc.Contract.Konnectivity
-
-	agentName := k.AgentName
+	agentName := k.AgentName()
 	volumeName := konnectivityAgentVolumeName
 	mountDir := "/var/run/konnectivity"
 
 	// secrets copied into managed cluster namespace (names must match what you copy)
-	agentTLS := cc.Names.SecretKonnectivityAgentTLSName()
-	konCA := cc.Names.SecretKonnectivityCAName()
+	agentTLS := k.AgentTLSSecret()
+	konCA := k.CASecret()
 
 	labels := map[string]string{
 		"app": agentName,
 	}
 
-	// file names / keys from cc.Keys
-	caPath := filepath.Join(mountDir, cc.Keys.CACrt)
-	agentCertPath := filepath.Join(mountDir, cc.Keys.TLSCrt)
-	agentKeyPath := filepath.Join(mountDir, cc.Keys.TLSKey)
+	// file paths inside the container
+	caPath := filepath.Join(mountDir, keyCACrt)
+	agentCertPath := filepath.Join(mountDir, keyTLSCrt)
+	agentKeyPath := filepath.Join(mountDir, keyTLSKey)
+
+	status := cc.GetManagedControlPlaneStatus()
 
 	c := corev1.Container{
-		Name: konnectivityAgentName,
-		// TODO: make it compatible with k8s-api version
+		Name:  konnectivityAgentName,
 		Image: "registry.k8s.io/kas-network-proxy/proxy-agent:" + KonnecivityAgentVersion,
 		Args: []string{
-			"--proxy-server-host=" + mcp.Status.Address,
+			"--proxy-server-host=" + status.Address,
 			"--proxy-server-port=" + utils.PortString(konnectivityServerPort),
 
 			"--ca-cert=" + caPath,
@@ -84,8 +83,8 @@ func (e addonsBuilder) buildKonnectivityAgentDaemonSet() *appsv1.DaemonSet {
 						Secret: &corev1.SecretProjection{
 							LocalObjectReference: corev1.LocalObjectReference{Name: agentTLS},
 							Items: []corev1.KeyToPath{
-								{Key: cc.Keys.TLSCrt, Path: cc.Keys.TLSCrt},
-								{Key: cc.Keys.TLSKey, Path: cc.Keys.TLSKey},
+								{Key: keyTLSCrt, Path: keyTLSCrt},
+								{Key: keyTLSKey, Path: keyTLSKey},
 							},
 						},
 					},
@@ -93,7 +92,7 @@ func (e addonsBuilder) buildKonnectivityAgentDaemonSet() *appsv1.DaemonSet {
 						Secret: &corev1.SecretProjection{
 							LocalObjectReference: corev1.LocalObjectReference{Name: konCA},
 							Items: []corev1.KeyToPath{
-								{Key: cc.Keys.CACrt, Path: cc.Keys.CACrt},
+								{Key: keyCACrt, Path: keyCACrt},
 							},
 						},
 					},
@@ -102,7 +101,7 @@ func (e addonsBuilder) buildKonnectivityAgentDaemonSet() *appsv1.DaemonSet {
 		},
 	}
 
-	volumeMounts := corev1.VolumeMount{
+	volumeMount := corev1.VolumeMount{
 		Name:      volumeName,
 		MountPath: mountDir,
 		ReadOnly:  true,
@@ -120,6 +119,6 @@ func (e addonsBuilder) buildKonnectivityAgentDaemonSet() *appsv1.DaemonSet {
 		WithDNSPolicy(policy).
 		WithHostNetwork().
 		AddVolumes(volume).
-		AddVolumeMounts(c.Name, volumeMounts).
+		AddVolumeMounts(c.Name, volumeMount).
 		Build()
 }

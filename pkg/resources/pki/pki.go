@@ -19,7 +19,7 @@ import (
 	"time"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
-	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,16 +30,6 @@ type durations struct {
 	thirtyDays metav1.Duration
 }
 
-func Resources(mcp *mcpv1alpha1.ManagedControlPlane) []client.Object {
-	ns := mcp.Namespace
-	d := defaultDurations()
-
-	objs := make([]client.Object, 0, 32)
-	objs = append(objs, issuerResources(ns)...)
-	objs = append(objs, certificateResources(mcp, ns, d)...)
-	return objs
-}
-
 func defaultDurations() durations {
 	return durations{
 		tenYears:   metav1.Duration{Duration: 87600 * time.Hour}, // 10 years
@@ -47,7 +37,46 @@ func defaultDurations() durations {
 	}
 }
 
-func issuerResources(ns string) []client.Object {
+type builder struct {
+	cc        cluster.PKISpec
+	durations durations
+}
+
+func NewBuilder(cc cluster.PKISpec) cluster.ObjectProducer {
+	return builder{
+		cc:        cc,
+		durations: defaultDurations(),
+	}
+}
+
+func (b builder) Objects() []client.Object {
+	issuers := b.issuerResources()
+	certs := b.certificateResources()
+
+	objs := make([]client.Object, 0, len(issuers)+len(certs))
+	objs = append(objs, issuers...)
+	objs = append(objs, certs...)
+
+	return objs
+}
+
+func (b builder) issuerResources() []client.Object {
+	ns := b.cc.Namespace()
+
+	issuerSelfSigned := b.cc.PKI().Issuer().SelfSigned()
+	issuerCA := b.cc.PKI().Issuer().CA()
+	issuerEtcdSelfSigned := b.cc.PKI().Issuer().EtcdSelfSigned()
+	issuerEtcdCA := b.cc.PKI().Issuer().EtcdCA()
+	issuerFrontProxySelf := b.cc.PKI().Issuer().FrontProxySelfSigned()
+	issuerFrontProxyCA := b.cc.PKI().Issuer().FrontProxyCA()
+	issuerKonnectivitySelf := b.cc.PKI().Issuer().KonnectivitySelfSigned()
+	issuerKonnectivityCA := b.cc.PKI().Issuer().KonnectivityCA()
+
+	secretManagedCA := b.cc.PKI().Certificate().ManagedCA()
+	secretEtcdCA := b.cc.PKI().Certificate().EtcdCA()
+	secretFrontProxyCA := b.cc.PKI().Certificate().FrontProxyCA()
+	secretKonnectivityCA := b.cc.PKI().Certificate().KonnectivityCA()
+
 	return []client.Object{
 		// managed
 		builders.NewIssuer().
@@ -99,8 +128,37 @@ func issuerResources(ns string) []client.Object {
 	}
 }
 
-func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d durations) []client.Object {
+func (b builder) certificateResources() []client.Object {
 	objs := make([]client.Object, 0, 32)
+	ns := b.cc.Namespace()
+	d := b.durations
+
+	secretManagedCA := b.cc.PKI().Certificate().ManagedCA()
+	secretEtcdCA := b.cc.PKI().Certificate().EtcdCA()
+	secretFrontProxyCA := b.cc.PKI().Certificate().FrontProxyCA()
+	secretSASigner := b.cc.PKI().Certificate().SASigner()
+	secretAPIServerTLS := b.cc.PKI().Certificate().APIServerTLS()
+	secretAPIServerKubelet := b.cc.PKI().Certificate().APIServerKubeletClient()
+	secretEtcdServerTLS := b.cc.PKI().Certificate().EtcdServerTLS()
+	secretEtcdPeerTLS := b.cc.PKI().Certificate().EtcdPeerTLS()
+	secretEtcdHealthClient := b.cc.PKI().Certificate().EtcdHealthClient()
+	secretAPIServerEtcd := b.cc.PKI().Certificate().APIServerEtcdClient()
+	secretFrontProxyClient := b.cc.PKI().Certificate().FrontProxyClient()
+	secretCMClient := b.cc.PKI().Certificate().CMClient()
+	secretSchedulerClient := b.cc.PKI().Certificate().SchedulerClient()
+	secretAdminClient := b.cc.PKI().Certificate().AdminClient()
+	secretKonnectivityCA := b.cc.PKI().Certificate().KonnectivityCA()
+	secretKonnectivityTLS := b.cc.PKI().Certificate().KonnectivityServerTLS()
+	secretKonnectivityAgentTLS := b.cc.PKI().Certificate().KonnectivityAgentTLS()
+
+	issuerSelfSigned := b.cc.PKI().Issuer().SelfSigned()
+	issuerCA := b.cc.PKI().Issuer().CA()
+	issuerEtcdSelfSigned := b.cc.PKI().Issuer().EtcdSelfSigned()
+	issuerEtcdCA := b.cc.PKI().Issuer().EtcdCA()
+	issuerFrontProxySelf := b.cc.PKI().Issuer().FrontProxySelfSigned()
+	issuerFrontProxyCA := b.cc.PKI().Issuer().FrontProxyCA()
+	issuerKonnectivitySelf := b.cc.PKI().Issuer().KonnectivitySelfSigned()
+	issuerKonnectivityCA := b.cc.PKI().Issuer().KonnectivityCA()
 
 	// root CAs
 	objs = append(objs,
@@ -159,7 +217,7 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 	)
 
 	// apiserver serving cert
-	dns, ips := apiserverSANs(mcp, ns)
+	dns, ips := b.apiserverSANs()
 	objs = append(objs,
 		builders.NewCertificate().
 			WithName(secretAPIServerTLS).
@@ -180,7 +238,7 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 	)
 
 	// konnectivity-server cert
-	konnDNS, konnIPs := konnectivityServerSANs(mcp, ns)
+	konnDNS, konnIPs := b.konnectivityServerSANs()
 	objs = append(objs,
 		builders.NewCertificate().
 			WithName(secretKonnectivityTLS).
@@ -384,20 +442,24 @@ func certificateResources(mcp *mcpv1alpha1.ManagedControlPlane, ns string, d dur
 	return objs
 }
 
-func konnectivityServerSANs(mcp *mcpv1alpha1.ManagedControlPlane, ns string) (dns []string, ips []string) {
+func (b builder) konnectivityServerSANs() (dns []string, ips []string) {
+	ns := b.cc.Namespace()
+	mcpSpec := b.cc.GetManagedControlPlaneSpec()
+	mcpStatus := b.cc.GetManagedControlPlaneStatus()
+
 	dns = []string{
 		"konnectivity-server",
 		"konnectivity-server." + ns,
 		"konnectivity-server." + ns + ".svc",
 	}
 
-	if mcp.Spec.Kubernetes.Networking != nil {
-		if svcIP, ok := firstServiceIP(mcp.Spec.Kubernetes.Networking.ServiceCIDR); ok {
+	if mcpSpec.Kubernetes.Networking != nil {
+		if svcIP, ok := firstServiceIP(mcpSpec.Kubernetes.Networking.ServiceCIDR); ok {
 			ips = append(ips, svcIP)
 		}
 	}
 
-	addr := mcp.Status.Address
+	addr := mcpStatus.Address
 	if addr != "" {
 		if net.ParseIP(addr) != nil {
 			ips = append(ips, addr)
@@ -410,7 +472,11 @@ func konnectivityServerSANs(mcp *mcpv1alpha1.ManagedControlPlane, ns string) (dn
 	return dns, ips
 }
 
-func apiserverSANs(mcp *mcpv1alpha1.ManagedControlPlane, ns string) (dns []string, ips []string) {
+func (b builder) apiserverSANs() (dns []string, ips []string) {
+	ns := b.cc.Namespace()
+	mcpSpec := b.cc.GetManagedControlPlaneSpec()
+	mcpStatus := b.cc.GetManagedControlPlaneStatus()
+
 	dns = []string{
 		"kube-apiserver." + ns + ".svc",
 		"kube-apiserver." + ns + ".svc.cluster.local",
@@ -421,13 +487,13 @@ func apiserverSANs(mcp *mcpv1alpha1.ManagedControlPlane, ns string) (dns []strin
 		"localhost",
 	}
 
-	if mcp.Spec.Kubernetes.Networking != nil {
-		if svcIP, ok := firstServiceIP(mcp.Spec.Kubernetes.Networking.ServiceCIDR); ok {
+	if mcpSpec.Kubernetes.Networking != nil {
+		if svcIP, ok := firstServiceIP(mcpSpec.Kubernetes.Networking.ServiceCIDR); ok {
 			ips = append(ips, svcIP)
 		}
 	}
 
-	addr := mcp.Status.Address
+	addr := mcpStatus.Address
 	if addr != "" {
 		if net.ParseIP(addr) != nil {
 			ips = append(ips, addr)

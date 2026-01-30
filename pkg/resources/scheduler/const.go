@@ -18,9 +18,7 @@ const (
 	// Component identity
 	componentName = "kube-scheduler"
 
-	labelValApp = "ks"
-
-	containerName = "ks"
+	containerName = "kube-scheduler"
 
 	// Kubeconfig ConfigMap
 	cmKubeconfigName     = "scheduler-kubeconfig"
@@ -33,4 +31,19 @@ const (
 
 	// Scheduler secure port
 	securePort int32 = 10259
+
+	livezPath  = "/livez"
+	readyzPath = "/readyz"
+
+	kubeconfigConfigMapKey = "kubeconfig"
+	kubeconfigFileName     = "kubeconfig"
+	kubeconfigVolumeName   = "kubeconfig"
+
+	schedulerKubeconfigKey      = "scheduler.conf"
+	schedulerKubeconfigFileName = "scheduler.conf"
+
+	labelKeyApp = "app"
+	labelValApp = "kube-scheduler"
+
+	apiserverSecurePort = int32(6443) // keep consistent with apiserver builder
 )

@@ -24,38 +24,44 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
+// PKIComponent reconciles the Public Key Infrastructure (PKI) resources.
 type PKIComponent struct {
 	r *ManagedControlPlaneReconciler
 }
 
+// Name returns the name of the PKI component.
 func (c *PKIComponent) Name() string {
 	return "pki"
 }
 
+// Reconcile reconciles the PKI resources.
 func (c *PKIComponent) Reconcile(ctx context.Context, cc *cluster.ClusterContext) (ctrl.Result, error) {
 	return c.r.reconcilePKI(ctx, cc)
 }
 
+// WaitingMessage returns the waiting message for the PKI component.
 func (c *PKIComponent) WaitingMessage() mcpv1alpha1.Message {
 	return state.MessagePKIWaiting
 }
 
+// FailedMessage returns the failed message for the PKI component.
 func (c *PKIComponent) FailedMessage() mcpv1alpha1.Message {
 	return state.MessagePKIFailed
 }
 
+// reconcilePKI reconciles the PKI resources for the control plane.
 func (r *ManagedControlPlaneReconciler) reconcilePKI(
 	ctx context.Context,
 	cc *cluster.ClusterContext,
 ) (ctrl.Result, error) {
-	mcp := cc.MCP
-	log := r.Log.WithValues("pki", mcp.Namespace)
+	log := r.Log.WithValues(cc.Namespace(), cc.Name())
 
+	p := pki.NewBuilder(cc)
 	if err := r.apply(
 		ctx,
 		r.Client,
-		r.applyOpts(mcp),
-		pki.Resources(mcp)...,
+		r.applyOpts(cc.Owner()),
+		p.Objects()...,
 	); err != nil {
 		log.Error(err, "failed to apply PKI resources")
 		return ctrl.Result{}, err

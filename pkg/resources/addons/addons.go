@@ -20,10 +20,10 @@ import (
 )
 
 type addonsBuilder struct {
-	cc *cluster.ClusterContext
+	cc cluster.AddonSpec
 }
 
-func NewAddonsBuilder(cc *cluster.ClusterContext) cluster.ObjectProducer {
+func NewAddonsBuilder(cc cluster.AddonSpec) cluster.ObjectProducer {
 	return addonsBuilder{cc: cc}
 }
 

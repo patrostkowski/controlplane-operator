@@ -28,41 +28,48 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// AdminConfigComponent reconciles the admin kubeconfig secret for the control plane.
 type AdminConfigComponent struct {
 	r *ManagedControlPlaneReconciler
 }
 
+// Name returns the name of the admin kubeconfig component.
 func (c *AdminConfigComponent) Name() string {
 	return "admin-kubeconfig"
 }
 
+// Reconcile reconciles the admin kubeconfig secret.
 func (c *AdminConfigComponent) Reconcile(ctx context.Context, cc *cluster.ClusterContext) (ctrl.Result, error) {
 	return c.r.reconcileAdminConfig(ctx, cc)
 }
 
+// WaitingMessage returns the waiting message for the admin kubeconfig.
 func (c *AdminConfigComponent) WaitingMessage() mcpv1alpha1.Message {
 	return state.MessageAdminKubeconfigWaiting
 }
 
+// FailedMessage returns the failed message for the admin kubeconfig.
 func (c *AdminConfigComponent) FailedMessage() mcpv1alpha1.Message {
 	return state.MessageAdminKubeconfigFailed
 }
 
+// reconcileAdminConfig reconciles the admin kubeconfig secret for the managed control plane.
 func (r *ManagedControlPlaneReconciler) reconcileAdminConfig(
 	ctx context.Context,
 	cc *cluster.ClusterContext,
 ) (ctrl.Result, error) {
-	mcp := cc.MCP
-	ns := mcp.Namespace
+	mcp := cc.MCP()
+	ns := cc.Namespace()
 
-	if mcp.Status.Address == "" {
+	status := cc.GetManagedControlPlaneStatus()
+	if status.Address == "" {
 		r.Log.Info("API address not set yet")
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
-	serverURL := "https://" + mcp.Status.Address + ":6443"
+	serverURL := "https://" + status.Address + ":6443"
 
-	adminSecretName := cc.Names.SecretAdminClientName()
+	adminSecretName := cc.Admin().ClientSecret()
 
 	// get admin-client secret
 	adminClient := &corev1.Secret{}
@@ -70,9 +77,10 @@ func (r *ManagedControlPlaneReconciler) reconcileAdminConfig(
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, client.IgnoreNotFound(err)
 	}
 
-	ca := adminClient.Data[cc.Keys.CACrt]
-	crt := adminClient.Data[cc.Keys.TLSCrt]
-	key := adminClient.Data[cc.Keys.TLSKey]
+	// cert-manager standard keys
+	ca := adminClient.Data["ca.crt"]
+	crt := adminClient.Data["tls.crt"]
+	key := adminClient.Data["tls.key"]
 
 	if len(ca) == 0 || len(crt) == 0 || len(key) == 0 {
 		r.Log.Info("admin config secret not ready yet")
@@ -87,27 +95,30 @@ func (r *ManagedControlPlaneReconciler) reconcileAdminConfig(
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 	}
 
+	kubeconfigSecretName := cc.Admin().KubeconfigSecret()
+	kubeconfigKey := cc.Admin().KubeconfigDataKey()
+
 	s := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      cc.Names.AdminKubeconfigSecretName(),
+			Name:      kubeconfigSecretName,
 			Namespace: ns,
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: map[string][]byte{
-			cc.Keys.AdminKubeconfigKey: kubeconfigBytes,
+			kubeconfigKey: kubeconfigBytes,
 		},
 	}
 
-	err = r.apply(ctx, r.Client, r.applyOpts(mcp), s)
-	if err != nil {
+	if err := r.apply(ctx, r.Client, r.applyOpts(cc.Owner()), s); err != nil {
 		r.Log.Error(err, "failed to apply Admin config secret", "name", s.GetName())
 		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, err
 	}
 
-	// updating MCP status with sercet ref
-	if err = r.updateMCPAdminSecretRef(ctx, mcp, cc.Names.AdminKubeconfigSecretName()); err != nil {
+	// update MCP status with secret ref
+	if err := r.updateMCPAdminSecretRef(ctx, mcp, kubeconfigSecretName); err != nil {
 		r.Log.Error(err, "failed to update admin config secret ref")
 		return ctrl.Result{}, err
 	}
+
 	return ctrl.Result{}, nil
 }

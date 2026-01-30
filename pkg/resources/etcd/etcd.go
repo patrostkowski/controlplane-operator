@@ -27,9 +27,9 @@ import (
 
 var EtcdVersion = "3.6.5-0"
 
-type builder struct{ cc *cluster.ClusterContext }
+type builder struct{ cc cluster.ETCDSpec }
 
-func NewBuilder(cc *cluster.ClusterContext) cluster.ObjectProducer {
+func NewBuilder(cc cluster.ETCDSpec) cluster.ObjectProducer {
 	return builder{cc: cc}
 }
 
@@ -42,39 +42,39 @@ func (b builder) Objects() []client.Object {
 
 func (b builder) buildService() *corev1.Service {
 	cc := b.cc
-	mcp := cc.MCP
+	e := cc.Etcd()
 
 	labels := map[string]string{appLabelKey: appLabelVal}
-	ns := mcp.Namespace
+	ns := cc.Namespace()
 
 	return builders.NewService().
-		WithName(cc.Names.EtcdServiceName()).
+		WithName(e.ServiceName()).
 		WithNamespace(ns).
 		Headless().
 		WithLabels(labels).
 		WithSelector(labels).
-		AddPort("client", clientPort, clientPort, corev1.ProtocolTCP).
-		AddPort("peer", peerPort, peerPort, corev1.ProtocolTCP).
+		AddPort("client", e.ClientPort(), e.ClientPort(), corev1.ProtocolTCP).
+		AddPort("peer", e.PeerPort(), e.PeerPort(), corev1.ProtocolTCP).
 		Build()
 }
 
 func (b builder) buildStatefulSet() *appsv1.StatefulSet {
 	cc := b.cc
-	mcp := cc.MCP
+	e := cc.Etcd()
 
-	ca := cc.Names.SecretEtcdCAName()
-	srv := cc.Names.SecretEtcdServerTLSName()
-	peer := cc.Names.SecretEtcdPeerTLSName()
+	ca := e.CASecret()
+	srv := e.ServerTLSSecret()
+	peer := e.PeerTLSSecret()
 
 	labels := map[string]string{appLabelKey: appLabelVal}
-	ns := mcp.Namespace
+	ns := cc.Namespace()
 	replicas := int32(1)
 
 	// service must match buildService() name
-	svc := cc.Names.EtcdServiceName()
+	svc := e.ServiceName()
 
-	podFQDNClient := memberName + "." + svc + "." + ns + ".svc:" + utils.PortString(clientPort)
-	podFQDNPeer := memberName + "." + svc + "." + ns + ".svc:" + utils.PortString(peerPort)
+	podFQDNClient := e.MemberFQDNClient()
+	podFQDNPeer := e.MemberFQDNPeer()
 
 	vols := []corev1.Volume{
 		cc.SecretVolume(ca),
@@ -94,13 +94,13 @@ func (b builder) buildStatefulSet() *appsv1.StatefulSet {
 			"etcd",
 		},
 		Args: []string{
-			"--name=" + memberName,
-			"--data-dir=" + dataDir,
+			"--name=" + e.MemberName(),
+			"--data-dir=" + e.DataDir(),
 
-			"--listen-client-urls=https://0.0.0.0:" + utils.PortString(clientPort),
+			"--listen-client-urls=https://0.0.0.0:" + utils.PortString(e.ClientPort()),
 			"--advertise-client-urls=https://" + podFQDNClient,
 
-			"--listen-peer-urls=https://0.0.0.0:" + utils.PortString(peerPort),
+			"--listen-peer-urls=https://0.0.0.0:" + utils.PortString(e.PeerPort()),
 			"--initial-advertise-peer-urls=https://" + podFQDNPeer,
 
 			"--initial-cluster=" + clusterName + "=https://" + podFQDNPeer,
@@ -109,13 +109,13 @@ func (b builder) buildStatefulSet() *appsv1.StatefulSet {
 			"--client-cert-auth=true",
 			"--peer-client-cert-auth=true",
 
-			"--trusted-ca-file=" + cc.CAPath(ca),
-			"--cert-file=" + cc.CertPath(srv),
-			"--key-file=" + cc.KeyPath(srv),
+			"--trusted-ca-file=" + e.CAPath(),
+			"--cert-file=" + e.ServerCertPath(),
+			"--key-file=" + e.ServerKeyPath(),
 
-			"--peer-trusted-ca-file=" + cc.CAPath(ca),
-			"--peer-cert-file=" + cc.CertPath(peer),
-			"--peer-key-file=" + cc.KeyPath(peer),
+			"--peer-trusted-ca-file=" + e.CAPath(),
+			"--peer-cert-file=" + e.PeerCertPath(),
+			"--peer-key-file=" + e.PeerKeyPath(),
 		},
 		Ports: []corev1.ContainerPort{
 			{Name: "client", ContainerPort: clientPort},
@@ -125,33 +125,31 @@ func (b builder) buildStatefulSet() *appsv1.StatefulSet {
 		ReadinessProbe: utils.TcpProbe(clientPort, 5, 5),
 		VolumeMounts: append(
 			[]corev1.VolumeMount{
-				{Name: cc.Names.EtcdStatefulSetName(), MountPath: dataDir},
+				{Name: e.StatefulSetName(), MountPath: dataDir},
 			},
 			mounts...,
 		),
 	}
 
 	claim := corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: cc.Names.EtcdStatefulSetName(),
-		},
+		ObjectMeta: metav1.ObjectMeta{Name: e.StatefulSetName()},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: resource.MustParse(defaultStorage),
+					corev1.ResourceStorage: resource.MustParse(e.DefaultStorage()),
 				},
 			},
 		},
 	}
 
 	return builders.NewStatefulSet().
-		WithName(nameEtcd).
+		WithName(e.StatefulSetName()).
 		WithNamespace(ns).
 		WithLabels(labels).
 		WithSelector(labels).
 		WithReplicas(replicas).
-		WithServiceName(nameEtcd).
+		WithServiceName(svc).
 		WithContainer(etcdContainer).
 		AddVolumes(vols...).
 		WithVolumeClaims(claim).

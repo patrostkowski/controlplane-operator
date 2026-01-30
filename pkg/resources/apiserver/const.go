@@ -14,7 +14,18 @@
 
 package apiserver
 
+import apiserverv1beta "k8s.io/apiserver/pkg/apis/apiserver/v1beta1"
+
 const (
+	securePort = int32(6443)
+	grpcPort   = int32(8132)
+
+	livezPath  = "/livez"
+	readyzPath = "/readyz"
+
+	appLabelKey = "app"
+	appLabelVal = "kube-apiserver"
+
 	egressSelectorKind       = "EgressSelectorConfiguration"
 	egressSelectorAPIVersion = "apiserver.k8s.io/v1beta1"
 
@@ -26,4 +37,10 @@ const (
 	konnectivityServerMountDir         = "/etc/konnectivity"
 	konnectivityConfFilePath           = konnectivityServerMountDir + "/" + konnectivityConfFileName
 	konnectivityServerUDS              = "konnectivity-uds"
+
+	egressConnectionNameCluster      = "cluster"
+	egressConnectionNameControlPlane = "controlplane"
+	egressConnectionGRPCType         = apiserverv1beta.ProtocolGRPC
+	egressConnectionDirectType       = apiserverv1beta.ProtocolDirect
+	konnectivityUDSFile              = "konnectivity-uds.sock"
 )

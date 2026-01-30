@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"maps"
 
-	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/addons"
 	corev1 "k8s.io/api/core/v1"
@@ -33,6 +32,7 @@ import (
 )
 
 // TODO: find a way to watch & act on managed resources
+// reconcileAddons ensures that all managed addons are correctly deployed and configured.
 func (r *ManagedAddonsReconciler) reconcileAddons(
 	ctx context.Context,
 	cc *cluster.ClusterContext,
@@ -61,11 +61,12 @@ func (r *ManagedAddonsReconciler) reconcileAddons(
 	return ctrl.Result{}, nil
 }
 
+// getControlPlaneClient initializes and returns a client for the managed control plane.
 func (r *ManagedAddonsReconciler) getControlPlaneClient(
 	ctx context.Context,
 	cc *cluster.ClusterContext,
 ) (*ControlPlaneClient, error) {
-	log := r.Log.WithValues("addons", cc.MCP.GetObjectMeta().GetNamespace())
+	log := r.Log
 	cp, err := r.newFromKubeconfigSecret(ctx, r.Client, cc)
 	if err != nil {
 		return nil, err
@@ -98,6 +99,7 @@ func (r *ManagedAddonsReconciler) getControlPlaneClient(
 
 // TODO: decide separate it from addons or
 // bundle them together
+// reconcileKubeletJoinResources manages the resources required for kubelet to join the cluster.
 func (r *ManagedAddonsReconciler) reconcileKubeletJoinResources(
 	ctx context.Context,
 	cc *cluster.ClusterContext,
@@ -124,19 +126,22 @@ func (r *ManagedAddonsReconciler) reconcileKubeletJoinResources(
 	return ctrl.Result{}, nil
 }
 
+// getClusterCA retrieves the cluster CA certificate.
 func (r *ManagedAddonsReconciler) getClusterCA(
 	ctx context.Context,
 	cc *cluster.ClusterContext,
 ) ([]byte, error) {
-	mcp := cc.MCP
-	caSecretName := cc.Names.SecretManagedCAName()
+	ns := cc.Namespace()
+
+	caSecretName := cc.PKI().Certificate().ManagedCA() // formerly cc.Names.SecretManagedCAName()
 
 	sec := &corev1.Secret{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: mcp.Namespace, Name: caSecretName}, sec); err != nil {
+	if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: caSecretName}, sec); err != nil {
 		return nil, client.IgnoreNotFound(err)
 	}
 
-	ca := sec.Data[cc.Keys.CACrt]
+	// cert-manager standard key
+	ca := sec.Data["ca.crt"]
 	if len(ca) == 0 {
 		return nil, nil // not ready yet
 	}
@@ -144,20 +149,20 @@ func (r *ManagedAddonsReconciler) getClusterCA(
 }
 
 // todo: think how to rotate the token
+// ensureBootstrapToken creates or retrieves a bootstrap token for cluster joining.
 func (r *ManagedAddonsReconciler) ensureBootstrapToken(
 	ctx context.Context,
 	cc *cluster.ClusterContext,
 ) (addons.BootstrapToken, error) {
-	mcp := cc.MCP
+	ns := cc.Namespace()
 
 	sec := &corev1.Secret{}
 	key := client.ObjectKey{
-		Namespace: mcp.Namespace,
+		Namespace: ns,
 		Name:      addons.BootstrapTokenMgmtSecretName,
 	}
 
-	// basically check token already exists if exists
-	// if true, return whatever was generated
+	// If token already exists, return it.
 	err := r.Get(ctx, key, sec)
 	if err == nil {
 		return addons.BootstrapToken{
@@ -165,11 +170,11 @@ func (r *ManagedAddonsReconciler) ensureBootstrapToken(
 			Secret: string(sec.Data[addons.BootstrapTokenSecretKey]),
 		}, nil
 	}
-
 	if !apierrors.IsNotFound(err) {
 		return addons.BootstrapToken{}, err
 	}
 
+	// Otherwise generate a new one and persist it.
 	tok, err := addons.NewBootstrapToken()
 	if err != nil {
 		return addons.BootstrapToken{}, err
@@ -178,10 +183,7 @@ func (r *ManagedAddonsReconciler) ensureBootstrapToken(
 	sec = &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      addons.BootstrapTokenMgmtSecretName,
-			Namespace: mcp.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(mcp, mcpv1alpha1.SchemeGroupVersion.WithKind(mcpv1alpha1.KindManagedControlPlane)),
-			},
+			Namespace: ns,
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: map[string][]byte{
@@ -190,36 +192,37 @@ func (r *ManagedAddonsReconciler) ensureBootstrapToken(
 		},
 	}
 
-	if err := r.Create(ctx, sec); err != nil {
+	// Use SSA apply so it's consistent + sets controller ref via applyOpts.
+	if err := r.apply(ctx, r.Client, r.applyOpts(cc.Owner()), sec); err != nil {
 		return addons.BootstrapToken{}, err
 	}
 
 	return tok, nil
 }
 
+// ensureKonnectivityTLSData ensures Konnectivity TLS data is available and copied.
 func (r *ManagedAddonsReconciler) ensureKonnectivityTLSData(
 	ctx context.Context,
 	cc *cluster.ClusterContext,
 ) ([]client.Object, error) {
-	mcp := cc.MCP
-	mgmtNS := mcp.Namespace
+	ns := cc.Namespace()
 
-	agentTLSName := cc.Names.SecretKonnectivityAgentTLSName()
-	caName := cc.Names.SecretKonnectivityCAName()
+	agentTLSName := cc.Konnectivity().AgentTLSSecret()
+	caName := cc.Konnectivity().CASecret()
 
 	agentTLS := &corev1.Secret{}
-	if err := r.Get(ctx, client.ObjectKey{Name: agentTLSName, Namespace: mgmtNS}, agentTLS); err != nil {
-		return nil, client.IgnoreNotFound(err) // if not found -> (nil, nil) -> requeue by caller
-	}
-	cc.Info("got agent TLS secret", "name", agentTLS.Name)
-
-	caSec := &corev1.Secret{}
-	if err := r.Get(ctx, client.ObjectKey{Name: caName, Namespace: mgmtNS}, caSec); err != nil {
+	if err := r.Get(ctx, client.ObjectKey{Name: agentTLSName, Namespace: ns}, agentTLS); err != nil {
 		return nil, client.IgnoreNotFound(err)
 	}
-	cc.Info("got konnectivity CA secret", "name", caSec.Name)
+	r.Log.Info("got agent TLS secret", "name", agentTLS.Name)
 
-	targetNS := cc.Names.KonnectivityAgentNamespace()
+	caSec := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Name: caName, Namespace: ns}, caSec); err != nil {
+		return nil, client.IgnoreNotFound(err)
+	}
+	r.Log.Info("got konnectivity CA secret", "name", caSec.Name)
+
+	targetNS := cc.ManagedAddons().KonnectivityAgentNamespace()
 
 	workloadAgentTLS := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -239,16 +242,22 @@ func (r *ManagedAddonsReconciler) ensureKonnectivityTLSData(
 		Data: maps.Clone(caSec.Data),
 	}
 
-	cc.Info("copying konnectivity secrets into manageds cluster", "namespace", targetNS, "agentTLS", agentTLSName, "ca", caName)
+	r.Log.Info("copying konnectivity secrets into managed cluster",
+		"namespace", targetNS,
+		"agentTLS", agentTLSName,
+		"ca", caName,
+	)
 	return []client.Object{workloadAgentTLS, workloadCA}, nil
 }
 
+// ControlPlaneClient bundles client interfaces for interacting with the managed control plane.
 type ControlPlaneClient struct {
 	client.Client
 	Discovery discovery.DiscoveryInterface
 	REST      *rest.Config
 }
 
+// New creates a new ControlPlaneClient instance.
 func New(c client.Client, d discovery.DiscoveryInterface, r *rest.Config) *ControlPlaneClient {
 	return &ControlPlaneClient{
 		Client:    c,
@@ -257,26 +266,29 @@ func New(c client.Client, d discovery.DiscoveryInterface, r *rest.Config) *Contr
 	}
 }
 
+// newFromKubeconfigSecret creates a new ControlPlaneClient from a kubeconfig secret.
 func (r *ManagedAddonsReconciler) newFromKubeconfigSecret(
 	ctx context.Context,
 	mgmt client.Reader,
 	cc *cluster.ClusterContext,
 ) (*ControlPlaneClient, error) {
-	mcp := cc.MCP
+	mcp := cc.MCP()
+	ns := cc.Namespace()
 
 	secName := mcp.Status.AdminKubeconfigSecretRef.Name
 	if secName == "" {
-		return nil, fmt.Errorf("%s/%s has empty status.adminKubeconfigSecretRef.name", mcp.Namespace, mcp.Name)
+		return nil, fmt.Errorf("%s/%s has empty status.adminKubeconfigSecretRef.name", ns, mcp.Name)
 	}
 
 	sec := &corev1.Secret{}
-	if err := mgmt.Get(ctx, client.ObjectKey{Namespace: mcp.Namespace, Name: secName}, sec); err != nil {
+	if err := mgmt.Get(ctx, client.ObjectKey{Namespace: ns, Name: secName}, sec); err != nil {
 		return nil, err
 	}
 
-	kubeconfigBytes, ok := sec.Data[cc.Keys.AdminConfigKubeconfigKey]
+	kubeconfigKey := cc.Admin().KubeconfigDataKey()
+	kubeconfigBytes, ok := sec.Data[kubeconfigKey]
 	if !ok || len(kubeconfigBytes) == 0 {
-		return nil, fmt.Errorf("secret %s/%s missing key %q or it is empty", mcp.Namespace, secName, cc.Keys.AdminConfigKubeconfigKey)
+		return nil, fmt.Errorf("secret %s/%s missing key %q or it is empty", ns, secName, kubeconfigKey)
 	}
 
 	restCfg, err := restConfigFromKubeconfigBytes(kubeconfigBytes)
@@ -300,6 +312,44 @@ func (r *ManagedAddonsReconciler) newFromKubeconfigSecret(
 	return New(c, d, restCfg), nil
 }
 
+// reconcileExtensionAuthConfig configures the extension API server authentication.
+func (r *ManagedAddonsReconciler) reconcileExtensionAuthConfig(
+	ctx context.Context,
+	cc *cluster.ClusterContext,
+) (ctrl.Result, error) {
+	ns := "kube-system"
+
+	fpCASecretName := cc.PKI().Certificate().FrontProxyCA()
+
+	sec := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: cc.Namespace(), Name: fpCASecretName}, sec); err != nil {
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, client.IgnoreNotFound(err)
+	}
+
+	ca := sec.Data["ca.crt"]
+	if len(ca) == 0 {
+		return ctrl.Result{RequeueAfter: RequeueAfterFailure}, nil
+	}
+
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "extension-apiserver-authentication",
+			Namespace: ns,
+		},
+		Data: map[string]string{
+			"client-ca-file":               string(ca),
+			"requestheader-client-ca-file": string(ca),
+		},
+	}
+
+	if err := r.apply(ctx, r.cp.Client, r.managedApplyOpts(), cm); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// restConfigFromKubeconfigBytes builds a rest.Config from kubeconfig bytes.
 func restConfigFromKubeconfigBytes(kubeconfig []byte) (*rest.Config, error) {
 	// clientcmd handles clusters/users/contexts in kubeconfig properly.
 	cfg, err := clientcmd.NewClientConfigFromBytes(kubeconfig)
