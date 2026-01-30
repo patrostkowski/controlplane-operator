@@ -53,12 +53,12 @@ type controllerManager struct {
 
 // DeploymentName returns the name of the kube-controller-manager Deployment.
 func (cm controllerManager) DeploymentName() string {
-	return "kube-controller-manager"
+	return cm.cc.prefix("controller-manager")
 }
 
 // KubeconfigConfigMapName returns the name of the ConfigMap containing the controller-manager kubeconfig.
 func (cm controllerManager) KubeconfigConfigMapName() string {
-	return "kube-controller-manager-kubeconfig"
+	return cm.cc.prefix("controller-manager-kubeconfig")
 }
 
 // ClusterCASecret returns the Secret name holding the cluster CA certificate.

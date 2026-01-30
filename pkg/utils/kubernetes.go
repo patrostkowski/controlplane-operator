@@ -28,7 +28,7 @@ func HttpsHealthProbe(port int32, path string, initialDelay, period, timeout, fa
 		ProbeHandler: corev1.ProbeHandler{
 			HTTPGet: &corev1.HTTPGetAction{
 				Scheme: corev1.URISchemeHTTPS,
-				Host:   "127.0.0.1",
+				Host:   "localhost",
 				Port:   intstr.FromInt(int(port)),
 				Path:   path,
 			},
@@ -51,6 +51,27 @@ func TcpProbe(port int32, initialDelay, period int32) *corev1.Probe {
 		},
 		InitialDelaySeconds: initialDelay,
 		PeriodSeconds:       period,
+	}
+}
+
+// ETCDHealthProbe creates a etcdctl health probe for a ETCD container.
+func ETCDHealthProbe(caPath, certPath, keyPath string) *corev1.Probe {
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			Exec: &corev1.ExecAction{
+				Command: []string{
+					"etcdctl",
+					"--endpoints=https://localhost:2379",
+					"--cacert=" + caPath,
+					"--cert=" + certPath,
+					"--key=" + keyPath,
+					"endpoint", "health",
+				},
+			},
+		},
+		InitialDelaySeconds: 10,
+		PeriodSeconds:       10,
+		TimeoutSeconds:      2,
 	}
 }
 

@@ -29,7 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var KonnectivityServerVersion = "v0.1.3"
+var konnectivityServerVersion = "v0.1.3"
 
 type endpointBuilder struct {
 	cc cluster.APIServerSpec
@@ -125,6 +125,7 @@ func (w workloadBuilder) buildKonnectivityConfigMap() *corev1.ConfigMap {
 func (w workloadBuilder) buildDeployment() *appsv1.Deployment {
 	cc := w.cc
 	a := cc.APIServer()
+	e := cc.Etcd()
 	ns := cc.Namespace()
 
 	spec := cc.GetManagedControlPlaneSpec()
@@ -140,6 +141,8 @@ func (w workloadBuilder) buildDeployment() *appsv1.Deployment {
 	fpClient := a.FrontProxyClientSecret()
 	konCA := a.KonnectivityCASecret()
 	konSrv := a.KonnectivityServerSecret()
+
+	etcdFQDNClient := e.MemberFQDNClient()
 
 	labels := map[string]string{appLabelKey: appLabelVal}
 	replicas := int32(1)
@@ -170,8 +173,6 @@ func (w workloadBuilder) buildDeployment() *appsv1.Deployment {
 		MountPath: konnectivityUDSDir,
 	}
 
-	e := cc.Etcd()
-
 	c := corev1.Container{
 		Name:            "apiserver",
 		Image:           "registry.k8s.io/kube-apiserver:" + version,
@@ -183,7 +184,7 @@ func (w workloadBuilder) buildDeployment() *appsv1.Deployment {
 			"--secure-port=6443",
 			"--service-cluster-ip-range=" + spec.Kubernetes.Networking.ServiceCIDR,
 
-			"--etcd-servers=https://etcd-0." + e.ServiceName() + "." + ns + ".svc.cluster.local:2379",
+			"--etcd-servers=https://" + etcdFQDNClient,
 
 			"--etcd-cafile=" + cc.CAPath(etcdCA),
 			"--etcd-certfile=" + cc.CertPath(etcdClient),
@@ -212,6 +213,7 @@ func (w workloadBuilder) buildDeployment() *appsv1.Deployment {
 		Ports: []corev1.ContainerPort{
 			{Name: "https", ContainerPort: securePort},
 		},
+		StartupProbe:   utils.HttpsHealthProbe(securePort, healthzPath, 0, 5, 5, 60),
 		LivenessProbe:  utils.HttpsHealthProbe(securePort, livezPath, 10, 10, 10, 10),
 		ReadinessProbe: utils.HttpsHealthProbe(securePort, readyzPath, 5, 5, 5, 5),
 	}
@@ -242,7 +244,7 @@ func (w workloadBuilder) buildDeployment() *appsv1.Deployment {
 
 	c2 := corev1.Container{
 		Name:  konnectivityServerName,
-		Image: "registry.k8s.io/kas-network-proxy/proxy-server:" + KonnectivityServerVersion,
+		Image: "registry.k8s.io/kas-network-proxy/proxy-server:" + konnectivityServerVersion,
 		Args: []string{
 			"--mode=grpc",
 			"--uds-name=" + udsFile,

@@ -50,6 +50,7 @@ type EtcdConfig interface {
 	CASecret() string
 	ServerTLSSecret() string
 	PeerTLSSecret() string
+	HealthClientTLSSecret() string
 
 	// Paths (resources use these directly for etcd flags)
 	CAPath() string
@@ -57,6 +58,8 @@ type EtcdConfig interface {
 	ServerKeyPath() string
 	PeerCertPath() string
 	PeerKeyPath() string
+	HealthClientCertPath() string
+	HealthClientKeyPath() string
 }
 
 var _ EtcdConfig = etcd{}
@@ -71,13 +74,19 @@ type etcd struct {
 }
 
 // ServiceName returns the name of the etcd service.
-func (e etcd) ServiceName() string { return "etcd" }
+func (e etcd) ServiceName() string {
+	return e.cc.prefix("etcd")
+}
 
 // StatefulSetName returns the name of the etcd StatefulSet.
-func (e etcd) StatefulSetName() string { return "etcd" }
+func (e etcd) StatefulSetName() string {
+	return e.cc.prefix("etcd")
+}
 
 // MemberName returns the name of an etcd member.
-func (e etcd) MemberName() string { return "etcd-0" }
+func (e etcd) MemberName() string {
+	return e.cc.prefix("etcd-0")
+}
 
 // ClientPort returns the client port for etcd.
 func (e etcd) ClientPort() int32 { return 2379 }
@@ -119,6 +128,15 @@ func (e etcd) ServerTLSSecret() string { return e.cc.PKI().Certificate().EtcdSer
 
 // PeerTLSSecret returns the name of the secret containing the etcd peer TLS certificates.
 func (e etcd) PeerTLSSecret() string { return e.cc.PKI().Certificate().EtcdPeerTLS() }
+
+// HealthClientTLSSecret returns the name of the secret containing the etcd health client TLS certificates.
+func (e etcd) HealthClientTLSSecret() string { return e.cc.PKI().Certificate().EtcdHealthClient() }
+
+// HealthClientCertPath returns the path to the etcd health client certificate.
+func (e etcd) HealthClientCertPath() string { return e.cc.CertPath(e.HealthClientTLSSecret()) }
+
+// HealthClientKeyPath returns the path to the etcd health client key.
+func (e etcd) HealthClientKeyPath() string { return e.cc.KeyPath(e.HealthClientTLSSecret()) }
 
 // CAPath returns the path to the etcd CA certificate.
 func (e etcd) CAPath() string { return e.cc.CAPath(e.CASecret()) }

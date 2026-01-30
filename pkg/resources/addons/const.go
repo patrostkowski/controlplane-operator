@@ -19,27 +19,20 @@ const (
 	keyTLSCrt = "tls.crt"
 	keyTLSKey = "tls.key"
 
-	KubeSystemNamespace = "kube-system"
+	kubeSystemNamespace = "kube-system"
 
-	BootstrapTokenMgmtSecretName = "bootstrap-token"
-	BootstrapTokenIDKey          = "token-id"
-	BootstrapTokenSecretKey      = "token-secret"
-	BootstrapTokenDescription    = "Bootstrap token for kubelet workers"
-	BootstrapAuthExtraGroups     = "system:bootstrappers:kubelet-bootstrap"
+	bootstrapTokenDescription = "Bootstrap token for kubelet workers"
 
-	BootstrapUsageAuth = "true"
-	BootstrapUsageSign = "true"
+	groupBootstrappers = "system:bootstrappers"
+	groupNodes         = "system:nodes"
 
-	GroupBootstrappers = "system:bootstrappers"
-	GroupNodes         = "system:nodes"
+	crbKubeadmNodeAutoapproveBootstrap = "kubeadm:node-autoapprove-bootstrap"
+	crbKubeadmNodeAutoapproveRotation  = "kubeadm:node-autoapprove-rotation"
+	crbNodeBootstrapperName            = "kubelet-bootstrap"
 
-	CRBKubeadmNodeAutoapproveBootstrap = "kubeadm:node-autoapprove-bootstrap"
-	CRBKubeadmNodeAutoapproveRotation  = "kubeadm:node-autoapprove-rotation"
-	CRBNodeBootstrapperName            = "kubelet-bootstrap"
-
-	RoleNodeClientCSRApprove = "system:certificates.k8s.io:certificatesigningrequests:nodeclient"
-	RoleSelfNodeClientCSR    = "system:certificates.k8s.io:certificatesigningrequests:selfnodeclient"
-	RoleNodeBootstrapper     = "system:node-bootstrapper"
+	roleNodeClientCSRApprove = "system:certificates.k8s.io:certificatesigningrequests:nodeclient"
+	roleSelfNodeClientCSR    = "system:certificates.k8s.io:certificatesigningrequests:selfnodeclient"
+	roleNodeBootstrapper     = "system:node-bootstrapper"
 
 	konnectivityAgentName            = "konnectivity-agent"
 	konnectivityServerPort     int32 = 8132

@@ -41,6 +41,7 @@ type AdminConfig interface {
 // ManagedAddonsConfig defines methods to retrieve managed addon configurations.
 type ManagedAddonsConfig interface {
 	KonnectivityAgentNamespace() string
+	BootstrapTokenMgmtSecretName() string
 }
 
 // KonnectivityConfig defines methods to retrieve Konnectivity-related secret names and configurations.
@@ -71,7 +72,7 @@ func (a admin) ClientSecret() string {
 
 // Secret where you store generated kubeconfig
 func (a admin) KubeconfigSecret() string {
-	return "admin-kubeconfig" // keep backward-compatible with your old Names.AdminKubeconfigSecretName()
+	return a.cc.prefix("admin-kubeconfig") // keep backward-compatible with your old Names.AdminKubeconfigSecretName()
 }
 
 // Keys inside kubeconfig secret (choose ONE and use it consistently)
@@ -87,7 +88,11 @@ func (cc ClusterContext) ManagedAddons() ManagedAddonsConfig {
 type managedAddons struct{ cc ClusterContext }
 
 func (m managedAddons) KonnectivityAgentNamespace() string {
-	return "kube-system" // or whatever your old Names.KonnectivityAgentNamespace() returned
+	return "kube-system"
+}
+
+func (m managedAddons) BootstrapTokenMgmtSecretName() string {
+	return m.cc.prefix(bootstrapTokenMgmtSecretName)
 }
 
 var _ KonnectivityConfig = konnectivity{}

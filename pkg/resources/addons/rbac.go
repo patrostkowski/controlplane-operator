@@ -133,9 +133,9 @@ func (b kubeletJoinBuilder) bootstrapTokenSecret() *corev1.Secret {
 	name := bootstraphandle.BootstrapTokenSecretName(b.tok.ID)
 	return builders.NewSecret().
 		WithName(name).
-		WithNamespace(KubeSystemNamespace).
+		WithNamespace(kubeSystemNamespace).
 		WithType(bootstrapapi.SecretTypeBootstrapToken).
-		Put(bootstrapapi.BootstrapTokenDescriptionKey, BootstrapTokenDescription).
+		Put(bootstrapapi.BootstrapTokenDescriptionKey, bootstrapTokenDescription).
 		Put(bootstrapapi.BootstrapTokenIDKey, b.tok.ID).
 		Put(bootstrapapi.BootstrapTokenSecretKey, b.tok.Secret).
 		Put(bootstrapapi.BootstrapTokenUsageAuthentication, "true").
@@ -146,17 +146,17 @@ func (b kubeletJoinBuilder) bootstrapTokenSecret() *corev1.Secret {
 
 func (b kubeletJoinBuilder) nodeAutoapproveBootstrap() *rbacv1.ClusterRoleBinding {
 	return builders.NewClusterRoleBinding().
-		WithName(CRBKubeadmNodeAutoapproveBootstrap).
+		WithName(crbKubeadmNodeAutoapproveBootstrap).
 		WithRefs(
 			rbacv1.RoleRef{
 				APIGroup: rbacv1.GroupName,
 				Kind:     KindClusterRole,
-				Name:     RoleNodeClientCSRApprove,
+				Name:     roleNodeClientCSRApprove,
 			},
 			rbacv1.Subject{
 				APIGroup: rbacAPIGroup,
 				Kind:     KindGroup,
-				Name:     GroupBootstrappers,
+				Name:     groupBootstrappers,
 			},
 		).
 		Build()
@@ -164,17 +164,17 @@ func (b kubeletJoinBuilder) nodeAutoapproveBootstrap() *rbacv1.ClusterRoleBindin
 
 func (b kubeletJoinBuilder) nodeAutoapproveRotation() *rbacv1.ClusterRoleBinding {
 	return builders.NewClusterRoleBinding().
-		WithName(CRBKubeadmNodeAutoapproveRotation).
+		WithName(crbKubeadmNodeAutoapproveRotation).
 		WithRefs(
 			rbacv1.RoleRef{
 				APIGroup: rbacv1.GroupName,
 				Kind:     KindClusterRole,
-				Name:     RoleSelfNodeClientCSR,
+				Name:     roleSelfNodeClientCSR,
 			},
 			rbacv1.Subject{
 				APIGroup: rbacv1.GroupName,
 				Kind:     KindGroup,
-				Name:     GroupNodes,
+				Name:     groupNodes,
 			},
 		).
 		Build()
@@ -182,17 +182,17 @@ func (b kubeletJoinBuilder) nodeAutoapproveRotation() *rbacv1.ClusterRoleBinding
 
 func (b kubeletJoinBuilder) nodeBootstrapper() *rbacv1.ClusterRoleBinding {
 	return builders.NewClusterRoleBinding().
-		WithName(CRBNodeBootstrapperName).
+		WithName(crbNodeBootstrapperName).
 		WithRefs(
 			rbacv1.RoleRef{
 				APIGroup: rbacv1.GroupName,
 				Kind:     KindClusterRole,
-				Name:     RoleNodeBootstrapper,
+				Name:     roleNodeBootstrapper,
 			},
 			rbacv1.Subject{
 				APIGroup: rbacv1.GroupName,
 				Kind:     KindGroup,
-				Name:     GroupBootstrappers,
+				Name:     groupBootstrappers,
 			},
 		).
 		Build()
@@ -348,7 +348,7 @@ func (b kubeletJoinBuilder) kubeadmKubeletConfigRole() *rbacv1.Role {
 	return &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      RoleKubeadmKubeletConfig,
-			Namespace: KubeSystemNamespace,
+			Namespace: kubeSystemNamespace,
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -366,7 +366,7 @@ func (b kubeletJoinBuilder) kubeadmNodesKubeadmConfigRole() *rbacv1.Role {
 	return &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      RoleKubeadmNodesKubeadmConfig,
-			Namespace: KubeSystemNamespace,
+			Namespace: kubeSystemNamespace,
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -384,7 +384,7 @@ func (b kubeletJoinBuilder) kubeadmKubeletConfigRoleBinding() *rbacv1.RoleBindin
 	return &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      RoleKubeadmKubeletConfig,
-			Namespace: KubeSystemNamespace,
+			Namespace: kubeSystemNamespace,
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: rbacv1.GroupName,
@@ -447,7 +447,7 @@ func (b kubeletJoinBuilder) kubeadmNodesKubeadmConfigRoleBinding() *rbacv1.RoleB
 	return &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      RoleKubeadmNodesKubeadmConfig,
-			Namespace: KubeSystemNamespace,
+			Namespace: kubeSystemNamespace,
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: rbacv1.GroupName,
@@ -499,7 +499,7 @@ func (b kubeletJoinBuilder) kubeadmConfigConfigMap() *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      KubeadmConfigCMName,
-			Namespace: KubeSystemNamespace,
+			Namespace: kubeSystemNamespace,
 		},
 		Data: map[string]string{
 			"ClusterConfiguration": yamlStr,

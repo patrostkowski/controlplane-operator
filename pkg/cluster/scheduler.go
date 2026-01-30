@@ -51,12 +51,12 @@ type scheduler struct {
 
 // DeploymentName returns the name of the kube-scheduler Deployment.
 func (s scheduler) DeploymentName() string {
-	return "kube-scheduler"
+	return s.cc.prefix("scheduler")
 }
 
 // KubeconfigConfigMapName returns the name of the ConfigMap containing the scheduler kubeconfig.
 func (s scheduler) KubeconfigConfigMapName() string {
-	return "kube-scheduler-kubeconfig"
+	return s.cc.prefix("scheduler-kubeconfig")
 }
 
 // ClusterCASecret returns the Secret name holding the cluster CA certificate for the scheduler.

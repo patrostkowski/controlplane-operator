@@ -25,6 +25,11 @@ const (
 	healthPath = "/healthz"
 )
 
+// addons/kubeadm related constants
+const (
+	bootstrapTokenMgmtSecretName = "bootstrap-token"
+)
+
 // Certificate issuer names used in the control plane.
 const (
 	// Issuers

@@ -32,8 +32,9 @@ const (
 	// Scheduler secure port
 	securePort int32 = 10259
 
-	livezPath  = "/livez"
-	readyzPath = "/readyz"
+	livezPath   = "/livez"
+	readyzPath  = "/readyz"
+	healthzPath = "/healthz"
 
 	kubeconfigConfigMapKey = "kubeconfig"
 	kubeconfigFileName     = "kubeconfig"

@@ -130,6 +130,7 @@ func (b builder) issuerResources() []client.Object {
 
 func (b builder) certificateResources() []client.Object {
 	objs := make([]client.Object, 0, 32)
+	e := b.cc.Etcd()
 	ns := b.cc.Namespace()
 	d := b.durations
 
@@ -296,16 +297,19 @@ func (b builder) certificateResources() []client.Object {
 	)
 
 	// etcd leaf certs
-	etcd0 := "etcd-0.etcd." + ns + ".svc.cluster.local"
-	etcdSvc := "etcd." + ns + ".svc.cluster.local"
+	pod0 := e.StatefulSetName() + "-0"
+	etcd0Short := pod0 + "." + e.ServiceName() + "." + ns + ".svc"
+	etcdSvcShort := e.ServiceName() + "." + ns + ".svc"
+	etcd0Long := etcd0Short + ".cluster.local"
+	etcdSvcLong := etcdSvcShort + ".cluster.local"
 
 	objs = append(objs,
 		// etcd server cert
 		builders.NewCertificate().
-			WithName("etcd-server").
+			WithName(secretEtcdServerTLS).
 			WithNamespace(ns).
 			WithSecretName(secretEtcdServerTLS).
-			WithCommonName(etcd0).
+			WithCommonName(etcd0Long).
 			Issuer(issuerEtcdCA).
 			WithDuration(&d.tenYears).
 			WithRenewBefore(&d.thirtyDays).
@@ -315,15 +319,15 @@ func (b builder) certificateResources() []client.Object {
 				certmanagerv1.UsageServerAuth,
 				certmanagerv1.UsageClientAuth,
 			).
-			WithDNSNames(etcd0, etcdSvc, "localhost").
+			WithDNSNames(etcd0Short, etcd0Long, etcdSvcShort, etcdSvcLong, "localhost").
 			Build(),
 
 		// etcd peer cert
 		builders.NewCertificate().
-			WithName("etcd-peer").
+			WithName(secretEtcdPeerTLS).
 			WithNamespace(ns).
 			WithSecretName(secretEtcdPeerTLS).
-			WithCommonName(etcd0).
+			WithCommonName(etcd0Long).
 			Issuer(issuerEtcdCA).
 			WithDuration(&d.tenYears).
 			WithRenewBefore(&d.thirtyDays).
@@ -333,7 +337,7 @@ func (b builder) certificateResources() []client.Object {
 				certmanagerv1.UsageServerAuth,
 				certmanagerv1.UsageClientAuth,
 			).
-			WithDNSNames(etcd0, "localhost").
+			WithDNSNames(etcd0Short, etcd0Long, etcdSvcShort, etcdSvcLong, "localhost").
 			Build(),
 
 		// etcd healthcheck client
@@ -477,7 +481,11 @@ func (b builder) apiserverSANs() (dns []string, ips []string) {
 	mcpSpec := b.cc.GetManagedControlPlaneSpec()
 	mcpStatus := b.cc.GetManagedControlPlaneStatus()
 
+	svc := b.cc.APIServer().ServiceName()
+
 	dns = []string{
+		svc + "." + ns + ".svc",
+		svc + "." + ns + ".svc.cluster.local",
 		"kube-apiserver." + ns + ".svc",
 		"kube-apiserver." + ns + ".svc.cluster.local",
 		"kubernetes",

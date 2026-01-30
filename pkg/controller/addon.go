@@ -27,6 +27,7 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	bootstrapapi "k8s.io/cluster-bootstrap/token/api"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -155,19 +156,20 @@ func (r *ManagedAddonsReconciler) ensureBootstrapToken(
 	cc *cluster.ClusterContext,
 ) (addons.BootstrapToken, error) {
 	ns := cc.Namespace()
+	bootstrapTokenSecretName := cc.ManagedAddons().BootstrapTokenMgmtSecretName()
 
 	sec := &corev1.Secret{}
 	key := client.ObjectKey{
 		Namespace: ns,
-		Name:      addons.BootstrapTokenMgmtSecretName,
+		Name:      bootstrapTokenSecretName,
 	}
 
 	// If token already exists, return it.
 	err := r.Get(ctx, key, sec)
 	if err == nil {
 		return addons.BootstrapToken{
-			ID:     string(sec.Data[addons.BootstrapTokenIDKey]),
-			Secret: string(sec.Data[addons.BootstrapTokenSecretKey]),
+			ID:     string(sec.Data[bootstrapapi.BootstrapTokenIDKey]),
+			Secret: string(sec.Data[bootstrapapi.BootstrapTokenSecretKey]),
 		}, nil
 	}
 	if !apierrors.IsNotFound(err) {
@@ -182,13 +184,13 @@ func (r *ManagedAddonsReconciler) ensureBootstrapToken(
 
 	sec = &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      addons.BootstrapTokenMgmtSecretName,
+			Name:      bootstrapTokenSecretName,
 			Namespace: ns,
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: map[string][]byte{
-			addons.BootstrapTokenIDKey:     []byte(tok.ID),
-			addons.BootstrapTokenSecretKey: []byte(tok.Secret),
+			bootstrapapi.BootstrapTokenIDKey:     []byte(tok.ID),
+			bootstrapapi.BootstrapTokenSecretKey: []byte(tok.Secret),
 		},
 	}
 
