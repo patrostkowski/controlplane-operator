@@ -20,8 +20,9 @@ const (
 	securePort = int32(6443)
 	grpcPort   = int32(8132)
 
-	livezPath  = "/livez"
-	readyzPath = "/readyz"
+	livezPath   = "/livez"
+	readyzPath  = "/readyz"
+	healthzPath = "/healthz"
 
 	appLabelKey = "app"
 	appLabelVal = "kube-apiserver"

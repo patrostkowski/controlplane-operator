@@ -108,6 +108,7 @@ func (b builder) buildDeployment() *appsv1.Deployment {
 		Ports: []corev1.ContainerPort{
 			{Name: "https", ContainerPort: securePort},
 		},
+		StartupProbe:   utils.HttpsHealthProbe(securePort, healthzPath, 0, 5, 5, 60),
 		LivenessProbe:  utils.HttpsHealthProbe(securePort, livezPath, 10, 10, 10, 10),
 		ReadinessProbe: utils.HttpsHealthProbe(securePort, readyzPath, 5, 5, 5, 5),
 	}

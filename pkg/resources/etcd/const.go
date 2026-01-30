@@ -18,16 +18,10 @@ const (
 	appLabelKey = "app"
 	appLabelVal = "etcd"
 
-	nameEtcd = "etcd"
-
 	clientPort int32 = 2379
 	peerPort   int32 = 2380
 
 	dataDir = "/var/lib/etcd"
 
 	defaultStorage = "10Gi"
-
-	// Member config (single node for now)
-	memberName  = "etcd-0"
-	clusterName = "etcd-0"
 )

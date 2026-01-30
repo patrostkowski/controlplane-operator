@@ -62,17 +62,17 @@ type apiserver struct {
 
 // ServiceName returns the name of the API server service.
 func (a apiserver) ServiceName() string {
-	return "kube-apiserver"
+	return a.cc.prefix("apiserver")
 }
 
 // DeploymentName returns the name of the API server deployment.
 func (a apiserver) DeploymentName() string {
-	return "kube-apiserver"
+	return a.cc.prefix("apiserver")
 }
 
 // KonnectivityConfigMapName returns the name of the Konnectivity config map.
 func (a apiserver) KonnectivityConfigMapName() string {
-	return "konnectivity-egress-selector"
+	return a.cc.prefix("konnectivity-egress-selector")
 }
 
 // ClientCASecret returns the name of the secret containing the client CA certificate.

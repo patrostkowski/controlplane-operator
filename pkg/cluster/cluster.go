@@ -72,7 +72,7 @@ func (cc ClusterContext) MCP() *mcpv1alpha1.ManagedControlPlane {
 
 // prefix applies a naming prefix for generated resources.
 func (cc ClusterContext) prefix(s string) string {
-	return s
+	return cc.Name() + "-" + s
 }
 
 // SecretMountDir returns the filesystem mount directory for a secret under the PKI root.

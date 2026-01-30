@@ -26,6 +26,8 @@ type PKISpec interface {
 	GetManagedControlPlaneStatus() mcpv1alpha1.ManagedControlPlaneStatus
 
 	PKI() PKIConfig
+	Etcd() EtcdConfig
+	APIServer() APIServerConfig
 }
 
 // PKIConfig exposes accessors for PKI issuer and certificate naming.
@@ -97,141 +99,145 @@ type pki struct {
 
 // Issuer returns the issuer name configuration.
 func (p pki) Issuer() IssuerConfig {
-	return issuers{}
+	return issuers{cc: p.cc}
 }
 
 // Certificate returns the certificate secret name configuration.
 func (p pki) Certificate() CertificateConfig {
-	return certificates{}
+	return certificates{cc: p.cc}
 }
 
 // certificates is a names-only implementation of CertificateConfig.
-type certificates struct{}
+type certificates struct {
+	cc ClusterContext
+}
 
 // issuers is a names-only implementation of IssuerConfig.
-type issuers struct{}
+type issuers struct {
+	cc ClusterContext
+}
 
 // SelfSigned returns the name of the root self-signed issuer.
-func (issuers) SelfSigned() string {
-	return issuerSelfSigned
+func (i issuers) SelfSigned() string {
+	return i.cc.prefix(issuerSelfSigned)
 }
 
 // CA returns the name of the root CA issuer.
-func (issuers) CA() string {
-	return issuerCA
+func (i issuers) CA() string {
+	return i.cc.prefix(issuerCA)
 }
 
 // EtcdSelfSigned returns the name of the etcd self-signed issuer.
-func (issuers) EtcdSelfSigned() string {
-	return issuerEtcdSelfSigned
+func (i issuers) EtcdSelfSigned() string {
+	return i.cc.prefix(issuerEtcdSelfSigned)
 }
 
 // EtcdCA returns the name of the etcd CA issuer.
-func (issuers) EtcdCA() string {
-	return issuerEtcdCA
+func (i issuers) EtcdCA() string {
+	return i.cc.prefix(issuerEtcdCA)
 }
 
 // FrontProxySelfSigned returns the name of the front-proxy self-signed issuer.
-func (issuers) FrontProxySelfSigned() string {
-	return issuerFrontProxySelf
+func (i issuers) FrontProxySelfSigned() string {
+	return i.cc.prefix(issuerFrontProxySelf)
 }
 
 // FrontProxyCA returns the name of the front-proxy CA issuer.
-func (issuers) FrontProxyCA() string {
-	return issuerFrontProxyCA
+func (i issuers) FrontProxyCA() string {
+	return i.cc.prefix(issuerFrontProxyCA)
 }
 
 // KonnectivitySelfSigned returns the name of the konnectivity self-signed issuer.
-func (issuers) KonnectivitySelfSigned() string {
-	return issuerKonnectivitySelf
+func (i issuers) KonnectivitySelfSigned() string {
+	return i.cc.prefix(issuerKonnectivitySelf)
 }
 
 // KonnectivityCA returns the name of the konnectivity CA issuer.
-func (issuers) KonnectivityCA() string {
-	return issuerKonnectivityCA
+func (i issuers) KonnectivityCA() string {
+	return i.cc.prefix(issuerKonnectivityCA)
 }
 
 // ManagedCA returns the Secret name holding the cluster root CA.
-func (certificates) ManagedCA() string {
-	return secretManagedCA
+func (c certificates) ManagedCA() string {
+	return c.cc.prefix(secretManagedCA)
 }
 
 // EtcdCA returns the Secret name holding the etcd CA.
-func (certificates) EtcdCA() string {
-	return secretEtcdCA
+func (c certificates) EtcdCA() string {
+	return c.cc.prefix(secretEtcdCA)
 }
 
 // FrontProxyCA returns the Secret name holding the front-proxy CA.
-func (certificates) FrontProxyCA() string {
-	return secretFrontProxyCA
+func (c certificates) FrontProxyCA() string {
+	return c.cc.prefix(secretFrontProxyCA)
 }
 
 // SASigner returns the Secret name holding the service-account signing key.
-func (certificates) SASigner() string {
-	return secretSASigner
+func (c certificates) SASigner() string {
+	return c.cc.prefix(secretSASigner)
 }
 
 // APIServerTLS returns the Secret name holding the API server serving certificate.
-func (certificates) APIServerTLS() string {
-	return secretAPIServerTLS
+func (c certificates) APIServerTLS() string {
+	return c.cc.prefix(secretAPIServerTLS)
 }
 
 // APIServerKubeletClient returns the Secret name holding the API server kubelet client certificate.
-func (certificates) APIServerKubeletClient() string {
-	return secretAPIServerKubelet
+func (c certificates) APIServerKubeletClient() string {
+	return c.cc.prefix(secretAPIServerKubelet)
 }
 
 // EtcdServerTLS returns the Secret name holding the etcd server certificate.
-func (certificates) EtcdServerTLS() string {
-	return secretEtcdServerTLS
+func (c certificates) EtcdServerTLS() string {
+	return c.cc.prefix(secretEtcdServerTLS)
 }
 
 // EtcdPeerTLS returns the Secret name holding the etcd peer certificate.
-func (certificates) EtcdPeerTLS() string {
-	return secretEtcdPeerTLS
+func (c certificates) EtcdPeerTLS() string {
+	return c.cc.prefix(secretEtcdPeerTLS)
 }
 
 // EtcdHealthClient returns the Secret name holding the etcd health check client certificate.
-func (certificates) EtcdHealthClient() string {
-	return secretEtcdHealthClient
+func (c certificates) EtcdHealthClient() string {
+	return c.cc.prefix(secretEtcdHealthClient)
 }
 
 // APIServerEtcdClient returns the Secret name holding the API server etcd client certificate.
-func (certificates) APIServerEtcdClient() string {
-	return secretAPIServerEtcd
+func (c certificates) APIServerEtcdClient() string {
+	return c.cc.prefix(secretAPIServerEtcd)
 }
 
 // FrontProxyClient returns the Secret name holding the front-proxy client certificate.
-func (certificates) FrontProxyClient() string {
-	return secretFrontProxyClient
+func (c certificates) FrontProxyClient() string {
+	return c.cc.prefix(secretFrontProxyClient)
 }
 
 // CMClient returns the Secret name holding the controller-manager client certificate.
-func (certificates) CMClient() string {
-	return secretCMClient
+func (c certificates) CMClient() string {
+	return c.cc.prefix(secretCMClient)
 }
 
 // SchedulerClient returns the Secret name holding the scheduler client certificate.
-func (certificates) SchedulerClient() string {
-	return secretSchedulerClient
+func (c certificates) SchedulerClient() string {
+	return c.cc.prefix(secretSchedulerClient)
 }
 
 // AdminClient returns the Secret name holding the admin client certificate.
-func (certificates) AdminClient() string {
-	return secretAdminClient
+func (c certificates) AdminClient() string {
+	return c.cc.prefix(secretAdminClient)
 }
 
 // KonnectivityCA returns the Secret name holding the konnectivity CA.
-func (certificates) KonnectivityCA() string {
-	return secretKonnectivityCA
+func (c certificates) KonnectivityCA() string {
+	return c.cc.prefix(secretKonnectivityCA)
 }
 
 // KonnectivityServerTLS returns the Secret name holding the konnectivity server certificate.
-func (certificates) KonnectivityServerTLS() string {
-	return secretKonnectivityTLS
+func (c certificates) KonnectivityServerTLS() string {
+	return c.cc.prefix(secretKonnectivityTLS)
 }
 
 // KonnectivityAgentTLS returns the Secret name holding the konnectivity agent certificate.
-func (certificates) KonnectivityAgentTLS() string {
-	return secretKonnectivityAgentTLS
+func (c certificates) KonnectivityAgentTLS() string {
+	return c.cc.prefix(secretKonnectivityAgentTLS)
 }

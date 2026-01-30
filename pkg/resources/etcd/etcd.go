@@ -76,23 +76,28 @@ func (b builder) buildStatefulSet() *appsv1.StatefulSet {
 	podFQDNClient := e.MemberFQDNClient()
 	podFQDNPeer := e.MemberFQDNPeer()
 
+	health := e.HealthClientTLSSecret()
+
 	vols := []corev1.Volume{
 		cc.SecretVolume(ca),
 		cc.SecretVolume(srv),
 		cc.SecretVolume(peer),
+		cc.SecretVolume(health),
 	}
 	mounts := []corev1.VolumeMount{
 		cc.SecretMount(ca, true),
 		cc.SecretMount(srv, true),
 		cc.SecretMount(peer, true),
+		cc.SecretMount(health, true),
 	}
 
 	etcdContainer := corev1.Container{
-		Name:  nameEtcd,
+		Name:  svc,
 		Image: "registry.k8s.io/etcd:" + EtcdVersion,
 		Command: []string{
 			"etcd",
 		},
+		Env: []corev1.EnvVar{{Name: "ETCDCTL_API", Value: "3"}},
 		Args: []string{
 			"--name=" + e.MemberName(),
 			"--data-dir=" + e.DataDir(),
@@ -103,7 +108,7 @@ func (b builder) buildStatefulSet() *appsv1.StatefulSet {
 			"--listen-peer-urls=https://0.0.0.0:" + utils.PortString(e.PeerPort()),
 			"--initial-advertise-peer-urls=https://" + podFQDNPeer,
 
-			"--initial-cluster=" + clusterName + "=https://" + podFQDNPeer,
+			"--initial-cluster=" + e.MemberName() + "=https://" + podFQDNPeer,
 			"--initial-cluster-state=new",
 
 			"--client-cert-auth=true",
@@ -121,8 +126,9 @@ func (b builder) buildStatefulSet() *appsv1.StatefulSet {
 			{Name: "client", ContainerPort: clientPort},
 			{Name: "peer", ContainerPort: peerPort},
 		},
-		LivenessProbe:  utils.TcpProbe(clientPort, 10, 10),
-		ReadinessProbe: utils.TcpProbe(clientPort, 5, 5),
+		StartupProbe:   utils.ETCDHealthProbe(e.CAPath(), e.HealthClientCertPath(), e.HealthClientKeyPath()),
+		LivenessProbe:  utils.ETCDHealthProbe(e.CAPath(), e.HealthClientCertPath(), e.HealthClientKeyPath()),
+		ReadinessProbe: utils.ETCDHealthProbe(e.CAPath(), e.HealthClientCertPath(), e.HealthClientKeyPath()),
 		VolumeMounts: append(
 			[]corev1.VolumeMount{
 				{Name: e.StatefulSetName(), MountPath: dataDir},
