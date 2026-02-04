@@ -16,6 +16,8 @@ package utils
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -160,4 +162,11 @@ func TruncateToMaxLength(podName string) (string, bool) {
 		return podName[:64], true
 	}
 	return podName, false
+}
+
+func IgnoreCanceled(err error) error {
+	if errors.Is(err, context.Canceled) {
+		return nil
+	}
+	return err
 }

@@ -113,16 +113,6 @@ func (r *BaseReconciler) applyOpts(owner client.Object) ApplyOptions {
 	}
 }
 
-// managedApplyOpts returns ApplyOptions for resources managed by the operator without an explicit owner.
-func (r *BaseReconciler) managedApplyOpts() ApplyOptions {
-	return ApplyOptions{
-		FieldOwner:  fieldOwner, // or "controlplane-operator-managed" if you want to separate
-		Force:       true,
-		Owner:       nil,
-		SetOwnerRef: false,
-	}
-}
-
 // ApplyOptions defines options for server-side apply operations.
 type ApplyOptions struct {
 	FieldOwner  string
@@ -171,6 +161,7 @@ func (r *BaseReconciler) apply(ctx context.Context, c client.Client, opts ApplyO
 		if err := c.Patch(ctx, obj, client.Apply, patchOpts...); err != nil {
 			return fmt.Errorf("apply %s %s/%s: %w", gvk.Kind, obj.GetNamespace(), obj.GetName(), err)
 		}
+
 	}
 	return nil
 }

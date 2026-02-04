@@ -54,9 +54,19 @@ func (cc ClusterContext) GetManagedControlPlaneSpec() mcpv1alpha1.ManagedControl
 	return cc.mcp.Spec
 }
 
+// GetKubernetesVersion returns kubernetes version from MCP spec
+func (cc ClusterContext) GetKubernetesVersion() string {
+	return cc.mcp.Spec.Kubernetes.Version
+}
+
 // GetManagedControlPlaneStatus returns the ManagedControlPlane status snapshot.
 func (cc ClusterContext) GetManagedControlPlaneStatus() mcpv1alpha1.ManagedControlPlaneStatus {
 	return cc.mcp.Status
+}
+
+// GetStatusReady return the ManagedControlPlane status conditions snapshot.
+func (cc ClusterContext) GetStatusReady() bool {
+	return *cc.mcp.Status.Ready
 }
 
 // Owner returns the ManagedControlPlane object to use for owner references.

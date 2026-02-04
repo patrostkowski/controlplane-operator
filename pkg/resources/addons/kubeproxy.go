@@ -83,7 +83,7 @@ clientConnection:
 iptables:
   masqueradeAll: false
 conntrack:
-  maxPerCore: 32768
+  maxPerCore: 0
   min: 131072
 `
 
