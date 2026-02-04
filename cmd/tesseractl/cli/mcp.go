@@ -144,7 +144,8 @@ func (c *CLI) newJoinCommand() *cobra.Command {
 				return err
 			}
 
-			fmt.Fprintf(os.Stdout, "kubeadm join %s --token %s --discovery-token-ca-cert-hash %s\n",
+			// TODO: support kubeadm flags from join command
+			fmt.Fprintf(os.Stdout, "kubeadm join %s --token %s --discovery-token-ca-cert-hash %s --ignore-preflight-errors=SystemVerification\n",
 				endpoint, token, caHash,
 			)
 			return nil

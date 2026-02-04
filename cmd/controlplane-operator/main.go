@@ -20,12 +20,22 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+
 	"github.com/patrostkowski/controlplane-operator/pkg/controller"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"github.com/patrostkowski/controlplane-operator/pkg/utils"
+	"golang.org/x/sync/errgroup"
+	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+
+	mcctrl "github.com/patrostkowski/controlplane-operator/pkg/controller/multicluster"
+	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 )
 
 func main() {
@@ -37,44 +47,83 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
+	ctx := signals.SetupSignalHandler()
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	localMgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: nil,
 		Metrics: server.Options{
 			BindAddress: metricsAddr,
 		},
 		HealthProbeBindAddress: healthProbeAddr,
+		// Consider use Unstructured: true
+		// For external providers
+		Client: client.Options{
+			Cache: &client.CacheOptions{
+				DisableFor: []client.Object{&corev1.Secret{}},
+			},
+		},
 	})
 	if err != nil {
+		log.Log.Error(err, "unable to set up mcp controller manager")
 		panic(err)
 	}
 
-	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+	if err = mcpv1alpha1.AddToScheme(localMgr.GetScheme()); err != nil {
+		panic(err)
+	}
+	if err = certmanagerv1.AddToScheme(localMgr.GetScheme()); err != nil {
+		panic(err)
+	}
+	if err = apiextv1.AddToScheme(localMgr.GetScheme()); err != nil {
 		panic(err)
 	}
 
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+	if err = localMgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		panic(err)
 	}
 
-	if err := mcpv1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
-		panic(err)
-	}
-	if err := certmanagerv1.AddToScheme(mgr.GetScheme()); err != nil {
-		panic(err)
-	}
-	if err := clientgoscheme.AddToScheme(mgr.GetScheme()); err != nil {
+	if err = localMgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		panic(err)
 	}
 
-	if err := controller.SetupManagedControlPlaneController(mgr); err != nil {
-		panic(err)
-	}
-	if err := controller.SetupManagedAddonController(mgr); err != nil {
+	// Create the provider against the local manager.
+	provider, err := mcctrl.New(localMgr, mcctrl.Options{})
+	if err != nil {
+		log.Log.Error(err, "unable to set up provider")
 		panic(err)
 	}
 
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	// Create a multi-cluster manager attached to the provider.
+	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), provider, mcmanager.Options{
+		LeaderElection: false,
+		Metrics: server.Options{
+			BindAddress: "0", // only one can listen
+		},
+		HealthProbeBindAddress: "0",
+	})
+	if err != nil {
+		log.Log.Error(err, "unable to set multicluster manager")
+		os.Exit(1)
+	}
+
+	if err := controller.SetupManagedControlPlaneController(localMgr); err != nil {
+		panic(err)
+	}
+
+	if err := controller.SetupManagedAddonController(mcMgr); err != nil {
+		panic(err)
+	}
+
+	// Starting everything.
+	g, ctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		return utils.IgnoreCanceled(localMgr.Start(ctx))
+	})
+	g.Go(func() error {
+		return utils.IgnoreCanceled(mcMgr.Start(ctx))
+	})
+	if err := g.Wait(); err != nil {
+		log.Log.Error(err, "unable to start")
 		os.Exit(1)
 	}
 }

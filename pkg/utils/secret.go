@@ -12,30 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package addons
+package utils
 
 import (
-	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
+	"context"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/kubernetes/cmd/kubeadm/app/util/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type addonsBuilder struct {
-	cc cluster.AddonSpec
+func DataFromSecret(ctx context.Context, c client.Reader, obj client.ObjectKey, key string) ([]byte, error) {
+	secret := &corev1.Secret{}
+	secretKey := client.ObjectKey{
+		Namespace: obj.Namespace,
+		Name:      obj.Name,
+	}
+
+	if err := c.Get(ctx, secretKey, secret); err != nil {
+		return nil, err
+	}
+
+	return toBytes(secret, key)
 }
 
-func NewAddonsBuilder(cc cluster.AddonSpec) cluster.ObjectProducer {
-	return addonsBuilder{cc: cc}
-}
-
-// Objects implements cluster.ObjectProducer
-func (e addonsBuilder) Objects() []client.Object {
-	var objs []client.Object
-
-	objs = append(objs, e.buildKonnectivityAgent()...)
-	objs = append(objs, e.buildKubeproxy()...)
-	objs = append(objs, e.buildFlannel()...)
-	objs = append(objs, e.buildCoreDNS()...)
-	objs = append(objs, e.buildCSI()...)
-
-	return objs
+func toBytes(out *corev1.Secret, key string) ([]byte, error) {
+	data, ok := out.Data[key]
+	if !ok {
+		return nil, errors.Errorf("missing key %q in secret data", key)
+	}
+	return data, nil
 }
