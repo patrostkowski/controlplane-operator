@@ -33,7 +33,7 @@ docker run -d --name mcp-worker1   --hostname mcp-worker1   --privileged   --net
 ## 3. Deploy controlplane-operator
 
 ```bash
-./bin/controlplane-operator -kubeconfig <kubeconfig>
+task dev:run
 ```
 
 ## 4. Get MCP kubeconfig
