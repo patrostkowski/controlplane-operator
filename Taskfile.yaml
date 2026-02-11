@@ -71,12 +71,17 @@ tasks:
     cmds:
       - golangci-lint run ./...
 
+  dev:e2e:
+    desc: "Run E2E tests. Invoke with extra flags: `task dev:e2e -- -args --no-cleanup --stage=run`"
+    cmds:
+      - go test ./e2e -v -count=1 -p 1 {{.CLI_ARGS}}
+
   dev:codegen:
     desc: "Run all code generation scripts (client + CRDs) inside hack/"
     cmds:
-      - addlicense -c "Patryk Rostkowski" -l apache -y 2025 .
       - bash hack/update-codegen.sh
       - bash hack/update-crds.sh
+      - addlicense -c "Patryk Rostkowski" -l apache -y 2025 .
   
   dev:install:
     desc: "Install controlplane CRDs into current kube context"

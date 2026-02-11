@@ -12,24 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-repos:
-  - repo: local
-    hooks:
-      - id: dev-codegen
-        name: task dev:codegen
-        entry: bash -c 'task dev:codegen && git diff --exit-code'
-        language: system
-        pass_filenames: false
-
-      - id: dev-lint
-        name: task dev:lint
-        entry: task dev:lint
-        language: system
-        pass_filenames: false
-
-      - id: dev-test
-        name: task dev:test
-        entry: task dev:test
-        language: system
-        pass_filenames: false
-
+---
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraMounts:
+      - hostPath: /var/run/docker.sock
+        containerPath: /var/run/docker.sock

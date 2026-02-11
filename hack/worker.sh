@@ -15,6 +15,9 @@
 
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TESSERACTL="${TESSERACTL:-${ROOT_DIR}/bin/tesseractl}"
+
 NAMESPACE=""
 CLUSTER_NAME=""
 MODE=""
@@ -100,7 +103,7 @@ make_tmp_kubeconfig() {
   trap cleanup_tmp EXIT
   KUBECONFIG_FILE="${TMPDIR}/kubeconfig"
   log "Generating kubeconfig into ${KUBECONFIG_FILE}"
-  go run cmd/tesseractl/main.go mcp kubeconfig -n "${NAMESPACE}" "${CLUSTER_NAME}" > "${KUBECONFIG_FILE}"
+  "${TESSERACTL}" mcp kubeconfig -n "${NAMESPACE}" "${CLUSTER_NAME}" > "${KUBECONFIG_FILE}"
 }
 
 kube_node_exists() {
@@ -213,7 +216,7 @@ install_cni_plugins() {
 
 generate_join_command() {
   log "Generating kubeadm join command..."
-  go run cmd/tesseractl/main.go mcp kubeadm-join -n "${NAMESPACE}" "${CLUSTER_NAME}"
+  "${TESSERACTL}" mcp kubeadm-join -n "${NAMESPACE}" "${CLUSTER_NAME}"
 }
 
 join_cluster() {
