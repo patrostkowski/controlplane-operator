@@ -305,6 +305,7 @@ func (b builder) certificateResources() []client.Object {
 	etcdSvcLong := etcdSvcShort + ".cluster.local"
 
 	// Kubernetes API server has a 64 character limit for the Common Name field in client certificates.
+	// We should aim to keep etcd CN short and it does not have to be a k8s internal address
 	commonName, truncated := commonNameFromPod(pod0)
 	if truncated {
 		log.Printf("commonName %v (%d) truncated to %v (%d)", pod0, len(pod0), commonName, len(commonName))
