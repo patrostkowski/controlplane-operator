@@ -37,6 +37,30 @@ tasks:
     cmds:
       - docker run --rm -it -p 8000:8000 -v ${PWD}/docs:/docs squidfunk/mkdocs-material serve -f /docs/mkdocs.yml -a 0.0.0.0:8000
 
+  dev:setup:
+    desc: Validate local dev environment and install git hooks
+    cmds:
+      - |
+        set -euo pipefail
+        require() {
+          local bin="$1"
+          command -v "$bin" >/dev/null 2>&1 || {
+            echo "Missing required binary: $bin" >&2
+            exit 1
+          }
+          which $bin
+        }
+        require go
+        require docker
+        require kubectl
+        require helm
+        require kind
+        require pre-commit
+        require golangci-lint
+        require addlicense
+        require controller-gen
+        pre-commit install
+
   dev:test:
     desc: "Run unit tests"
     cmds:
@@ -79,10 +103,6 @@ tasks:
     cmds:
       - go build -o bin/controlplane-operator ./cmd/controlplane-operator/
 
-  dev:build-tesseractd:
-    cmds:
-      - go build -o bin/tesseractd ./cmd/tesseractd/
-
   dev:build-tesseractl:
     cmds:
       - go build -o bin/tesseractl ./cmd/tesseractl/
@@ -90,5 +110,4 @@ tasks:
   dev:build-all:
     deps:
       - dev:build
-      - dev:build-tesseractd
       - dev:build-tesseractl
