@@ -15,6 +15,7 @@
 package pki
 
 import (
+	"log"
 	"net"
 	"time"
 
@@ -303,13 +304,19 @@ func (b builder) certificateResources() []client.Object {
 	etcd0Long := etcd0Short + ".cluster.local"
 	etcdSvcLong := etcdSvcShort + ".cluster.local"
 
+	// Kubernetes API server has a 64 character limit for the Common Name field in client certificates.
+	commonName, truncated := commonNameFromPod(pod0)
+	if truncated {
+		log.Printf("commonName %v (%d) truncated to %v (%d)", pod0, len(pod0), commonName, len(commonName))
+	}
+
 	objs = append(objs,
 		// etcd server cert
 		builders.NewCertificate().
 			WithName(secretEtcdServerTLS).
 			WithNamespace(ns).
 			WithSecretName(secretEtcdServerTLS).
-			WithCommonName(etcd0Long).
+			WithCommonName(commonName).
 			Issuer(issuerEtcdCA).
 			WithDuration(&d.tenYears).
 			WithRenewBefore(&d.thirtyDays).
@@ -327,7 +334,7 @@ func (b builder) certificateResources() []client.Object {
 			WithName(secretEtcdPeerTLS).
 			WithNamespace(ns).
 			WithSecretName(secretEtcdPeerTLS).
-			WithCommonName(etcd0Long).
+			WithCommonName(commonName).
 			Issuer(issuerEtcdCA).
 			WithDuration(&d.tenYears).
 			WithRenewBefore(&d.thirtyDays).
