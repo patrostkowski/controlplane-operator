@@ -73,8 +73,8 @@ func TestBuildStatefulSet_Etcd(t *testing.T) {
 		t.Fatalf("expected 1 container, got %d", len(sts.Spec.Template.Spec.Containers))
 	}
 	c := sts.Spec.Template.Spec.Containers[0]
-	if c.Name != nameEtcd {
-		t.Fatalf("container name=%q want %q", c.Name, nameEtcd)
+	if c.Name != e.ServiceName() {
+		t.Fatalf("container name=%q want %q", c.Name, e.ServiceName())
 	}
 
 	// Important args should reference FQDNs + cert paths.
@@ -133,12 +133,12 @@ func TestBuildStatefulSet_Etcd(t *testing.T) {
 	// Sanity: initial-cluster contains the member name.
 	ok := false
 	for _, a := range c.Args {
-		if strings.HasPrefix(a, "--initial-cluster=") && strings.Contains(a, memberName) {
+		if strings.HasPrefix(a, "--initial-cluster=") && strings.Contains(a, e.ServiceName()) {
 			ok = true
 			break
 		}
 	}
 	if !ok {
-		t.Fatalf("expected --initial-cluster arg to include %q; args=%#v", memberName, c.Args)
+		t.Fatalf("expected --initial-cluster arg to include %q; args=%#v", e.ServiceName(), c.Args)
 	}
 }

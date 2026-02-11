@@ -26,6 +26,7 @@ func TestHttpsHealthProbe(t *testing.T) {
 
 	port := int32(6443)
 	path := "/healthz"
+	localhost := "localhost"
 	got := HttpsHealthProbe(port, path, 10, 5, 2, 3)
 
 	if got == nil {
@@ -37,8 +38,8 @@ func TestHttpsHealthProbe(t *testing.T) {
 	if got.HTTPGet.Scheme != corev1.URISchemeHTTPS {
 		t.Fatalf("Scheme=%q want %q", got.HTTPGet.Scheme, corev1.URISchemeHTTPS)
 	}
-	if got.HTTPGet.Host != "127.0.0.1" {
-		t.Fatalf("Host=%q want %q", got.HTTPGet.Host, "127.0.0.1")
+	if got.HTTPGet.Host != localhost {
+		t.Fatalf("Host=%q want %q", got.HTTPGet.Host, localhost)
 	}
 	if got.HTTPGet.Path != path {
 		t.Fatalf("Path=%q want %q", got.HTTPGet.Path, path)
