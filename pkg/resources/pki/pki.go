@@ -22,6 +22,7 @@ import (
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/builders"
+	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -306,7 +307,7 @@ func (b builder) certificateResources() []client.Object {
 
 	// Kubernetes API server has a 64 character limit for the Common Name field in client certificates.
 	// We should aim to keep etcd CN short and it does not have to be a k8s internal address
-	commonName, truncated := commonNameFromPod(pod0)
+	commonName, truncated := utils.TruncateToMaxLength(pod0)
 	if truncated {
 		log.Printf("commonName %v (%d) truncated to %v (%d)", pod0, len(pod0), commonName, len(commonName))
 	}
