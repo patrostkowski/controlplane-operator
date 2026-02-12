@@ -27,6 +27,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
+const (
+	maxCommonNameLength = 64 // max commonName length for spec.commonName field (cert manager etcd credentials)
+)
+
 // IPAtOffset calculates an IP address within a CIDR range at a given offset.
 func IPAtOffset(cidr string, offset uint32) (net.IP, error) {
 	ip, ipnet, err := net.ParseCIDR(cidr)
@@ -149,4 +153,11 @@ func GetObjJSON(obj runtime.Object) string {
 	}
 
 	return b.String()
+}
+
+func TruncateToMaxLength(podName string) (string, bool) {
+	if len(podName) > maxCommonNameLength {
+		return podName[:64], true
+	}
+	return podName, false
 }
