@@ -23,12 +23,12 @@ kubectl apply -f ./os/kubeadm/mcp.yaml
 task dev:run
 ```
 
-## Option 0 - Automated steps
+## Using a script
 
 ### 1. Automated script
-Use automated script `create-mcp-worker.sh` to provision test worker:
+Use automated script `worker.sh` to provision test worker:
 ```
-./os/kubeadm/create-mcp-worker.sh --namespace default --name my-kubernetes create mcp-worker1
+./os/kubeadm/worker.sh --namespace default --name my-kubernetes create mcp-worker1
 ```
 
 ### 2. Generate fresh Kubeconfig
@@ -57,9 +57,9 @@ local-path-storage   local-path-provisioner-866d54d4c8-stjnq   0/1     Container
 
 You should see `mcp-worker1` in `Ready` state.
 
-## Option 1 - Manual steps
+## Manual join
 
-The following steps do the same thing as `create-mcp-worker.sh` but manually.
+The following steps do the same thing as `worker.sh` but manually.
 
 ### 1. Create Docker Volume
 
