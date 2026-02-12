@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	MAX_CN_LENGTH = 64 // max commonName length for spec.commonName field (cert manager etcd credentials)
+	maxCommonNameLength = 64 // max commonName length for spec.commonName field (cert manager etcd credentials)
 )
 
 // IPAtOffset calculates an IP address within a CIDR range at a given offset.
@@ -156,7 +156,7 @@ func GetObjJSON(obj runtime.Object) string {
 }
 
 func TruncateToMaxLength(podName string) (string, bool) {
-	if len(podName) > MAX_CN_LENGTH {
+	if len(podName) > maxCommonNameLength {
 		return podName[:64], true
 	}
 	return podName, false
