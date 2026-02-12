@@ -20,9 +20,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-const GroupName = "controlplane.patrostkowski.dev"
+const (
+	GroupName = "controlplane.patrostkowski.dev"
+	Version   = "v1alpha1"
+)
 
-var SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: "v1alpha1"}
+var SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: Version}
 
 var (
 	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)

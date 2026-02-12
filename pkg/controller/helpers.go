@@ -21,7 +21,6 @@ import (
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
-	"github.com/patrostkowski/controlplane-operator/pkg/controller/state"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -79,9 +78,9 @@ func (r *ManagedControlPlaneReconciler) setStatus(
 // statusWaiting sets the ManagedControlPlane status to waiting with a specific message.
 func (r *ManagedControlPlaneReconciler) statusWaiting(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane, msg mcpv1alpha1.Message) error {
 	return r.setStatus(ctx, mcp,
-		state.ConditionReady,
+		mcpv1alpha1.ConditionReady,
 		metav1.ConditionFalse,
-		state.ReasonWaitingForResources,
+		mcpv1alpha1.ReasonWaitingForResources,
 		msg,
 		false,
 	)
@@ -90,9 +89,9 @@ func (r *ManagedControlPlaneReconciler) statusWaiting(ctx context.Context, mcp *
 // statusFailed sets the ManagedControlPlane status to failed with a specific message.
 func (r *ManagedControlPlaneReconciler) statusFailed(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane, msg mcpv1alpha1.Message) error {
 	return r.setStatus(ctx, mcp,
-		state.ConditionReady,
+		mcpv1alpha1.ConditionReady,
 		metav1.ConditionFalse,
-		state.ReasonComponentFailed,
+		mcpv1alpha1.ReasonComponentFailed,
 		msg,
 		false,
 	)
@@ -101,10 +100,10 @@ func (r *ManagedControlPlaneReconciler) statusFailed(ctx context.Context, mcp *m
 // statusReady sets the ManagedControlPlane status to ready.
 func (r *ManagedControlPlaneReconciler) statusReady(ctx context.Context, mcp *mcpv1alpha1.ManagedControlPlane) error {
 	return r.setStatus(ctx, mcp,
-		state.ConditionReady,
+		mcpv1alpha1.ConditionReady,
 		metav1.ConditionTrue,
-		state.ReasonAllResourcesReady,
-		state.MessageAllResourcesReady,
+		mcpv1alpha1.ReasonAllResourcesReady,
+		mcpv1alpha1.MessageAllResourcesReady,
 		true,
 	)
 }

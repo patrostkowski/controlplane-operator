@@ -19,7 +19,6 @@ import (
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
-	"github.com/patrostkowski/controlplane-operator/pkg/controller/state"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/pki"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
@@ -41,12 +40,12 @@ func (c *PKIComponent) Reconcile(ctx context.Context, cc *cluster.ClusterContext
 
 // WaitingMessage returns the waiting message for the PKI component.
 func (c *PKIComponent) WaitingMessage() mcpv1alpha1.Message {
-	return state.MessagePKIWaiting
+	return mcpv1alpha1.MessagePKIWaiting
 }
 
 // FailedMessage returns the failed message for the PKI component.
 func (c *PKIComponent) FailedMessage() mcpv1alpha1.Message {
-	return state.MessagePKIFailed
+	return mcpv1alpha1.MessagePKIFailed
 }
 
 // reconcilePKI reconciles the PKI resources for the control plane.

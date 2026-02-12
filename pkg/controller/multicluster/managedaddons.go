@@ -17,6 +17,8 @@ package provider
 import (
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -26,11 +28,11 @@ import (
 func NewManagedAddon() client.Object {
 	u := &unstructured.Unstructured{}
 	u.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   ManagedAddonGroupName,
-		Version: ManagedAddonVersion,
-		Kind:    ManagedAddonKind,
+		Group:   mcpv1alpha1.ManagedAddonGroupName,
+		Version: mcpv1alpha1.ManagedAddonVersion,
+		Kind:    mcpv1alpha1.ManagedAddonKind,
 	})
-	u.SetName(ManagedAddonCRName)
+	u.SetName(mcpv1alpha1.ManagedAddonCRName)
 	u.Object["spec"] = map[string]any{}
 	return u
 }
@@ -39,27 +41,27 @@ func NewManagedAddon() client.Object {
 func newManagedAddonsCRD() *apiextv1.CustomResourceDefinition {
 	return &apiextv1.CustomResourceDefinition{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: APIExtensionsGV,
-			Kind:       APIExtensionsKind,
+			APIVersion: mcpv1alpha1.APIExtensionsGV,
+			Kind:       mcpv1alpha1.APIExtensionsKind,
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: ManagedAddonCRDName,
+			Name: mcpv1alpha1.ManagedAddonCRDName,
 		},
 		Spec: apiextv1.CustomResourceDefinitionSpec{
-			Group: ManagedAddonGroupName,
+			Group: mcpv1alpha1.ManagedAddonGroupName,
 			Names: apiextv1.CustomResourceDefinitionNames{
-				Kind:     ManagedAddonKind,
-				ListKind: ManagedAddonList,
-				Plural:   ManagedAddonPlural,
-				Singular: ManagedAddonSingular,
+				Kind:     mcpv1alpha1.ManagedAddonKind,
+				ListKind: mcpv1alpha1.ManagedAddonList,
+				Plural:   mcpv1alpha1.ManagedAddonPlural,
+				Singular: mcpv1alpha1.ManagedAddonSingular,
 				ShortNames: []string{
-					ManagedAddonShortName,
+					mcpv1alpha1.ManagedAddonShortName,
 				},
 			},
-			Scope: ManagedAddonCRDScope,
+			Scope: mcpv1alpha1.ManagedAddonCRDScope,
 			Versions: []apiextv1.CustomResourceDefinitionVersion{
 				{
-					Name:    ManagedAddonVersion,
+					Name:    mcpv1alpha1.ManagedAddonVersion,
 					Served:  true,
 					Storage: true,
 					Schema: &apiextv1.CustomResourceValidation{

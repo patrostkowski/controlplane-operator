@@ -49,14 +49,14 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 	ctx := signals.SetupSignalHandler()
 
-	localMgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	controlPlaneManager, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: nil,
 		Metrics: server.Options{
 			BindAddress: metricsAddr,
 		},
 		HealthProbeBindAddress: healthProbeAddr,
 		// Consider use Unstructured: true
-		// For external providers
+		// For external managedControlPlaneProviders
 		Client: client.Options{
 			Cache: &client.CacheOptions{
 				DisableFor: []client.Object{&corev1.Secret{}},
@@ -68,33 +68,33 @@ func main() {
 		panic(err)
 	}
 
-	if err = mcpv1alpha1.AddToScheme(localMgr.GetScheme()); err != nil {
+	if err = mcpv1alpha1.AddToScheme(controlPlaneManager.GetScheme()); err != nil {
 		panic(err)
 	}
-	if err = certmanagerv1.AddToScheme(localMgr.GetScheme()); err != nil {
+	if err = certmanagerv1.AddToScheme(controlPlaneManager.GetScheme()); err != nil {
 		panic(err)
 	}
-	if err = apiextv1.AddToScheme(localMgr.GetScheme()); err != nil {
-		panic(err)
-	}
-
-	if err = localMgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+	if err = apiextv1.AddToScheme(controlPlaneManager.GetScheme()); err != nil {
 		panic(err)
 	}
 
-	if err = localMgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+	if err = controlPlaneManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		panic(err)
 	}
 
-	// Create the provider against the local manager.
-	provider, err := mcctrl.New(localMgr, mcctrl.Options{})
+	if err = controlPlaneManager.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+		panic(err)
+	}
+
+	// Create the managedControlPlaneProvider against the local manager.
+	managedControlPlaneProvider, err := mcctrl.New(controlPlaneManager, mcctrl.Options{})
 	if err != nil {
-		log.Log.Error(err, "unable to set up provider")
+		log.Log.Error(err, "unable to set up managedControlPlaneProvider")
 		panic(err)
 	}
 
-	// Create a multi-cluster manager attached to the provider.
-	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), provider, mcmanager.Options{
+	// Create a multi-cluster manager attached to the managedControlPlaneProvider.
+	managedControlPlaneManager, err := mcmanager.New(ctrl.GetConfigOrDie(), managedControlPlaneProvider, mcmanager.Options{
 		LeaderElection: false,
 		Metrics: server.Options{
 			BindAddress: "0", // only one can listen
@@ -106,21 +106,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := controller.SetupManagedControlPlaneController(localMgr); err != nil {
+	if err := controller.SetupManagedControlPlaneController(controlPlaneManager); err != nil {
 		panic(err)
 	}
 
-	if err := controller.SetupManagedAddonController(mcMgr); err != nil {
+	if err := controller.SetupManagedAddonController(managedControlPlaneManager); err != nil {
 		panic(err)
 	}
 
 	// Starting everything.
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		return utils.IgnoreCanceled(localMgr.Start(ctx))
+		return utils.IgnoreCanceled(controlPlaneManager.Start(ctx))
 	})
 	g.Go(func() error {
-		return utils.IgnoreCanceled(mcMgr.Start(ctx))
+		return utils.IgnoreCanceled(managedControlPlaneManager.Start(ctx))
 	})
 	if err := g.Wait(); err != nil {
 		log.Log.Error(err, "unable to start")
