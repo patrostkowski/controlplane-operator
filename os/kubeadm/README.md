@@ -8,73 +8,33 @@ This README shows how to join a Docker container as a Kubernetes worker node to 
 - kubectl installed
 - A working MCP kubeconfig:
 
+
+
 ## 0. Setup
 
 Run below commands:
 
 ```bash
 task kind:create
+task dev:build
+task dev:build-tesseractl
 task dev:install
 kubectl apply -f ./os/kubeadm/mcp.yaml
-```
-
-## 1. Create Docker Volume
-
-```bash
-docker volume create mcp-worker1-var
-```
-
-## 2. Start Worker Container
-
-```bash
-docker run -d --name mcp-worker1   --hostname mcp-worker1   --privileged   --network kind   --cgroupns=private   -v /lib/modules:/lib/modules:ro   -v mcp-worker1-var:/var   --tmpfs /run   --tmpfs /tmp   --security-opt seccomp=unconfined   --security-opt apparmor=unconfined   --security-opt label=disable   kindest/node:v1.35.0
-```
-
-## 3. Deploy controlplane-operator
-
-```bash
 task dev:run
 ```
 
-## 4. Get MCP kubeconfig
+## Option 0 - Automated steps
+
+### 1. Automated script
+Use automated script `create-mcp-worker.sh` to provision test worker:
+```
+./os/kubeadm/create-mcp-worker.sh --namespace default --name my-kubernetes create mcp-worker1
+```
+
+### 2. Generate fresh Kubeconfig
 
 ```bash
 ./bin/tesseractl mcp kubeconfig my-kubernetes > ~/.kube/mcp
-```
-
-## 5. Get Bootstrap Token
-
-```bash
-SECRET_NAME=$(KUBECONFIG=~/.kube/mcp kubectl -n kube-system get secret --sort-by=.metadata.creationTimestamp | grep bootstrap-token | tail -n 1 | cut -d " " -f1)
-
-TOKEN_SECRET=$(KUBECONFIG=~/.kube/mcp kubectl -n kube-system get secret $SECRET_NAME   -o jsonpath='{.data.token-secret}' | base64 -d)
-
-TOKEN_ID=$(KUBECONFIG=~/.kube/mcp kubectl -n kube-system get secret $SECRET_NAME   -o jsonpath='{.data.token-id}' | base64 -d)
-
-TOKEN=${TOKEN_ID}.${TOKEN_SECRET}
-echo "$TOKEN"
-```
-
-## 6. Compute CA Cert Hash
-
-```bash
-KUBECONFIG=~/.kube/mcp kubectl -n kube-public get cm cluster-info   -o jsonpath='{.data.kubeconfig}'   | awk '/certificate-authority-data:/ {print $2}'   | base64 -d > /tmp/cluster-info-ca.crt
-
-HASH=$(openssl x509 -pubkey -in /tmp/cluster-info-ca.crt   | openssl pkey -pubin -outform der 2>/dev/null   | openssl dgst -sha256 -hex   | awk '{print $2}')
-
-echo "sha256:$HASH"
-```
-
-## 7. Get API Server Address
-
-```bash
-API=$(kubectl get svc -n default my-kubernetes-apiserver   -o=jsonpath="{.status.loadBalancer.ingress[0].ip}"):6443
-```
-
-## 8. Join the Cluster
-
-```bash
-docker exec -it mcp-worker1 bash -lc   "kubeadm join $API    --token $TOKEN    --discovery-token-ca-cert-hash sha256:$HASH    --ignore-preflight-errors=all    -v=10"
 ```
 
 ## Done 🎉
@@ -96,3 +56,66 @@ local-path-storage   local-path-provisioner-866d54d4c8-stjnq   0/1     Container
 ```
 
 You should see `mcp-worker1` in `Ready` state.
+
+## Option 1 - Manual steps
+
+The following steps do the same thing as `create-mcp-worker.sh` but manually.
+
+### 1. Create Docker Volume
+
+```bash
+docker volume create mcp-worker1-var
+```
+
+### 2. Start Worker Container
+
+```bash
+docker run -d --name mcp-worker1   --hostname mcp-worker1   --privileged   --network kind   --cgroupns=private   -v /lib/modules:/lib/modules:ro   -v mcp-worker1-var:/var   --tmpfs /run   --tmpfs /tmp   --security-opt seccomp=unconfined   --security-opt apparmor=unconfined   --security-opt label=disable   kindest/node:v1.35.0
+```
+
+### 3. Deploy controlplane-operator
+
+```bash
+task dev:run
+```
+
+### 4. Get MCP kubeconfig
+
+```bash
+./bin/tesseractl mcp kubeconfig my-kubernetes > ~/.kube/mcp
+```
+
+### 5. Get Bootstrap Token
+
+```bash
+SECRET_NAME=$(KUBECONFIG=~/.kube/mcp kubectl -n kube-system get secret --sort-by=.metadata.creationTimestamp | grep bootstrap-token | tail -n 1 | cut -d " " -f1)
+
+TOKEN_SECRET=$(KUBECONFIG=~/.kube/mcp kubectl -n kube-system get secret $SECRET_NAME   -o jsonpath='{.data.token-secret}' | base64 -d)
+
+TOKEN_ID=$(KUBECONFIG=~/.kube/mcp kubectl -n kube-system get secret $SECRET_NAME   -o jsonpath='{.data.token-id}' | base64 -d)
+
+TOKEN=${TOKEN_ID}.${TOKEN_SECRET}
+echo "$TOKEN"
+```
+
+### 6. Compute CA Cert Hash
+
+```bash
+KUBECONFIG=~/.kube/mcp kubectl -n kube-public get cm cluster-info   -o jsonpath='{.data.kubeconfig}'   | awk '/certificate-authority-data:/ {print $2}'   | base64 -d > /tmp/cluster-info-ca.crt
+
+HASH=$(openssl x509 -pubkey -in /tmp/cluster-info-ca.crt   | openssl pkey -pubin -outform der 2>/dev/null   | openssl dgst -sha256 -hex   | awk '{print $2}')
+
+echo "sha256:$HASH"
+```
+
+### 7. Get API Server Address
+
+```bash
+API=$(kubectl get svc -n default my-kubernetes-apiserver   -o=jsonpath="{.status.loadBalancer.ingress[0].ip}"):6443
+```
+
+### 8. Join the Cluster
+
+```bash
+docker exec -it mcp-worker1 bash -lc   "kubeadm join $API    --token $TOKEN    --discovery-token-ca-cert-hash sha256:$HASH    --ignore-preflight-errors=all    -v=10"
+```
