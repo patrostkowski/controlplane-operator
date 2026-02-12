@@ -35,7 +35,10 @@ import (
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-
+	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+    "k8s.io/apimachinery/pkg/api/meta"
+    "k8s.io/apimachinery/pkg/runtime/schema"
+    "k8s.io/apimachinery/pkg/util/wait"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	mcpcluster "github.com/patrostkowski/controlplane-operator/pkg/cluster"
 
@@ -196,7 +199,7 @@ func (p *Provider) Reconcile(ctx context.Context, req reconcile.Request) (reconc
 		// This is workaround to install an "anchor" CR
 		// that we can use to install addons per cluster
 		cl := p.clusters[key]
-		if err := p.reconcileManagedAddons(ctx, cl.GetClient()); err != nil {
+		if err := p.reconcileManagedAddons(ctx, cl); err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to ensure managedaddon: %w", err)
 		}
 
@@ -242,7 +245,7 @@ func (p *Provider) Reconcile(ctx context.Context, req reconcile.Request) (reconc
 
 	// This is workaround to install an "anchor" CR
 	// that we can use to install addons per cluster
-	if err := p.reconcileManagedAddons(ctx, cl.GetClient()); err != nil {
+	if err := p.reconcileManagedAddons(ctx, cl); err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to ensure managedaddon: %w", err)
 	}
 
@@ -286,8 +289,9 @@ const RequeueAfterFailure = 10 * time.Second
 // TODO: consider waiting for status sync
 func (p *Provider) reconcileManagedAddons(
 	ctx context.Context,
-	c client.Client,
+	cl cluster.Cluster,
 ) error {
+	c := cl.GetClient()
 	crd := newManagedAddonsCRD()
 	cr := NewManagedAddon()
 
@@ -300,6 +304,72 @@ func (p *Provider) reconcileManagedAddons(
 		p.log.Error(err, "failed to apply ManagedAddon CRD")
 		return err
 	}
+
+	// 1) Apply CRD
+    if err := c.Patch(
+        ctx,
+        crd,
+        client.Apply,
+        client.FieldOwner(mcpv1alpha1.ManagedAddonKind),
+        client.ForceOwnership, // optional but helps avoid SSA conflicts
+    ); err != nil {
+        p.log.Error(err, "failed to apply ManagedAddon CRD")
+        return err
+    }
+
+    // 2) Wait for CRD to be Established (recommended)
+    // This avoids racing API aggregation & discovery.
+    if err := wait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 20*time.Second, true,
+        func(ctx context.Context) (bool, error) {
+            got := &apiextv1.CustomResourceDefinition{}
+            if err := c.Get(ctx, client.ObjectKey{Name: crd.Name}, got); err != nil {
+                if apierrors.IsNotFound(err) {
+                    return false, nil
+                }
+                return false, err
+            }
+
+            for _, cond := range got.Status.Conditions {
+                if cond.Type == apiextv1.Established && cond.Status == apiextv1.ConditionTrue {
+                    return true, nil
+                }
+            }
+            return false, nil
+        },
+    ); err != nil {
+        return fmt.Errorf("ManagedAddon CRD not Established yet: %w", err)
+    }
+
+    // 3) Reset RESTMapper so discovery is refreshed
+    if rm := cl.GetRESTMapper(); rm != nil {
+        if resettable, ok := rm.(meta.ResettableRESTMapper); ok {
+            resettable.Reset()
+        }
+    }
+
+    // 4) Wait until the GVK is discoverable via RESTMapper
+    gvk := schema.GroupVersionKind{
+        Group:   mcpv1alpha1.ManagedAddonGroupName,
+        Version: mcpv1alpha1.ManagedAddonVersion,
+        Kind:    mcpv1alpha1.ManagedAddonKind,
+    }
+
+    if err := wait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 20*time.Second, true,
+        func(ctx context.Context) (bool, error) {
+            _, err := cl.GetRESTMapper().RESTMapping(gvk.GroupKind(), gvk.Version)
+            if err == nil {
+                return true, nil
+            }
+            // Treat "not yet discovered" as retryable
+            if meta.IsNoMatchError(err) {
+                return false, nil
+            }
+            return false, err
+        },
+    ); err != nil {
+        return fmt.Errorf("ManagedAddon GVK not discoverable yet: %w", err)
+    }
+	
 
 	if err := c.Patch(
 		ctx,
