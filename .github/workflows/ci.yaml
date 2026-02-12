@@ -14,6 +14,9 @@
 
 name: CI
 
+run-name: >
+  CI Pull request #${{ github.event.issue.number }} by ${{ github.actor }}
+
 on:
   issue_comment:
     types: [created]
@@ -68,11 +71,56 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.1.0
           args: --timeout=5m
 
       - name: Build binaries
         run: |
           go build ./cmd/controlplane-operator
           go build ./cmd/tesseractl
+  comment:
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: ${{ always() }}
+    permissions:
+      issues: write
+      pull-requests: read
+    steps:
+      - name: Fetch PR data
+        id: pr
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.issue.number;
+            const pr = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: issue_number,
+            });
+            core.setOutput("head_sha", pr.data.head.sha);
+
+      - name: Comment result on PR
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.payload.issue.number;
+
+            const status = "${{ needs.test.result }}";
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const sha = "${{ steps.pr.outputs.head_sha }}";
+
+            const emoji = status === "success" ? "✅" : (status === "cancelled" ? "🟨" : "❌");
+            const body =
+              `${emoji} **CI ${status}**\n\n` +
+              `Run: ${runUrl}\n` +
+              `Commit: \`${sha}\``;
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body,
+            });
 
