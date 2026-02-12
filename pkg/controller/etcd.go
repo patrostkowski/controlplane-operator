@@ -19,7 +19,6 @@ import (
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
-	"github.com/patrostkowski/controlplane-operator/pkg/controller/state"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/etcd"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
@@ -41,12 +40,12 @@ func (c *ETCDComponent) Reconcile(ctx context.Context, cc *cluster.ClusterContex
 
 // WaitingMessage returns the waiting message for the etcd component.
 func (c *ETCDComponent) WaitingMessage() mcpv1alpha1.Message {
-	return state.MessageETCDWaiting
+	return mcpv1alpha1.MessageETCDWaiting
 }
 
 // FailedMessage returns the failed message for the etcd component.
 func (c *ETCDComponent) FailedMessage() mcpv1alpha1.Message {
-	return state.MessageETCDFailed
+	return mcpv1alpha1.MessageETCDFailed
 }
 
 // reconcileETCD reconciles the etcd cluster resources.

@@ -203,11 +203,9 @@ func (p *Provider) Reconcile(ctx context.Context, req reconcile.Request) (reconc
 		return reconcile.Result{}, nil
 	}
 
-	// TODO: compare mcp phases instgead of checking
-	// ready status
-	if !cc.GetStatusReady() {
+	if cc.MCP().GetStatusMessage() != string(mcpv1alpha1.MessageAllResourcesReady) {
 		log.Info("ManagedControlPlane not provisioned yet")
-		return reconcile.Result{}, nil
+		return reconcile.Result{RequeueAfter: RequeueAfterFailure}, nil
 	}
 
 	// get kubeconfig secret.
@@ -297,7 +295,7 @@ func (p *Provider) reconcileManagedAddons(
 		ctx,
 		crd,
 		client.Apply,
-		client.FieldOwner(ManagedAddonKind),
+		client.FieldOwner(mcpv1alpha1.ManagedAddonKind),
 	); err != nil {
 		p.log.Error(err, "failed to apply ManagedAddon CRD")
 		return err
@@ -307,7 +305,7 @@ func (p *Provider) reconcileManagedAddons(
 		ctx,
 		cr,
 		client.Apply,
-		client.FieldOwner(ManagedAddonKind),
+		client.FieldOwner(mcpv1alpha1.ManagedAddonKind),
 	); err != nil {
 		p.log.Error(err, "failed to apply ManagedAddon")
 		return err

@@ -22,7 +22,6 @@ import (
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
-	"github.com/patrostkowski/controlplane-operator/pkg/controller/state"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/apiserver"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -45,12 +44,12 @@ func (c *APIServerServiceComponent) Reconcile(ctx context.Context, cc *cluster.C
 
 // WaitingMessage returns the waiting message for the API server service.
 func (c *APIServerServiceComponent) WaitingMessage() mcpv1alpha1.Message {
-	return state.MessageAPIServerSvcWaiting
+	return mcpv1alpha1.MessageAPIServerSvcWaiting
 }
 
 // FailedMessage returns the failed message for the API server service.
 func (c *APIServerServiceComponent) FailedMessage() mcpv1alpha1.Message {
-	return state.MessageAPIServerSvcFailed
+	return mcpv1alpha1.MessageAPIServerSvcFailed
 }
 
 // APIServerComponent reconciles the Kubernetes API server deployment.
@@ -70,12 +69,12 @@ func (c *APIServerComponent) Reconcile(ctx context.Context, cc *cluster.ClusterC
 
 // WaitingMessage returns the waiting message for the API server.
 func (c *APIServerComponent) WaitingMessage() mcpv1alpha1.Message {
-	return state.MessageAPIServerWaiting
+	return mcpv1alpha1.MessageAPIServerWaiting
 }
 
 // FailedMessage returns the failed message for the API server.
 func (c *APIServerComponent) FailedMessage() mcpv1alpha1.Message {
-	return state.MessageAPIServerFailed
+	return mcpv1alpha1.MessageAPIServerFailed
 }
 
 // tryEndpointAddress attempts to retrieve the endpoint address for a given service.
