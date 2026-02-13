@@ -25,7 +25,3 @@ func (m *ManagedControlPlane) GetConditions() *[]metav1.Condition {
 func (m *ManagedControlPlane) GetStatus() *Status {
 	return &m.Status.Status
 }
-
-func (m *ManagedControlPlane) GetStatusMessage() string {
-	return m.Status.Message
-}

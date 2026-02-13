@@ -64,10 +64,11 @@ func (r *ManagedAddonsReconciler) Reconcile(ctx context.Context, req mcreconcile
 
 	cc := cluster.NewClusterContext(mcpObj, r.Log)
 	cl, err := r.GetCluster(ctx, req.ClusterName)
-	mc := cl.GetClient()
 	if err != nil {
 		return reconcile.Result{}, err
 	}
+
+	mc := cl.GetClient()
 
 	ma := mcctrl.NewManagedAddon()
 	if err := mc.Get(ctx, req.NamespacedName, ma); err != nil {

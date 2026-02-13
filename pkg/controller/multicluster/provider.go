@@ -16,12 +16,14 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -35,6 +37,7 @@ import (
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	mcpcluster "github.com/patrostkowski/controlplane-operator/pkg/cluster"
@@ -161,7 +164,6 @@ func (p *Provider) Reconcile(ctx context.Context, req reconcile.Request) (reconc
 	key := req.NamespacedName.String()
 
 	// get the cluster
-
 	mcpObj := &mcpv1alpha1.ManagedControlPlane{}
 	cc := mcpcluster.NewClusterContext(mcpObj, log)
 	if err := p.client.Get(ctx, req.NamespacedName, cc.MCP()); err != nil {
@@ -175,7 +177,6 @@ func (p *Provider) Reconcile(ctx context.Context, req reconcile.Request) (reconc
 			if cancel, ok := p.cancelFns[key]; ok {
 				cancel()
 			}
-
 			return reconcile.Result{}, nil
 		}
 
@@ -193,19 +194,12 @@ func (p *Provider) Reconcile(ctx context.Context, req reconcile.Request) (reconc
 	// already engaged?
 	if _, ok := p.clusters[key]; ok {
 		log.Info("Cluster already engaged")
-		// This is workaround to install an "anchor" CR
-		// that we can use to install addons per cluster
-		cl := p.clusters[key]
-		if err := p.reconcileManagedAddons(ctx, cl.GetClient()); err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to ensure managedaddon: %w", err)
-		}
-
 		return reconcile.Result{}, nil
 	}
 
-	if cc.MCP().GetStatusMessage() != string(mcpv1alpha1.MessageAllResourcesReady) {
+	if cc.GetManagedControlPlaneStatus().Message != string(mcpv1alpha1.MessageAllResourcesReady) {
 		log.Info("ManagedControlPlane not provisioned yet")
-		return reconcile.Result{RequeueAfter: RequeueAfterFailure}, nil
+		return reconcile.Result{RequeueAfter: time.Second * 2}, nil
 	}
 
 	// get kubeconfig secret.
@@ -214,11 +208,31 @@ func (p *Provider) Reconcile(ctx context.Context, req reconcile.Request) (reconc
 		return reconcile.Result{}, fmt.Errorf("failed to get kubeconfig: %w", err)
 	}
 
+	// verify if api-serveris "ready"
+	// TODO: get rid of it once interface for
+	// status implemented
+	discoveryClient := kubernetes.NewForConfigOrDie(cfg).Discovery()
+	_, err = discoveryClient.ServerVersion()
+	log.Info("API server endpoint is not ready, requeueing...")
+	if err != nil {
+		return reconcile.Result{RequeueAfter: time.Second * 2}, nil
+	}
+
 	// create cluster.
 	cl, err := p.opts.NewCluster(ctx, cc, cfg, p.opts.ClusterOptions...)
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to create cluster: %w", err)
 	}
+
+	// workaround to install an "anchor" CR
+	// that we can use to install addons per cluster
+	if err := p.reconcileManagedAddons(ctx, cl.GetClient()); err != nil {
+		if errors.Is(err, ErrNotReady) {
+			return reconcile.Result{RequeueAfter: time.Second * 2}, nil
+		}
+		return reconcile.Result{}, fmt.Errorf("failed to ensure managedaddon: %w", err)
+	}
+
 	for _, idx := range p.indexers {
 		if err := cl.GetCache().IndexField(ctx, idx.object, idx.field, idx.extractValue); err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to index field %q: %w", idx.field, err)
@@ -239,12 +253,6 @@ func (p *Provider) Reconcile(ctx context.Context, req reconcile.Request) (reconc
 	// remember.
 	p.clusters[key] = cl
 	p.cancelFns[key] = cancel
-
-	// This is workaround to install an "anchor" CR
-	// that we can use to install addons per cluster
-	if err := p.reconcileManagedAddons(ctx, cl.GetClient()); err != nil {
-		return reconcile.Result{}, fmt.Errorf("failed to ensure managedaddon: %w", err)
-	}
 
 	p.log.Info("Added new cluster")
 
@@ -281,9 +289,8 @@ func (p *Provider) IndexField(ctx context.Context, obj client.Object, field stri
 	return nil
 }
 
-const RequeueAfterFailure = 10 * time.Second
+var ErrNotReady = errors.New("ManagedAddon CRD not ready yet")
 
-// TODO: consider waiting for status sync
 func (p *Provider) reconcileManagedAddons(
 	ctx context.Context,
 	c client.Client,
@@ -307,6 +314,10 @@ func (p *Provider) reconcileManagedAddons(
 		client.Apply,
 		client.FieldOwner(mcpv1alpha1.ManagedAddonKind),
 	); err != nil {
+		if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) {
+			p.log.Info("CRD not ready yet, requeueing")
+			return ErrNotReady
+		}
 		p.log.Error(err, "failed to apply ManagedAddon")
 		return err
 	}

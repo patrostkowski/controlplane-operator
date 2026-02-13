@@ -18,7 +18,7 @@ import (
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
 
-// ManagedAddon constants
+// ManagedAddon consts
 const (
 	ManagedAddonCRDName   = ManagedAddonPlural + "." + ManagedAddonGroupName
 	ManagedAddonGroupName = GroupName
