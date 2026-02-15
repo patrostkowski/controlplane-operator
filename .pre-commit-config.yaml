@@ -15,11 +15,11 @@
 repos:
   - repo: local
     hooks:
-      # - id: dev-codegen
-      #   name: task dev:codegen
-      #   entry: bash -c 'task dev:codegen && git diff --exit-code'
-      #   language: system
-      #   pass_filenames: false
+      - id: dev-codegen
+        name: task dev:codegen
+        entry: bash -c 'task dev:codegen && git diff --exit-code'
+        language: system
+        pass_filenames: false
 
       - id: gofmt
         name: gofmt

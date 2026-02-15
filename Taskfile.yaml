@@ -76,7 +76,7 @@ tasks:
     cmds:
       - addlicense -c "Patryk Rostkowski" -l apache -y 2025 .
       - bash hack/update-codegen.sh
-      - bash hack/update-crds.sh
+      # - bash hack/update-crds.sh
   
   dev:install:
     desc: "Install controlplane CRDs into current kube context"
