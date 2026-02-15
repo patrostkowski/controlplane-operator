@@ -42,7 +42,7 @@ func main() {
 
 	zapLogLevel, err := zapcore.ParseLevel(logLevel)
 	if err != nil {
-		log.Println("errors setting the log level:", err)
+		log.Panicln("errors setting the log level:", err)
 	}
 
 	// set log level for controller runtime components
