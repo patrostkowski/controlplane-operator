@@ -37,7 +37,7 @@ func main() {
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&healthProbeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.StringVar(&logLevel, "log-level", "warn", "Log level for the controller")
+	flag.StringVar(&logLevel, "log-level", "info", "Log level for the controller")
 	flag.Parse()
 
 	zapLogLevel, err := zapcore.ParseLevel(logLevel)
