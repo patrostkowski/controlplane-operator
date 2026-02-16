@@ -1,0 +1,17 @@
+e2e
+.*
+bin
+dist
+tmp
+coverage*
+*.log
+os
+example
+config
+docs
+hack
+CONTRIBUTING
+Dockerfile
+LICENSE
+README.md
+Taskfile.yaml
