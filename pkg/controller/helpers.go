@@ -17,18 +17,12 @@ package controller
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/go-logr/logr"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/controller/state"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
-	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -127,26 +121,6 @@ func (r *BaseReconciler) managedApplyOpts() ApplyOptions {
 		Owner:       nil,
 		SetOwnerRef: false,
 	}
-}
-
-var (
-	// managedSchemeOnce ensures the managedScheme is initialized only once.
-	managedSchemeOnce sync.Once
-	// managedSchemeInst holds the initialized runtime.Scheme for managed resources.
-	managedSchemeInst *runtime.Scheme
-)
-
-// managedScheme initializes and returns a scheme containing common Kubernetes API types for managed resources.
-func (r *BaseReconciler) managedScheme() *runtime.Scheme {
-	managedSchemeOnce.Do(func() {
-		s := runtime.NewScheme()
-		_ = corev1.AddToScheme(s)
-		_ = appsv1.AddToScheme(s)
-		_ = rbacv1.AddToScheme(s)
-		_ = storagev1.AddToScheme(s)
-		managedSchemeInst = s
-	})
-	return managedSchemeInst
 }
 
 // ApplyOptions defines options for server-side apply operations.

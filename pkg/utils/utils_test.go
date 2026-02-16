@@ -15,64 +15,10 @@
 package utils
 
 import (
-	"context"
 	"testing"
 
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-
-	"github.com/go-logr/logr"
 )
-
-type testEnv struct {
-	ctx    context.Context
-	scheme *runtime.Scheme
-	c      client.Client
-	log    logr.Logger
-}
-
-func newTestEnv(t *testing.T, initObjs ...client.Object) testEnv {
-	t.Helper()
-
-	scheme := runtime.NewScheme()
-	if err := corev1.AddToScheme(scheme); err != nil {
-		t.Fatalf("AddToScheme: %v", err)
-	}
-
-	b := fake.NewClientBuilder().WithScheme(scheme)
-	if len(initObjs) > 0 {
-		b = b.WithObjects(initObjs...)
-	}
-
-	return testEnv{
-		ctx:    context.Background(),
-		scheme: scheme,
-		c:      b.Build(),
-		log:    logr.Discard(),
-	}
-}
-
-func newOwnerPod(ns, name string) *corev1.Pod {
-	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: ns,
-		},
-	}
-}
-
-func newConfigMapTemplate(ns, name string) *corev1.ConfigMap {
-	return &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: ns,
-		},
-	}
-}
 
 func TestIPAtOffset(t *testing.T) {
 	t.Parallel()

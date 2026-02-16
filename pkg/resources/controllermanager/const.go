@@ -25,8 +25,6 @@ const (
 	labelKeyApp = "app"
 	labelValApp = "kube-controller-manager"
 
-	componentName = "kube-controller-manager"
-
 	containerName = "kube-controller-manager"
 
 	// Kubeconfig ConfigMap

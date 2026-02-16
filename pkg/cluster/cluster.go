@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 
 	"github.com/go-logr/logr"
-	"github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -51,12 +50,12 @@ func (cc ClusterContext) Namespace() string {
 }
 
 // GetManagedControlPlaneSpec returns the ManagedControlPlane spec snapshot.
-func (cc ClusterContext) GetManagedControlPlaneSpec() v1alpha1.ManagedControlPlaneSpec {
+func (cc ClusterContext) GetManagedControlPlaneSpec() mcpv1alpha1.ManagedControlPlaneSpec {
 	return cc.mcp.Spec
 }
 
 // GetManagedControlPlaneStatus returns the ManagedControlPlane status snapshot.
-func (cc ClusterContext) GetManagedControlPlaneStatus() v1alpha1.ManagedControlPlaneStatus {
+func (cc ClusterContext) GetManagedControlPlaneStatus() mcpv1alpha1.ManagedControlPlaneStatus {
 	return cc.mcp.Status
 }
 

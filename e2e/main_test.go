@@ -1,3 +1,6 @@
+//go:build e2e
+// +build e2e
+
 // Copyright 2025 Patryk Rostkowski
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -129,4 +132,3 @@ func TestMain(m *testing.M) {
 
 	os.Exit(code)
 }
-

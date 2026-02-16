@@ -74,7 +74,7 @@ tasks:
   dev:e2e:
     desc: "Run E2E tests. Invoke with extra flags: `task dev:e2e -- -args --no-cleanup --stage=run`"
     cmds:
-      - go test ./e2e -v -count=1 -p 1 {{.CLI_ARGS}}
+      - go test -tags=e2e ./e2e -v -count=1 -p 1 {{.CLI_ARGS}}
 
   dev:codegen:
     desc: "Run all code generation scripts (client + CRDs) inside hack/"

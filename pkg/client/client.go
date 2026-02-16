@@ -27,17 +27,16 @@ import (
 type Config struct {
 	Kubeconfig string
 	Context    string
-	cfg        *rest.Config
 	client     client.Client
 }
 
 func NewClient(ctx, kubeconfig string) (client.Client, error) {
-	cfg := Config{
+	c := Config{
 		Kubeconfig: kubeconfig,
 		Context:    ctx,
 	}
 
-	client, err := cfg.buildConfig()
+	client, err := c.buildConfig()
 	if err != nil {
 		return nil, err
 	}

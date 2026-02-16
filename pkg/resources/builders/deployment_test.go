@@ -19,7 +19,6 @@ import (
 	"reflect"
 	"testing"
 
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -275,11 +274,5 @@ func TestNewDeployment_ProducesValidDeploymentKind(t *testing.T) {
 		WithLabels(labels).
 		WithSelector(labels).
 		WithReplicas(replicas)
-	dep := w.Build()
-
-	if dep.APIVersion == "" || dep.Kind == "" {
-		// These fields are typically set by scheme when encoding; but sanity-check type correctness anyway.
-		// The important part is: it's an *appsv1.Deployment instance.
-	}
-	var _ *appsv1.Deployment = dep
+	_ = w.Build()
 }

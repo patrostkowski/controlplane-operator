@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//nolint:gosec
 package cluster
 
 // PKI-related constants for file paths and certificate names.

@@ -99,12 +99,12 @@ type pki struct {
 
 // Issuer returns the issuer name configuration.
 func (p pki) Issuer() IssuerConfig {
-	return issuers{cc: p.cc}
+	return issuers(p)
 }
 
 // Certificate returns the certificate secret name configuration.
 func (p pki) Certificate() CertificateConfig {
-	return certificates{cc: p.cc}
+	return certificates(p)
 }
 
 // certificates is a names-only implementation of CertificateConfig.

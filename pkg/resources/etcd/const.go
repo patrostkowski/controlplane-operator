@@ -22,6 +22,4 @@ const (
 	peerPort   int32 = 2380
 
 	dataDir = "/var/lib/etcd"
-
-	defaultStorage = "10Gi"
 )

@@ -15,9 +15,6 @@
 package scheduler
 
 const (
-	// Component identity
-	componentName = "kube-scheduler"
-
 	containerName = "kube-scheduler"
 
 	// Kubeconfig ConfigMap

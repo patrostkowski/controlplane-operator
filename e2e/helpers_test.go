@@ -1,3 +1,6 @@
+//go:build e2e
+// +build e2e
+
 // Copyright 2025 Patryk Rostkowski
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -397,49 +400,6 @@ func extractImageTag(image string) string {
 	return ""
 }
 
-func assertAllPodsRunning(ctx context.Context, t *testing.T, kubeconfigPath string) {
-	t.Helper()
-
-	out, err := runOutput(ctx, cmdKubectl,
-		"--kubeconfig", kubeconfigPath,
-		"get", "pods", "-A",
-		"--no-headers",
-	)
-	if err != nil {
-		t.Fatalf("kubectl get pods failed: %v", err)
-	}
-
-	var bad []string
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		parts := strings.Fields(line)
-		if len(parts) < 4 {
-			continue
-		}
-		status := parts[3]
-		switch status {
-		case "Running", "Completed", "Succeeded":
-		default:
-			bad = append(bad, line)
-		}
-	}
-
-	if len(bad) > 0 {
-		var b strings.Builder
-		b.WriteString("found pods not Running/Completed:\n")
-		for _, line := range bad {
-			b.WriteString(" - ")
-			b.WriteString(line)
-			b.WriteString("\n")
-		}
-		t.Fatalf("%s\n", b.String())
-	}
-}
-
 func waitAllPodsRunning(ctx context.Context, t *testing.T, kubeconfigPath string, timeout time.Duration) {
 	t.Helper()
 
@@ -513,4 +473,3 @@ func runOutput(ctx context.Context, name string, args ...string) (string, error)
 	err := cmd.Run()
 	return b.String(), err
 }
-
