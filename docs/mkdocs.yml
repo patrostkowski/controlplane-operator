@@ -12,22 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-site_name: controlplane
+site_name: controlplane-operator
 docs_dir: content
 
-nav:
-  - Home: index.md
-  - Getting Started:
-      - Overview: getting-started/overview.md
-  - User Guide:
-      - Overview: user-guide/overview.md
-  - Administrator Guide:
-      - Overview: admin-guide/overview.md
-  - API Reference:
-      - Overview: api-reference/overview.md
-      - Design: api-reference/design.md
-  - Contributing:
-      - Overview: contributing/overview.md
+plugins:
+  - search
+  - awesome-pages
 
 theme:
   name: material
@@ -35,16 +25,18 @@ theme:
   features:
     - navigation.tabs
     - navigation.sections
+    - navigation.indexes
+    - navigation.instant
+    - content.code.copy
   palette:
-    # light
     - media: "(prefers-color-scheme: light)"
       scheme: controlplane
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
-    # dark
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       toggle:
         icon: material/brightness-4
         name: Switch to system preference
+

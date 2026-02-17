@@ -1,3 +1,0 @@
-# Administrator Guide
-
-TODO
