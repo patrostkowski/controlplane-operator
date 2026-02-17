@@ -59,7 +59,7 @@ func New() *CLI {
 		Use:   "tesseractl",
 		Short: "tesseract CLI",
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Help()
+			_ = cmd.Help()
 		},
 	}
 
@@ -158,7 +158,7 @@ func (c *CLI) newMCPCommand() *cobra.Command {
 		Use:   "mcp",
 		Short: "Manage MCP object",
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Help()
+			_ = cmd.Help()
 		},
 	}
 

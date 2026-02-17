@@ -17,8 +17,6 @@ package builders
 import (
 	"reflect"
 	"testing"
-
-	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 )
 
 func TestNewIssuer_SetsNameNamespace(t *testing.T) {
@@ -109,7 +107,4 @@ func TestIssuer_Build_ReturnsDeepCopy(t *testing.T) {
 	if b2.Labels != nil && b2.Labels["mut"] == "x" {
 		t.Fatalf("b2 mutated unexpectedly")
 	}
-
-	// sanity: correct type
-	var _ *certmanagerv1.Issuer = b1
 }

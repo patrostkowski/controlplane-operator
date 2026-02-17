@@ -18,16 +18,39 @@ run:
   timeout: 5m
   tests: true
 
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - gosec
+    - ineffassign
+    - staticcheck
+    - unused
+  exclusions:
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - staticcheck
+        text: "QF1008:" # could remove embedded field "Connection" from selector (staticcheck)
+      - linters:
+          - staticcheck
+        text: "QF1007:" # could merge conditional assignment into variable declaration (staticcheck)
+      - linters:
+          - staticcheck
+        text: "QF1001:" # could apply De Morgan's law (staticcheck)
+      - linters:
+          - staticcheck
+        text: "QF1006:" # could lift into loop condition (staticcheck)
+      - path: ^e2e/.*_test\.go$
+        linters:
+          - gosec
+        text: "G204"
 formatters:
   enable:
     - gofmt
-
-linters:
-  disable:
-    # disabling, until I go back and free the whole codebase from lint errors...
-    - staticcheck
-    - errcheck
-    - unused
-    - gocyclo
-    - lll
 

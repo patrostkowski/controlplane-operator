@@ -1,3 +1,6 @@
+//go:build e2e
+// +build e2e
+
 // Copyright 2025 Patryk Rostkowski
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -259,4 +262,3 @@ func TestE2E(t *testing.T) {
 		waitAllPodsRunning(ctx, t, kubeconfigPath, allPodsHealthyTimeout)
 	})
 }
-

@@ -530,7 +530,8 @@ func mustEncodeKubeadmClusterConfigYAML(
 	)
 
 	var buf bytes.Buffer
-	ser.Encode(cc, &buf)
+	// TODO: handle failures when encoding configs
+	_ = ser.Encode(cc, &buf)
 	return buf.String()
 }
 
@@ -544,6 +545,7 @@ func mustEncodeKubeletConfigYAML(kc *kubeletconfigv1beta1.KubeletConfiguration) 
 	ser := json.NewYAMLSerializer(json.DefaultMetaFactory, scheme, scheme)
 
 	var buf bytes.Buffer
-	ser.Encode(kc, &buf)
+	// TODO: handle failures when encoding configs
+	_ = ser.Encode(kc, &buf)
 	return buf.String()
 }

@@ -66,7 +66,7 @@ jobs:
           cache: true
 
       - name: Go test
-        run: go test ./...
+        run: go test $(go list ./... | grep -v '^./e2e')
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
