@@ -85,7 +85,7 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 			log.Error(err, "component failed, will retry", "after", RequeueAfterFailure)
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
 
 	cc := cluster.NewClusterContext(mcpObj, r.Log)

@@ -70,6 +70,72 @@ func TestHttpsHealthProbe(t *testing.T) {
 	}
 }
 
+func TestETCDHealthProbe(t *testing.T) {
+	t.Parallel()
+
+	ca := "/pki/ca.crt"
+	crt := "/pki/etcd.crt"
+	key := "/pki/etcd.key"
+
+	got := ETCDHealthProbe(ca, crt, key)
+	if got == nil {
+		t.Fatalf("expected probe, got nil")
+	}
+	if got.Exec == nil {
+		t.Fatalf("expected Exec handler, got nil")
+	}
+
+	wantCmd := []string{
+		"etcdctl",
+		"--endpoints=https://localhost:2379",
+		"--cacert=" + ca,
+		"--cert=" + crt,
+		"--key=" + key,
+		"endpoint", "health",
+	}
+	if len(got.Exec.Command) != len(wantCmd) {
+		t.Fatalf("command len=%d want %d: %#v", len(got.Exec.Command), len(wantCmd), got.Exec.Command)
+	}
+	for i := range wantCmd {
+		if got.Exec.Command[i] != wantCmd[i] {
+			t.Fatalf("command[%d]=%q want %q (full=%#v)", i, got.Exec.Command[i], wantCmd[i], got.Exec.Command)
+		}
+	}
+
+	if got.InitialDelaySeconds != 10 {
+		t.Fatalf("InitialDelaySeconds=%d want %d", got.InitialDelaySeconds, 10)
+	}
+	if got.PeriodSeconds != 10 {
+		t.Fatalf("PeriodSeconds=%d want %d", got.PeriodSeconds, 10)
+	}
+	if got.TimeoutSeconds != 2 {
+		t.Fatalf("TimeoutSeconds=%d want %d", got.TimeoutSeconds, 2)
+	}
+
+	// Ensure other handler types aren't set
+	if got.HTTPGet != nil || got.TCPSocket != nil || got.GRPC != nil {
+		t.Fatalf("expected only Exec handler set, got %#v", got.ProbeHandler)
+	}
+}
+
+func TestEmptyDirVolume(t *testing.T) {
+	t.Parallel()
+
+	got := EmptyDirVolume("tmp")
+
+	if got.Name != "tmp" {
+		t.Fatalf("Name=%q want %q", got.Name, "tmp")
+	}
+	if got.VolumeSource.EmptyDir == nil {
+		t.Fatalf("expected EmptyDir volume source set")
+	}
+
+	// Ensure no other source is accidentally set
+	if got.VolumeSource.ConfigMap != nil || got.VolumeSource.Secret != nil {
+		t.Fatalf("expected only EmptyDir volume source to be set: %#v", got.VolumeSource)
+	}
+}
+
 func TestTcpProbe(t *testing.T) {
 	t.Parallel()
 

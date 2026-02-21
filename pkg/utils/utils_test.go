@@ -15,8 +15,11 @@
 package utils
 
 import (
+	"strings"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/internalversion/scheme"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -112,4 +115,130 @@ func TestIntstrFromInt(t *testing.T) {
 	if got.Type != intstr.Int || got.IntValue() != 8080 {
 		t.Fatalf("unexpected IntOrString: %#v", got)
 	}
+}
+
+func TestGetMajorMinorString(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		version string
+		want    string
+	}{
+		{"empty", "", ""},
+		{"tooShort", "v", ""},
+		{"noDots", "v1", ""},
+		{"oneDotOnly", "v1.2", ""},
+		{"normal", "v1.2.3", "1.2"},
+		{"doubleDigit", "v10.11.12", "10.11"},
+		{"prefixStillStripped", "v0.0.0", "0.0"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := GetMajorMinorString(tt.version); got != tt.want {
+				t.Fatalf("got %q want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetObjYaml(t *testing.T) {
+	if err := corev1.AddToScheme(scheme.Scheme); err != nil {
+		t.Fatalf("AddToScheme: %v", err)
+	}
+
+	obj := &corev1.ConfigMap{}
+	obj.APIVersion = "v1"
+	obj.Kind = "ConfigMap"
+	obj.Name = "demo"
+	obj.Namespace = "default"
+	obj.Data = map[string]string{"a": "b"}
+
+	out := GetObjYaml(obj)
+
+	if !strings.Contains(out, "kind: ConfigMap") {
+		t.Fatalf("yaml missing kind, got:\n%s", out)
+	}
+	if !strings.Contains(out, "name: demo") {
+		t.Fatalf("yaml missing name, got:\n%s", out)
+	}
+	if !strings.Contains(out, "namespace: default") {
+		t.Fatalf("yaml missing namespace, got:\n%s", out)
+	}
+	if !strings.Contains(out, "a: b") {
+		t.Fatalf("yaml missing data, got:\n%s", out)
+	}
+}
+
+func TestGetObjJSON(t *testing.T) {
+	if err := corev1.AddToScheme(scheme.Scheme); err != nil {
+		t.Fatalf("AddToScheme: %v", err)
+	}
+
+	obj := &corev1.ConfigMap{}
+	obj.APIVersion = "v1"
+	obj.Kind = "ConfigMap"
+	obj.Name = "demo"
+	obj.Namespace = "default"
+	obj.Data = map[string]string{"a": "b"}
+
+	out := GetObjJSON(obj)
+
+	if !strings.Contains(out, `"kind": "ConfigMap"`) {
+		t.Fatalf("json missing kind, got:\n%s", out)
+	}
+	if !strings.Contains(out, `"name": "demo"`) {
+		t.Fatalf("json missing name, got:\n%s", out)
+	}
+	if !strings.Contains(out, `"namespace": "default"`) {
+		t.Fatalf("json missing namespace, got:\n%s", out)
+	}
+	if !strings.Contains(out, `"a": "b"`) {
+		t.Fatalf("json missing data, got:\n%s", out)
+	}
+
+	// Pretty should usually include newlines/indentation
+	if !strings.Contains(out, "\n") {
+		t.Fatalf("expected pretty JSON with newlines, got:\n%s", out)
+	}
+}
+
+func TestTruncateToMaxLength(t *testing.T) {
+	t.Parallel()
+
+	t.Run("short", func(t *testing.T) {
+		t.Parallel()
+		in := "short-name"
+		got, truncated := TruncateToMaxLength(in)
+		if got != in || truncated {
+			t.Fatalf("got=%q truncated=%v want %q false", got, truncated, in)
+		}
+	})
+
+	t.Run("exactly64", func(t *testing.T) {
+		t.Parallel()
+		in := strings.Repeat("a", 64)
+		got, truncated := TruncateToMaxLength(in)
+		if got != in || truncated {
+			t.Fatalf("got len=%d truncated=%v want len=64 false", len(got), truncated)
+		}
+	})
+
+	t.Run("longerThan64", func(t *testing.T) {
+		t.Parallel()
+		in := strings.Repeat("b", 80)
+		got, truncated := TruncateToMaxLength(in)
+		if len(got) != 64 {
+			t.Fatalf("got len=%d want 64", len(got))
+		}
+		if !truncated {
+			t.Fatalf("expected truncated=true")
+		}
+		if got != in[:64] {
+			t.Fatalf("got %q want %q", got, in[:64])
+		}
+	})
 }
