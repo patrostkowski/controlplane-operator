@@ -23,13 +23,16 @@ import (
 
 	"github.com/patrostkowski/controlplane-operator/pkg/controller"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
-	"golang.org/x/sync/errgroup"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	mcctrl "github.com/patrostkowski/controlplane-operator/pkg/controller/multicluster"
+	provider "github.com/patrostkowski/controlplane-operator/pkg/controller/multicluster"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -37,6 +40,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 )
+
+var scheme = runtime.NewScheme()
+
+func init() {
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(mcpv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(certmanagerv1.AddToScheme(scheme))
+	utilruntime.Must(apiextv1.AddToScheme(scheme))
+}
 
 func main() {
 	var metricsAddr string
@@ -49,8 +61,23 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 	ctx := signals.SetupSignalHandler()
 
-	controlPlaneManager, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme: nil,
+	cfg, err := ctrl.GetConfig()
+	if err != nil {
+		log.Log.Error(err, "unable to get kubeconfig")
+		os.Exit(1)
+	}
+
+	// Create the MCP provider.
+	provider := provider.New(provider.Options{
+		ClusterOptions: []cluster.Option{
+			func(o *cluster.Options) {
+				o.Scheme = scheme
+			},
+		},
+	})
+
+	mgr, err := mcmanager.New(cfg, provider, ctrl.Options{
+		Scheme: scheme,
 		Metrics: server.Options{
 			BindAddress: metricsAddr,
 		},
@@ -58,6 +85,8 @@ func main() {
 		// Consider use Unstructured: true
 		// For external managedControlPlaneProviders
 		Client: client.Options{
+			// TODO: customize cache behavior per object type
+			// with label selector
 			Cache: &client.CacheOptions{
 				DisableFor: []client.Object{&corev1.Secret{}},
 			},
@@ -68,62 +97,28 @@ func main() {
 		panic(err)
 	}
 
-	if err = mcpv1alpha1.AddToScheme(controlPlaneManager.GetScheme()); err != nil {
-		panic(err)
-	}
-	if err = certmanagerv1.AddToScheme(controlPlaneManager.GetScheme()); err != nil {
-		panic(err)
-	}
-	if err = apiextv1.AddToScheme(controlPlaneManager.GetScheme()); err != nil {
+	if err = mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		panic(err)
 	}
 
-	if err = controlPlaneManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+	if err = mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		panic(err)
 	}
 
-	if err = controlPlaneManager.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+	if err := controller.SetupManagedControlPlaneController(mgr); err != nil {
 		panic(err)
 	}
 
-	// Create the managedControlPlaneProvider against the local manager.
-	managedControlPlaneProvider, err := mcctrl.New(controlPlaneManager, mcctrl.Options{})
-	if err != nil {
-		log.Log.Error(err, "unable to set up managedControlPlaneProvider")
+	if err := controller.SetupManagedAddonController(mgr); err != nil {
 		panic(err)
 	}
 
-	// Create a multi-cluster manager attached to the managedControlPlaneProvider.
-	managedControlPlaneManager, err := mcmanager.New(ctrl.GetConfigOrDie(), managedControlPlaneProvider, mcmanager.Options{
-		LeaderElection: false,
-		Metrics: server.Options{
-			BindAddress: "0", // only one can listen
-		},
-		HealthProbeBindAddress: "0",
-	})
-	if err != nil {
-		log.Log.Error(err, "unable to set multicluster manager")
-		os.Exit(1)
-	}
-
-	if err := controller.SetupManagedControlPlaneController(controlPlaneManager); err != nil {
+	if err := provider.SetupProviderController(mgr); err != nil {
 		panic(err)
 	}
 
-	if err := controller.SetupManagedAddonController(managedControlPlaneManager); err != nil {
-		panic(err)
-	}
-
-	// Starting everything.
-	g, ctx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		return utils.IgnoreCanceled(controlPlaneManager.Start(ctx))
-	})
-	g.Go(func() error {
-		return utils.IgnoreCanceled(managedControlPlaneManager.Start(ctx))
-	})
-	if err := g.Wait(); err != nil {
-		log.Log.Error(err, "unable to start")
-		os.Exit(1)
+	if err := mgr.Start(ctx); utils.IgnoreCanceled(err) != nil {
+		log.Log.Error(err, "unable to start manager")
+		return
 	}
 }

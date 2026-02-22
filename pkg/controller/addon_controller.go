@@ -39,7 +39,7 @@ import (
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 )
 
-// ManagedAddonReconciler reconciles addon objects.
+// ManagedAddonsReconciler reconciles addon objects.
 type ManagedAddonsReconciler struct {
 	BaseReconciler
 	client.Client
@@ -52,7 +52,7 @@ func (r *ManagedAddonsReconciler) Reconcile(ctx context.Context, req mcreconcile
 	log := r.Log.WithValues("addons", req.ClusterName)
 
 	mcpObj := &mcpv1alpha1.ManagedControlPlane{}
-	ns, name, _ := cache.SplitMetaNamespaceKey(req.ClusterName)
+	ns, name, _ := cache.SplitMetaNamespaceKey(string(req.ClusterName))
 	if err := r.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, mcpObj); err != nil {
 		if apierrors.IsNotFound(err) {
 			// MCP already gone
@@ -123,7 +123,7 @@ func SetupManagedAddonController(mgr mcmanager.Manager) error {
 			Manager: mgr,
 			BaseReconciler: BaseReconciler{
 				Log:      ctrl.Log.WithName("addon").WithName(mcpv1alpha1.KindManagedControlPlane),
-				Recorder: mgr.GetLocalManager().GetEventRecorderFor("managedaddon"),
+				Recorder: mgr.GetLocalManager().GetEventRecorder("managedaddon"),
 				Scheme:   mgr.GetLocalManager().GetScheme(),
 			},
 			Client: mgr.GetLocalManager().GetClient(),
