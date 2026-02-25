@@ -1,0 +1,158 @@
+# Copyright 2025 Patryk Rostkowski
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: first-pool
+  namespace: metallb-system
+spec:
+  addresses:
+  - 172.18.0.250-172.18.0.255
+  autoAssign: true
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: example
+  namespace: metallb-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: capi-templates
+---
+# -----------------------------
+# Infrastructure (CAPD) templates
+# -----------------------------
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DockerClusterTemplate
+metadata:
+  name: demo-docker-cluster-template
+  namespace: capi-templates
+spec:
+  template:
+    spec: {}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DockerMachineTemplate
+metadata:
+  name: demo-control-plane-machines
+  namespace: capi-templates
+spec:
+  template:
+    spec: {}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DockerMachineTemplate
+metadata:
+  name: demo-workers-template
+  namespace: capi-templates
+spec:
+  template:
+    spec: {}
+---
+# -----------------------------
+# Bootstrap template (CABPK)
+# -----------------------------
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfigTemplate
+metadata:
+  name: demo-workers-bootstrap
+  namespace: capi-templates
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          criSocket: /run/containerd/containerd.sock
+---
+# -----------------------------
+# Your control plane template (controlplane-operator provider)
+# NOTE: apiVersion/kind must match YOUR CRD
+# -----------------------------
+apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
+kind: ManagedControlPlaneTemplate
+metadata:
+  name: demo-mcp-template
+  namespace: capi-templates
+spec:
+  template:
+    spec:
+      # CAPI contract fields (your MCP CRD)
+      version: v1.34.0
+      replicas: 1
+
+      # Your provider-specific config (because you embedded ManagedControlPlaneSpec)
+      providerSpec:
+        kubernetes:
+          version: v1.34.0
+          networking:
+            serviceCIDR: "10.96.0.0/12"
+            podCIDR: "10.244.0.0/16"
+---
+# -----------------------------
+# ClusterClass (Topology)
+# -----------------------------
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: ClusterClass
+metadata:
+  name: demo-class
+  namespace: capi-templates
+spec:
+  infrastructure:
+    templateRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+      kind: DockerClusterTemplate
+      name: demo-docker-cluster-template
+
+  controlPlane:
+    templateRef:
+      apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
+      kind: ManagedControlPlaneTemplate
+      name: demo-mcp-template
+
+  workers:
+    machineDeployments:
+      - class: default-worker
+        bootstrap:
+          templateRef:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+            kind: KubeadmConfigTemplate
+            name: demo-workers-bootstrap
+        infrastructure:
+          templateRef:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: DockerMachineTemplate
+            name: demo-workers-template
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: demo
+  namespace: capi-templates
+spec:
+  topology:
+    classRef:
+      name: demo-class
+      namespace: capi-templates
+    version: v1.34.0
+    controlPlane:
+      replicas: 1
+    workers:
+      machineDeployments:
+        - class: default-worker
+          name: md-0
+          replicas: 1

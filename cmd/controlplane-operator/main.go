@@ -20,7 +20,10 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+	capiv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.cluster.x-k8s.io/v1alpha1"
+	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"github.com/patrostkowski/controlplane-operator/pkg/controller"
+	"github.com/patrostkowski/controlplane-operator/pkg/capi"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -66,13 +69,22 @@ func main() {
 	if err := clientgoscheme.AddToScheme(mgr.GetScheme()); err != nil {
 		panic(err)
 	}
-
+	if err := capiv1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
+		panic(err)
+	}
+	if err := clusterv1beta2.AddToScheme(mgr.GetScheme()); err != nil {
+    	panic(err)
+	}
 	if err := controller.SetupManagedControlPlaneController(mgr); err != nil {
 		panic(err)
 	}
 	if err := controller.SetupManagedAddonController(mgr); err != nil {
 		panic(err)
 	}
+	if err := capi.SetupManagedControlPlaneController(mgr); err != nil {
+		panic(err)
+	}
+
 
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		os.Exit(1)

@@ -16,6 +16,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
@@ -86,6 +87,10 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
+	}
+
+	if mcpObj.Spec.Kubernetes.Networking == nil {
+		return ctrl.Result{}, fmt.Errorf("networking is required")
 	}
 
 	cc := cluster.NewClusterContext(mcpObj, r.Log)
