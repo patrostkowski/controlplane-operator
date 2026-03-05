@@ -113,6 +113,7 @@ func (e addonsBuilder) buildKonnectivityAgentDaemonSet() *appsv1.DaemonSet {
 		WithName(konnectivityAgentDSName).
 		WithNamespace(konnectivityAgentNamespace).
 		WithLabels(labels).
+		WithAnnotations(partOf).
 		WithSelector(labels).
 		WithPodLabels(labels).
 		WithContainer(c).

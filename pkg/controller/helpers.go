@@ -102,6 +102,16 @@ func (r *ManagedControlPlaneReconciler) statusReady(ctx context.Context, mcp *mc
 	)
 }
 
+// managedApplyOpts returns ApplyOptions for resources managed by the operator without an explicit owner.
+func (r *BaseReconciler) managedApplyOpts() ApplyOptions {
+	return ApplyOptions{
+		FieldOwner:  fieldOwner, // or "controlplane-operator-managed" if you want to separate
+		Force:       true,
+		Owner:       nil,
+		SetOwnerRef: false,
+	}
+}
+
 // applyOpts returns the ApplyOptions with field owner and owner reference set for a given owner object.
 func (r *BaseReconciler) applyOpts(owner client.Object) ApplyOptions {
 	return ApplyOptions{

@@ -14,6 +14,8 @@
 
 package addons
 
+import mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+
 const (
 	keyCACrt  = "ca.crt"
 	keyTLSCrt = "tls.crt"
@@ -39,3 +41,5 @@ const (
 	konnectivityAgentDSName          = "konnectivity-agent"
 	konnectivityAgentNamespace       = "kube-system"
 )
+
+var partOf = mcpv1alpha1.PartOf

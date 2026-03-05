@@ -23,9 +23,7 @@ import (
 
 	"github.com/patrostkowski/controlplane-operator/pkg/controller"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
-	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -41,14 +39,14 @@ import (
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 )
 
-var scheme = runtime.NewScheme()
-
-func init() {
-	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(mcpv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(certmanagerv1.AddToScheme(scheme))
-	utilruntime.Must(apiextv1.AddToScheme(scheme))
-}
+// var scheme = runtime.NewScheme()
+//
+// func init() {
+// 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+// 	utilruntime.Must(mcpv1alpha1.AddToScheme(scheme))
+// 	utilruntime.Must(certmanagerv1.AddToScheme(scheme))
+// 	utilruntime.Must(apiextv1.AddToScheme(scheme))
+// }
 
 func main() {
 	var metricsAddr string
@@ -65,6 +63,17 @@ func main() {
 	if err != nil {
 		log.Log.Error(err, "unable to get kubeconfig")
 		os.Exit(1)
+	}
+
+	scheme := runtime.NewScheme()
+	if err = mcpv1alpha1.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
+	if err = certmanagerv1.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
+	if err = clientgoscheme.AddToScheme(scheme); err != nil {
+		panic(err)
 	}
 
 	// Create the MCP provider.

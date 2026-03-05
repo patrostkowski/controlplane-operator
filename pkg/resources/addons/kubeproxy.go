@@ -29,7 +29,9 @@ const (
 	kubeProxyNamespaceName = "kube-system"
 )
 
-var labels = map[string]string{"k8s-app": "kube-proxy"}
+var labels = map[string]string{
+	"k8s-app": "kube-proxy",
+}
 
 func (e addonsBuilder) buildKubeproxy() []client.Object {
 	return []client.Object{
@@ -45,12 +47,14 @@ func (e addonsBuilder) buildKubeproxyServiceAccount() *corev1.ServiceAccount {
 		WithName(kubeProxyName).
 		WithNamespace(kubeProxyNamespaceName).
 		WithLabels(labels).
+		WithAnnotations(partOf).
 		Build()
 }
 
 func (e addonsBuilder) buildKubeproxyClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	return builders.NewClusterRoleBinding().
 		WithName(kubeProxyName).
+		WithAnnotations(partOf).
 		WithRefs(
 			rbacv1.RoleRef{
 				APIGroup: rbacv1.GroupName,
@@ -109,6 +113,7 @@ current-context: default
 	return builders.NewConfigMap().
 		WithName(kubeProxyName).
 		WithNamespace(kubeProxyNamespaceName).
+		WithAnnotations(partOf).
 		Put("config.conf", configConf).
 		Put("kubeconfig.conf", kubeconfigConf).
 		Build()
@@ -209,6 +214,7 @@ func (e addonsBuilder) buildKubeproxyDaemonSet() *appsv1.DaemonSet {
 		WithName(kubeProxyName).
 		WithNamespace(kubeProxyNamespaceName).
 		WithLabels(labels).
+		WithAnnotations(partOf).
 		WithSelector(labels).
 		WithPodLabels(labels).
 		WithServiceAccount(kubeProxyName).

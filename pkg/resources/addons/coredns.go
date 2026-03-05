@@ -83,12 +83,14 @@ func (e addonsBuilder) buildCoreDNSServiceAccount() *corev1.ServiceAccount {
 		WithName(CoreDNSServiceAccountName).
 		WithNamespace(CoreDNSNamespaceName).
 		WithLabels(CoreDNSPodLabels).
+		WithAnnotations(partOf).
 		Build()
 }
 
 func (e addonsBuilder) buildCoreDNSClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	return builders.NewClusterRoleBinding().
 		WithName(CoreDNSClusterRoleBindingName).
+		WithAnnotations(partOf).
 		WithRefs(
 			rbacv1.RoleRef{
 				APIGroup: rbacAPIGroup,
@@ -108,6 +110,7 @@ func (e addonsBuilder) buildCoreDNSClusterRoleBinding() *rbacv1.ClusterRoleBindi
 func (e addonsBuilder) buildCoreDNSClusterRole() *rbacv1.ClusterRole {
 	return builders.NewClusterRole().
 		WithName(CoreDNSClusterRoleName).
+		WithAnnotations(partOf).
 		WithRules(
 			rbacv1.PolicyRule{
 				APIGroups: []string{coreAPIGroup},
@@ -147,6 +150,7 @@ func (e addonsBuilder) buildCoreDNSRole() *rbacv1.Role {
 	return builders.NewRole().
 		WithName(CoreDNSRoleName).
 		WithNamespace(CoreDNSNamespaceName).
+		WithAnnotations(partOf).
 		WithRules(
 			rbacv1.PolicyRule{
 				APIGroups:     []string{coreAPIGroup},
@@ -166,6 +170,7 @@ func (e addonsBuilder) buildCoreDNSRoleBinding() *rbacv1.RoleBinding {
 	return builders.NewRoleBinding().
 		WithName(CoreDNSRoleBindingName).
 		WithNamespace(CoreDNSNamespaceName).
+		WithAnnotations(partOf).
 		WithRefs(
 			rbacv1.RoleRef{
 				APIGroup: rbacAPIGroup,
@@ -200,6 +205,7 @@ func (e addonsBuilder) buildCoreDNSConfigMap() *corev1.ConfigMap {
 	return builders.NewConfigMap().
 		WithName(CoreDNSConfigMapName).
 		WithNamespace(CoreDNSNamespaceName).
+		WithAnnotations(partOf).
 		Put("Corefile", corefile).
 		Build()
 }
@@ -214,6 +220,7 @@ func (e addonsBuilder) buildCoreDNSService() *corev1.Service {
 		WithName(CoreDNSServiceName).
 		WithNamespace(CoreDNSNamespaceName).
 		WithLabels(CoreDNSServiceLabels).
+		WithAnnotations(partOf).
 		WithSelector(CoreDNSPodLabels).
 		WithType(corev1.ServiceTypeClusterIP).
 		WithClusterIP(ip).
@@ -250,6 +257,7 @@ func (e addonsBuilder) buildCoreDNSDeployment() *appsv1.Deployment {
 		WithName(CoreDNSDeploymentName).
 		WithNamespace(CoreDNSNamespaceName).
 		WithLabels(CoreDNSPodLabels).
+		WithAnnotations(partOf).
 		WithServiceAccount(CoreDNSServiceAccountName).
 		WithSelector(CoreDNSPodLabels).
 		WithReplicas(CoreDNSReplicas).

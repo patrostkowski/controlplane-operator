@@ -18,7 +18,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -36,10 +35,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	mcpcluster "github.com/patrostkowski/controlplane-operator/pkg/cluster"
@@ -228,8 +229,7 @@ func (p *Provider) Reconcile(ctx context.Context, req reconcile.Request) (reconc
 	}
 
 	// verify if api-serveris "ready"
-	// TODO: get rid of it once interface for
-	// status implemented
+	// TODO: implement status interface
 	discoveryClient := kubernetes.NewForConfigOrDie(cfg).Discovery()
 	_, err = discoveryClient.ServerVersion()
 	log.Info("API server endpoint is not ready, requeueing...")
@@ -267,15 +267,6 @@ func (p *Provider) createAndEngageCluster(ctx context.Context, key multicluster.
 		return err
 	}
 
-	// workaround to install an "anchor" CR
-	// that we can use to install addons per cluster
-	if err := p.reconcileManagedAddons(ctx, cl.GetClient()); err != nil {
-		if errors.Is(err, ErrNotReady) {
-			return err
-		}
-		return fmt.Errorf("failed to ensure managedaddon: %w", err)
-	}
-
 	// Start the cluster.
 	clusterCtx, cancel := context.WithCancel(ctx)
 	go func() {
@@ -298,6 +289,10 @@ func (p *Provider) createAndEngageCluster(ctx context.Context, key multicluster.
 		hash:    hashStr,
 	}
 	p.lock.Unlock()
+
+	if err := p.reconcileManagedAddons(ctx, cl.GetClient()); err != nil {
+		return fmt.Errorf("failed to ensure managedaddon: %w", err)
+	}
 
 	log.Info("Cluster cache synced, engaging")
 
@@ -376,7 +371,10 @@ func (p *Provider) ListClusters() []multicluster.ClusterName {
 	return slices.Collect(maps.Keys(p.clusters))
 }
 
-var ErrNotReady = errors.New("ManagedAddon CRD not ready yet")
+var ManagedAddon = types.NamespacedName{
+	Namespace: "kube-system",
+	Name:      "managed-addon",
+}
 
 func (p *Provider) reconcileManagedAddons(
 	ctx context.Context,
@@ -384,30 +382,25 @@ func (p *Provider) reconcileManagedAddons(
 ) error {
 	log := log.FromContext(ctx)
 
-	crd := newManagedAddonsCRD()
-	cr := NewManagedAddon()
+	cm := &corev1.ConfigMap{}
+	err := c.Get(ctx, ManagedAddon, cm)
 
-	if err := c.Patch(
-		ctx,
-		crd,
-		client.Apply,
-		client.FieldOwner(mcpv1alpha1.ManagedAddonKind),
-	); err != nil {
-		log.Error(err, "failed to apply ManagedAddon CRD")
-		return err
-	}
-
-	if err := c.Patch(
-		ctx,
-		cr,
-		client.Apply,
-		client.FieldOwner(mcpv1alpha1.ManagedAddonKind),
-	); err != nil {
-		if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) {
-			log.Info("CRD not ready yet, requeueing")
-			return ErrNotReady
+	if apierrors.IsNotFound(err) {
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: ManagedAddon.Namespace,
+				Name:      ManagedAddon.Name,
+			},
 		}
-		log.Error(err, "failed to apply ManagedAddon")
+		if err = c.Create(
+			ctx,
+			cm,
+			client.FieldOwner(mcpv1alpha1.KindManagedControlPlane),
+		); err != nil {
+			log.Error(err, "failed to apply ManagedAddon configMap")
+			return err
+		}
+	} else {
 		return err
 	}
 

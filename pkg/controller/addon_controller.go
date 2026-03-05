@@ -19,12 +19,12 @@ import (
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
-	mcctrl "github.com/patrostkowski/controlplane-operator/pkg/controller/multicluster"
+	provider "github.com/patrostkowski/controlplane-operator/pkg/controller/multicluster"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-
 	storagev1 "k8s.io/api/storage/v1"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"sigs.k8s.io/multicluster-runtime/pkg/handler"
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
@@ -70,8 +71,9 @@ func (r *ManagedAddonsReconciler) Reconcile(ctx context.Context, req mcreconcile
 
 	mc := cl.GetClient()
 
-	ma := mcctrl.NewManagedAddon()
-	if err := mc.Get(ctx, req.NamespacedName, ma); err != nil {
+	cm := &corev1.ConfigMap{}
+	ma := provider.ManagedAddon
+	if err := mc.Get(ctx, ma, cm); err != nil {
 		if apierrors.IsNotFound(err) {
 			// ManagedAddon already gone
 			return ctrl.Result{}, nil
@@ -81,7 +83,7 @@ func (r *ManagedAddonsReconciler) Reconcile(ctx context.Context, req mcreconcile
 	}
 
 	log.Info("reconciling kubeadm resources")
-	if res, err := r.reconcileKubeletJoinResources(ctx, cc, mc, ma); err != nil {
+	if res, err := r.reconcileKubeletJoinResources(ctx, cc, mc); err != nil {
 		log.Error(err, "reconciling kubeadm resources failed, will retry", "after", RequeueAfterFailure)
 		return ctrl.Result{}, err
 	} else if !res.IsZero() {
@@ -90,7 +92,7 @@ func (r *ManagedAddonsReconciler) Reconcile(ctx context.Context, req mcreconcile
 
 	log.Info("reconciling addons resources")
 
-	if res, err := r.reconcileAddons(ctx, cc, mc, ma); err != nil {
+	if res, err := r.reconcileAddons(ctx, cc, mc); err != nil {
 		log.Error(err, "reconciling addons failed, will retry", "after", RequeueAfterFailure)
 		return ctrl.Result{}, err
 	} else if !res.IsZero() {
@@ -101,24 +103,69 @@ func (r *ManagedAddonsReconciler) Reconcile(ctx context.Context, req mcreconcile
 	return ctrl.Result{}, nil
 }
 
+func isPartOf(ctx context.Context, obj client.Object) []reconcile.Request {
+	if obj.GetAnnotations()[mcpv1alpha1.AnnotationKeyPartOf] != mcpv1alpha1.KindManagedControlPlane {
+		return nil
+	}
+	return []reconcile.Request{{
+		NamespacedName: provider.ManagedAddon,
+	}}
+}
+
+func isManagedAddon(obj client.Object) bool {
+	return obj.GetNamespace() == provider.ManagedAddon.Namespace &&
+		obj.GetName() == provider.ManagedAddon.Name
+}
+
+func isNonManagedAddon(obj client.Object) bool {
+	if obj.GetNamespace() == provider.ManagedAddon.Namespace &&
+		obj.GetName() == provider.ManagedAddon.Name {
+		return false
+	}
+	return obj.GetAnnotations()[mcpv1alpha1.AnnotationKeyPartOf] != mcpv1alpha1.KindManagedControlPlane
+}
+
 // SetupManagedAddonController sets up the ManagedAddon controller with the Kubernetes manager.
 func SetupManagedAddonController(mgr mcmanager.Manager) error {
-	u := mcctrl.NewManagedAddon()
 	return mcbuilder.ControllerManagedBy(mgr).
 		Named("addons-controller").
-		For(u, mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Owns(&corev1.Service{}).
-		Owns(&corev1.ServiceAccount{}).
-		Owns(&appsv1.Deployment{}).
-		Owns(&appsv1.DaemonSet{}).
-		Owns(&corev1.ConfigMap{}).
-		Owns(&corev1.Secret{}).
-		Owns(&appsv1.StatefulSet{}).
-		Owns(&rbacv1.Role{}).
-		Owns(&rbacv1.RoleBinding{}).
-		Owns(&rbacv1.ClusterRole{}).
-		Owns(&rbacv1.ClusterRoleBinding{}).
-		Owns(&storagev1.StorageClass{}).
+		For(
+			&corev1.ConfigMap{},
+			mcbuilder.WithPredicates(predicate.NewPredicateFuncs(isManagedAddon))).
+		Watches(
+			&corev1.Service{},
+			handler.EnqueueRequestsFromMapFunc(isPartOf)).
+		Watches(
+			&corev1.ServiceAccount{},
+			handler.EnqueueRequestsFromMapFunc(isPartOf)).
+		Watches(
+			&appsv1.Deployment{},
+			handler.EnqueueRequestsFromMapFunc(isPartOf)).
+		Watches(
+			&appsv1.DaemonSet{},
+			handler.EnqueueRequestsFromMapFunc(isPartOf)).
+		Watches(
+			&appsv1.StatefulSet{},
+			handler.EnqueueRequestsFromMapFunc(isPartOf)).
+		Watches(
+			&corev1.ConfigMap{},
+			handler.EnqueueRequestsFromMapFunc(isPartOf),
+			mcbuilder.WithPredicates(predicate.NewPredicateFuncs(isNonManagedAddon))).
+		Watches(
+			&rbacv1.Role{},
+			handler.EnqueueRequestsFromMapFunc(isPartOf)).
+		Watches(
+			&rbacv1.ClusterRole{},
+			handler.EnqueueRequestsFromMapFunc(isPartOf)).
+		Watches(
+			&rbacv1.RoleBinding{},
+			handler.EnqueueRequestsFromMapFunc(isPartOf)).
+		Watches(
+			&rbacv1.ClusterRoleBinding{},
+			handler.EnqueueRequestsFromMapFunc(isPartOf)).
+		Watches(
+			&storagev1.StorageClass{},
+			handler.EnqueueRequestsFromMapFunc(isPartOf)).
 		Complete(&ManagedAddonsReconciler{
 			Manager: mgr,
 			BaseReconciler: BaseReconciler{

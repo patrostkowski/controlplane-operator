@@ -70,6 +70,7 @@ func (e addonsBuilder) buildCSI() []client.Object {
 func (e addonsBuilder) buildCSINamespace() *corev1.Namespace {
 	return builders.NewNamespace().
 		WithName(CSINamespaceName).
+		WithAnnotations(partOf).
 		Build()
 }
 
@@ -77,6 +78,7 @@ func (e addonsBuilder) buildCSIServiceAccount() *corev1.ServiceAccount {
 	return builders.NewServiceAccount().
 		WithName(CSIServiceAccountName).
 		WithNamespace(CSINamespaceName).
+		WithAnnotations(partOf).
 		Build()
 }
 
@@ -84,6 +86,7 @@ func (e addonsBuilder) buildCSIRole() *rbacv1.Role {
 	return builders.NewRole().
 		WithName(CSIRoleName).
 		WithNamespace(CSINamespaceName).
+		WithAnnotations(partOf).
 		WithRules(
 			rbacv1.PolicyRule{
 				APIGroups: []string{coreAPIGroup},
@@ -105,6 +108,7 @@ func (e addonsBuilder) buildCSIRole() *rbacv1.Role {
 func (e addonsBuilder) buildCSIClusterRole() *rbacv1.ClusterRole {
 	return builders.NewClusterRole().
 		WithName(CSIClusterRoleName).
+		WithAnnotations(partOf).
 		WithRules(
 			rbacv1.PolicyRule{
 				APIGroups: []string{coreAPIGroup},
@@ -159,6 +163,7 @@ func (e addonsBuilder) buildCSIRoleBinding() *rbacv1.RoleBinding {
 	return builders.NewRoleBinding().
 		WithName(CSIRoleBindingName).
 		WithNamespace(CSINamespaceName).
+		WithAnnotations(partOf).
 		WithRefs(
 			rbacv1.RoleRef{
 				APIGroup: rbacAPIGroup,
@@ -177,6 +182,7 @@ func (e addonsBuilder) buildCSIRoleBinding() *rbacv1.RoleBinding {
 func (e addonsBuilder) buildCSIClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	return builders.NewClusterRoleBinding().
 		WithName(CSIClusterRoleName).
+		WithAnnotations(partOf).
 		WithRefs(
 			rbacv1.RoleRef{
 				APIGroup: rbacAPIGroup,
@@ -197,6 +203,7 @@ func (e addonsBuilder) buildCSIStorageClass() *storagev1.StorageClass {
 		WithAnnotations(map[string]string{
 			CSIDefaultStorageClassAnnotation: "true",
 		}).
+		WithAnnotations(partOf).
 		WithName(CSIStorageClassName).
 		WithProvisioner(CSIProvisionerName).
 		WithPolicy(CSIReclaimPolicy).
@@ -244,6 +251,7 @@ spec:
 	return builders.NewConfigMap().
 		WithName(CSIConfigMapName).
 		WithNamespace(CSINamespaceName).
+		WithAnnotations(partOf).
 		Put("config.json", configJSON).
 		Put("setup", setup).
 		Put("teardown", teardown).
@@ -295,6 +303,7 @@ func (e addonsBuilder) buildCSIDeployment() *appsv1.Deployment {
 		WithName(CSIDeploymentName).
 		WithNamespace(CSINamespaceName).
 		WithLabels(CSILabels).
+		WithAnnotations(partOf).
 		WithSelector(CSILabels).
 		WithServiceAccount(CSIServiceAccountName).
 		WithReplicas(replicas).

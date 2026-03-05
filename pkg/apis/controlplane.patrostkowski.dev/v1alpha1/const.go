@@ -14,27 +14,16 @@
 
 package v1alpha1
 
-import (
-	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-)
-
-// ManagedAddon consts
 const (
-	ManagedAddonCRDName   = ManagedAddonPlural + "." + ManagedAddonGroupName
-	ManagedAddonGroupName = GroupName
-	ManagedAddonVersion   = Version
-	ManagedAddonKind      = "ManagedAddon"
-	ManagedAddonList      = "ManagedAddonList"
-	ManagedAddonPlural    = "managedaddons"
-	ManagedAddonSingular  = "managedaddon"
-	ManagedAddonShortName = "ma"
-	ManagedAddonCRName    = "addonset"
-	APIExtensionsKind     = "CustomResourceDefinition"
+	KindManagedControlPlane     = "ManagedControlPlane"
+	KindManagedControlPlaneList = "ManagedControlPlaneList"
 
-	ManagedAddonCRDScope = apiextv1.ClusterScoped
+	AnnotationKeyPartOf = "part-of"
 )
 
-var APIExtensionsGV = apiextv1.SchemeGroupVersion.Group + "/" + apiextv1.SchemeGroupVersion.Version
+var PartOf = map[string]string{
+	AnnotationKeyPartOf: KindManagedControlPlane,
+}
 
 // Condition defines the type of condition for the ManagedControlPlane status.
 const (

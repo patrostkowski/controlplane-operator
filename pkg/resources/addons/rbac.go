@@ -135,6 +135,7 @@ func (b kubeletJoinBuilder) bootstrapTokenSecret() *corev1.Secret {
 		WithName(name).
 		WithNamespace(kubeSystemNamespace).
 		WithType(bootstrapapi.SecretTypeBootstrapToken).
+		WithAnnotations(partOf).
 		Put(bootstrapapi.BootstrapTokenDescriptionKey, bootstrapTokenDescription).
 		Put(bootstrapapi.BootstrapTokenIDKey, b.tok.ID).
 		Put(bootstrapapi.BootstrapTokenSecretKey, b.tok.Secret).
@@ -165,6 +166,7 @@ func (b kubeletJoinBuilder) nodeAutoapproveBootstrap() *rbacv1.ClusterRoleBindin
 func (b kubeletJoinBuilder) nodeAutoapproveRotation() *rbacv1.ClusterRoleBinding {
 	return builders.NewClusterRoleBinding().
 		WithName(crbKubeadmNodeAutoapproveRotation).
+		WithAnnotations(partOf).
 		WithRefs(
 			rbacv1.RoleRef{
 				APIGroup: rbacv1.GroupName,
@@ -214,6 +216,7 @@ func (b kubeletJoinBuilder) clusterInfo() *corev1.ConfigMap {
 	return builders.NewConfigMap().
 		WithName(bootstrapapi.ConfigMapClusterInfo).
 		WithNamespace("kube-public").
+		WithAnnotations(partOf).
 		Put(bootstrapapi.KubeConfigKey, string(kubeconfigBytes)).
 		Build()
 }
@@ -283,6 +286,7 @@ func (b kubeletJoinBuilder) kubeletConfigVersioned() *corev1.ConfigMap {
 	return builders.NewConfigMap().
 		WithName("kubelet-config-"+utils.GetMajorMinorString(mcpSpec.Kubernetes.Version)).
 		WithNamespace("kube-system").
+		WithAnnotations(partOf).
 		Put("kubelet", yamlStr).
 		Build()
 }
@@ -290,6 +294,7 @@ func (b kubeletJoinBuilder) kubeletConfigVersioned() *corev1.ConfigMap {
 func (b kubeletJoinBuilder) kubeletConfig() *rbacv1.ClusterRoleBinding {
 	return builders.NewClusterRoleBinding().
 		WithName("kubeadm:kubelet-config").
+		WithAnnotations(partOf).
 		WithRefs(
 			rbacv1.RoleRef{
 				APIGroup: rbacv1.GroupName,

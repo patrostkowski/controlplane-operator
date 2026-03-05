@@ -32,7 +32,6 @@ func (r *ManagedAddonsReconciler) reconcileAddons(
 	ctx context.Context,
 	cc *cluster.ClusterContext,
 	cl client.Client,
-	obj client.Object,
 ) (ctrl.Result, error) {
 	b := addons.NewAddonsBuilder(cc)
 
@@ -47,13 +46,13 @@ func (r *ManagedAddonsReconciler) reconcileAddons(
 	if err := r.apply(
 		ctx,
 		cl,
-		r.applyOpts(obj),
+		r.managedApplyOpts(),
 		secrets...,
 	); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	if err := r.apply(ctx, cl, r.applyOpts(obj), b.Objects()...); err != nil {
+	if err := r.apply(ctx, cl, r.managedApplyOpts(), b.Objects()...); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -64,7 +63,6 @@ func (r *ManagedAddonsReconciler) reconcileKubeletJoinResources(
 	ctx context.Context,
 	cc *cluster.ClusterContext,
 	cl client.Client,
-	obj client.Object,
 ) (ctrl.Result, error) {
 	tok, err := r.ensureBootstrapToken(ctx, cc)
 	if err != nil {
@@ -81,7 +79,7 @@ func (r *ManagedAddonsReconciler) reconcileKubeletJoinResources(
 
 	join := addons.NewKubeletJoinBuilder(cc, tok, caPEM)
 
-	if err := r.apply(ctx, cl, r.applyOpts(obj), join.Objects()...); err != nil {
+	if err := r.apply(ctx, cl, r.managedApplyOpts(), join.Objects()...); err != nil {
 		return ctrl.Result{}, err
 	}
 
