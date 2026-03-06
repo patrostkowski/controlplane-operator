@@ -36,6 +36,9 @@ linters:
     rules:
       - linters:
           - staticcheck
+        text: "SA1019:" # deprecation warning
+      - linters:
+          - staticcheck
         text: "QF1008:" # could remove embedded field "Connection" from selector (staticcheck)
       - linters:
           - staticcheck
