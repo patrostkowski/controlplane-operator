@@ -21,14 +21,14 @@ import (
 	"github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 // BaseReconciler provides common reconciliation utilities and fields.
 type BaseReconciler struct {
 	Log      logr.Logger
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 	Scheme   *runtime.Scheme
 }
 

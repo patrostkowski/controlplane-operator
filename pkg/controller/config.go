@@ -19,7 +19,6 @@ import (
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
-	"github.com/patrostkowski/controlplane-operator/pkg/controller/state"
 	"github.com/patrostkowski/controlplane-operator/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,12 +44,12 @@ func (c *AdminConfigComponent) Reconcile(ctx context.Context, cc *cluster.Cluste
 
 // WaitingMessage returns the waiting message for the admin kubeconfig.
 func (c *AdminConfigComponent) WaitingMessage() mcpv1alpha1.Message {
-	return state.MessageAdminKubeconfigWaiting
+	return mcpv1alpha1.MessageAdminKubeconfigWaiting
 }
 
 // FailedMessage returns the failed message for the admin kubeconfig.
 func (c *AdminConfigComponent) FailedMessage() mcpv1alpha1.Message {
-	return state.MessageAdminKubeconfigFailed
+	return mcpv1alpha1.MessageAdminKubeconfigFailed
 }
 
 // reconcileAdminConfig reconciles the admin kubeconfig secret for the managed control plane.

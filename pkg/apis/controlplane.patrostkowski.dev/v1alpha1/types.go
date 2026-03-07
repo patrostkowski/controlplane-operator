@@ -20,11 +20,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-const (
-	KindManagedControlPlane     = "ManagedControlPlane"
-	KindManagedControlPlaneList = "ManagedControlPlaneList"
-)
-
 // TODO: add kubebuilder tags for validations
 
 // ManagedControlPlaneSpec defines the desired state of ManagedControlPlane.

@@ -20,12 +20,23 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
+
 	"github.com/patrostkowski/controlplane-operator/pkg/controller"
+	"github.com/patrostkowski/controlplane-operator/pkg/utils"
+	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+
+	provider "github.com/patrostkowski/controlplane-operator/pkg/controller/multicluster"
+	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 )
 
 func main() {
@@ -37,44 +48,77 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
+	ctx := signals.SetupSignalHandler()
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme: nil,
+	cfg, err := ctrl.GetConfig()
+	if err != nil {
+		log.Log.Error(err, "unable to get kubeconfig")
+		os.Exit(1)
+	}
+
+	scheme := runtime.NewScheme()
+	if err = mcpv1alpha1.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
+	if err = certmanagerv1.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
+	if err = clientgoscheme.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
+
+	// Create the MCP provider.
+	provider := provider.New(provider.Options{
+		ClusterOptions: []cluster.Option{
+			func(o *cluster.Options) {
+				o.Scheme = scheme
+			},
+		},
+	})
+
+	mgr, err := mcmanager.New(cfg, provider, ctrl.Options{
+		Scheme: scheme,
 		Metrics: server.Options{
 			BindAddress: metricsAddr,
 		},
 		HealthProbeBindAddress: healthProbeAddr,
+		// Consider use Unstructured: true
+		// For external managedControlPlaneProviders
+		Client: client.Options{
+			// TODO: customize cache behavior per object type
+			// with label selector
+			Cache: &client.CacheOptions{
+				DisableFor: []client.Object{&corev1.Secret{}},
+			},
+		},
 	})
 	if err != nil {
+		log.Log.Error(err, "unable to set up mcp controller manager")
 		panic(err)
 	}
 
-	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+	if err = mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		panic(err)
 	}
 
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		panic(err)
-	}
-
-	if err := mcpv1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
-		panic(err)
-	}
-	if err := certmanagerv1.AddToScheme(mgr.GetScheme()); err != nil {
-		panic(err)
-	}
-	if err := clientgoscheme.AddToScheme(mgr.GetScheme()); err != nil {
+	if err = mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		panic(err)
 	}
 
 	if err := controller.SetupManagedControlPlaneController(mgr); err != nil {
 		panic(err)
 	}
+
 	if err := controller.SetupManagedAddonController(mgr); err != nil {
 		panic(err)
 	}
 
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		os.Exit(1)
+	if err := provider.SetupProviderController(mgr); err != nil {
+		panic(err)
+	}
+
+	if err := mgr.Start(ctx); utils.IgnoreCanceled(err) != nil {
+		log.Log.Error(err, "unable to start manager")
+		return
 	}
 }

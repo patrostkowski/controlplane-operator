@@ -66,6 +66,7 @@ func (e addonsBuilder) buildFlannelNamespace() *corev1.Namespace {
 	return builders.NewNamespace().
 		WithName(FlannelNamespaceName).
 		WithLabels(labels).
+		WithAnnotations(partOf).
 		Build()
 }
 
@@ -74,6 +75,7 @@ func (e addonsBuilder) buildFlannelClusterRole() *rbacv1.ClusterRole {
 	return builders.NewClusterRole().
 		WithName(FlannelClusterRoleName).
 		WithLabels(labels).
+		WithAnnotations(partOf).
 		WithRules(
 			rbacv1.PolicyRule{
 				APIGroups: []string{coreAPIGroup},
@@ -103,6 +105,7 @@ func (e addonsBuilder) buildFlannelClusterRoleBinding() *rbacv1.ClusterRoleBindi
 	return builders.NewClusterRoleBinding().
 		WithName(FlannelClusterRoleBindingName).
 		WithLabels(labels).
+		WithAnnotations(partOf).
 		WithRefs(
 			rbacv1.RoleRef{
 				APIGroup: rbacAPIGroup,
@@ -124,6 +127,7 @@ func (e addonsBuilder) buildFlannelServiceAccount() *corev1.ServiceAccount {
 		WithName(FlannelServiceAccountName).
 		WithNamespace(FlannelNamespaceName).
 		WithLabels(labels).
+		WithAnnotations(partOf).
 		Build()
 }
 
@@ -161,6 +165,7 @@ func (e addonsBuilder) buildFlannelConfigMap() *corev1.ConfigMap {
 		WithName(FlannelConfigMapName).
 		WithNamespace(FlannelNamespaceName).
 		WithLabels(labels).
+		WithAnnotations(partOf).
 		Put("cni-conf.json", cniConf).
 		Put("net-conf.json", netConf).
 		Build()
@@ -297,6 +302,7 @@ func (e addonsBuilder) buildFlannelDaemonSet() *appsv1.DaemonSet {
 		WithName(FlannelDaemonSetName).
 		WithNamespace(FlannelNamespaceName).
 		WithLabels(labels).
+		WithAnnotations(partOf).
 		WithSelector(labels).
 		WithPodLabels(labels).
 		WithServiceAccount(FlannelServiceAccountName).

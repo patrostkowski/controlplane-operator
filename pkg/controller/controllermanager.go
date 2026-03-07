@@ -19,7 +19,6 @@ import (
 
 	mcpv1alpha1 "github.com/patrostkowski/controlplane-operator/pkg/apis/controlplane.patrostkowski.dev/v1alpha1"
 	"github.com/patrostkowski/controlplane-operator/pkg/cluster"
-	"github.com/patrostkowski/controlplane-operator/pkg/controller/state"
 	"github.com/patrostkowski/controlplane-operator/pkg/resources/controllermanager"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
@@ -41,12 +40,12 @@ func (c *ControllerManagerComponent) Reconcile(ctx context.Context, cc *cluster.
 
 // WaitingMessage returns the waiting message for the controller manager.
 func (c *ControllerManagerComponent) WaitingMessage() mcpv1alpha1.Message {
-	return state.MessageControllerManagerWaiting
+	return mcpv1alpha1.MessageControllerManagerWaiting
 }
 
 // FailedMessage returns the failed message for the controller manager.
 func (c *ControllerManagerComponent) FailedMessage() mcpv1alpha1.Message {
-	return state.MessageControllerManagerFailed
+	return mcpv1alpha1.MessageControllerManagerFailed
 }
 
 // reconcileControllerManager reconciles the Kubernetes Controller Manager deployment.

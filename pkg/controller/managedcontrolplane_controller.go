@@ -30,8 +30,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 )
 
 const RequeueAfterFailure = 10 * time.Second // RequeueAfterFailure specifies the duration to wait before requeueing a failed reconciliation.
@@ -42,10 +44,11 @@ const ManagedControlPlaneFinalizer = "controlplane.patrostkowski.dev/finalizer" 
 type ManagedControlPlaneReconciler struct {
 	BaseReconciler
 	client.Client
+	manager.Manager
 }
 
 // Reconcile performs the main reconciliation loop for ManagedControlPlane objects.
-func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req reconcile.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("control-plane", req.NamespacedName)
 
 	mcpObj := &mcpv1alpha1.ManagedControlPlane{}
@@ -119,10 +122,10 @@ func (r *ManagedControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 }
 
 // SetupManagedControlPlaneController sets up the ManagedControlPlane controller with the Kubernetes manager.
-func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
+func SetupManagedControlPlaneController(mgr mcmanager.Manager) error {
 	certPred := predicate.GenerationChangedPredicate{}
 	issuerPred := predicate.GenerationChangedPredicate{}
-	return ctrl.NewControllerManagedBy(mgr).
+	return ctrl.NewControllerManagedBy(mgr.GetLocalManager()).
 		Named("control-plane-controller").
 		For(&mcpv1alpha1.ManagedControlPlane{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&corev1.Service{}).
@@ -142,11 +145,12 @@ func SetupManagedControlPlaneController(mgr ctrl.Manager) error {
 			},
 		).
 		Complete(&ManagedControlPlaneReconciler{
+			Manager: mgr.GetLocalManager(),
 			BaseReconciler: BaseReconciler{
 				Log:      ctrl.Log.WithName("controller").WithName(mcpv1alpha1.KindManagedControlPlane),
-				Recorder: mgr.GetEventRecorderFor("managedcontrolplane"),
-				Scheme:   mgr.GetScheme(),
+				Recorder: mgr.GetLocalManager().GetEventRecorder("managedcontrolplane"),
+				Scheme:   mgr.GetLocalManager().GetScheme(),
 			},
-			Client: mgr.GetClient(),
+			Client: mgr.GetLocalManager().GetClient(),
 		})
 }

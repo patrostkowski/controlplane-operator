@@ -55,8 +55,10 @@ type KonnectivityConfig interface {
 	ServerTLSSecret() string
 }
 
-var _ AdminConfig = admin{}
-var _ ManagedAddonsConfig = managedAddons{}
+var (
+	_ AdminConfig         = admin{}
+	_ ManagedAddonsConfig = managedAddons{}
+)
 
 func (cc ClusterContext) Admin() AdminConfig {
 	return admin{cc: cc}
